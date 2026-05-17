@@ -61,7 +61,9 @@ const userPostsSchema = {
 };
 
 const feedQuerySchema = {
-  query: paginationQuerySchema,
+  query: paginationQuerySchema.extend({
+    before: z.string().datetime({ offset: true }).optional(),
+  }),
 };
 
 const savedPostsQuerySchema = {

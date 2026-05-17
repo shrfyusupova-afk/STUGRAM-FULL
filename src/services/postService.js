@@ -221,6 +221,17 @@ const getFeed = async (userId, query) => {
   );
 
   const feedFilter = { author: { $in: authorIds }, _id: { $nin: hiddenPostIds }, isHiddenByAdmin: { $ne: true } };
+
+  // Optional cursor: when the client supplies `before` (ISO timestamp), only return
+  // posts created strictly before that timestamp. This prevents page-boundary
+  // duplicates that would otherwise occur when new posts arrive during a session.
+  if (query.before) {
+    const beforeDate = new Date(query.before);
+    if (!isNaN(beforeDate.getTime())) {
+      feedFilter.createdAt = { $lt: beforeDate };
+    }
+  }
+
   const [items, total] = await Promise.all([
     Post.find(feedFilter)
       .sort({ createdAt: -1 })

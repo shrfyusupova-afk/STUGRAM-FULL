@@ -23,6 +23,12 @@ interface AuthApi {
     @POST("api/v1/auth/google")
     suspend fun googleLogin(@Body request: GoogleLoginRequest): Response<JsonObject>
 
+    @POST("api/v1/auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<JsonObject>
+
+    @POST("api/v1/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<JsonObject>
+
     @GET("api/v1/posts/feed/me")
     suspend fun getPostFeed(
         @Query("page") page: Int = 1,
@@ -113,4 +119,13 @@ data class UpdateProfileRequest(
 
 data class CreatePostRequest(
     val caption: String
+)
+
+data class ForgotPasswordRequest(val identity: String)
+
+data class ResetPasswordRequest(
+    val identity: String,
+    val otp: String,
+    val password: String,
+    val confirmPassword: String
 )

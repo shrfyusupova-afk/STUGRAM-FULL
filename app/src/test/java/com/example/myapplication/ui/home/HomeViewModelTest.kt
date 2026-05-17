@@ -2,11 +2,13 @@ package com.example.myapplication.ui.home
 
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.CreatePostRequest
+import com.example.myapplication.data.remote.ForgotPasswordRequest
 import com.example.myapplication.data.remote.FullRegisterRequest
 import com.example.myapplication.data.remote.GoogleLoginRequest
 import com.example.myapplication.data.remote.LoginRequest
 import com.example.myapplication.data.remote.OtpRequest
 import com.example.myapplication.data.remote.RefreshTokenRequest
+import com.example.myapplication.data.remote.ResetPasswordRequest
 import com.example.myapplication.data.remote.UpdateProfileRequest
 import com.example.myapplication.data.remote.VerifyOtpRequest
 import com.google.gson.JsonArray
@@ -81,6 +83,8 @@ class HomeViewModelTest {
         override suspend fun unfollowUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun createPost(request: CreatePostRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
+        override suspend fun forgotPassword(request: ForgotPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun resetPassword(request: ResetPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
     }
 }
 

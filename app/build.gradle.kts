@@ -34,7 +34,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.myapplication"
+        applicationId = "uz.stugram.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -46,6 +46,11 @@ android {
         // Debug builds can override these via the debug block below (e.g. for local emulator dev).
         buildConfigField("String", "API_BASE_URL", "\"https://stugram-beckend.onrender.com/\"")
         buildConfigField("String", "SOCKET_URL",   "\"https://stugram-beckend.onrender.com\"")
+
+        // Sentry crash reporting. Set SENTRY_DSN in local.properties or CI env;
+        // leave empty to disable reporting (e.g. during development).
+        buildConfigField("String",  "SENTRY_DSN",               "\"\"")
+        buildConfigField("Boolean", "CRASH_REPORTING_ENABLED",  "false")
     }
 
     buildTypes {
@@ -106,10 +111,14 @@ dependencies {
         exclude(group = "org.json", module = "json")
     }
 
+    implementation(libs.sentry.android)
+
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
