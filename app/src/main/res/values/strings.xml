@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Stugram</string>
+    <string name="google_web_client_id">YOUR_GOOGLE_WEB_CLIENT_ID</string>
+</resources>
