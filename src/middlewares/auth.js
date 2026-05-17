@@ -52,26 +52,39 @@ const authenticateRequest = async (req, { allowMissingToken = false } = {}) => {
   } else {
     user = await User.findById(payload.sub).select("-passwordHash");
     if (!user) throw new ApiError(401, "User not found");
-    // Auto-migrate: attach an Account if missing
+    // Auto-migrate: attach an Account if missing.
+    // Two concurrent requests with the same legacy token can both enter this branch.
+    // Guard with atomic operations so only one DB write occurs per user.
     if (!user.accountId) {
       if (!user.identity) {
         throw new ApiError(401, "Account identity is missing");
       }
       account = await Account.findOne({ identity: user.identity.toLowerCase() });
       if (!account) {
-        account = await Account.create({
-          identity: user.identity.toLowerCase(),
-          passwordHash: user.passwordHash || null,
-          googleId: user.googleId || null,
-          lastLoginAt: user.lastLoginAt || null,
-          tokenInvalidBefore: user.tokenInvalidBefore || null,
-          isSuspended: user.isSuspended || false,
-          suspendedUntil: user.suspendedUntil || null,
-          suspensionReason: user.suspensionReason || null,
-        });
+        try {
+          account = await Account.create({
+            identity: user.identity.toLowerCase(),
+            passwordHash: user.passwordHash || null,
+            googleId: user.googleId || null,
+            lastLoginAt: user.lastLoginAt || null,
+            tokenInvalidBefore: user.tokenInvalidBefore || null,
+            isSuspended: user.isSuspended || false,
+            suspendedUntil: user.suspendedUntil || null,
+            suspensionReason: user.suspensionReason || null,
+          });
+        } catch (createError) {
+          // E11000: concurrent request already created the Account — find it.
+          if (createError.code === 11000) {
+            account = await Account.findOne({ identity: user.identity.toLowerCase() });
+            if (!account) throw new ApiError(500, "Account migration failed");
+          } else {
+            throw createError;
+          }
+        }
       }
-      user.accountId = account.id;
-      await user.save();
+      // Atomic: only writes when accountId is still null, preventing duplicate writes
+      // from concurrent requests carrying the same legacy token.
+      await User.updateOne({ _id: user._id, accountId: null }, { $set: { accountId: account.id } });
     } else {
       account = await Account.findById(user.accountId);
     }

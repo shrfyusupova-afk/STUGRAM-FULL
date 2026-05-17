@@ -1,5 +1,6 @@
 package com.example.myapplication.data.remote.chat
 
+import com.example.myapplication.BuildConfig
 import com.example.myapplication.data.remote.AuthSession
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -11,7 +12,7 @@ import org.json.JSONObject
 import java.time.Instant
 
 object ChatSocketManager {
-    private const val SOCKET_URL = "https://stugram-beckend.onrender.com"
+    private val SOCKET_URL: String get() = BuildConfig.SOCKET_URL
 
     private var socket: Socket? = null
     private var listenersAttached = false

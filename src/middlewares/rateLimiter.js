@@ -102,17 +102,12 @@ const createDistributedRateLimiter = ({ keyPrefix, windowMs, limit, message }) =
   next();
 };
 
+// Always use the admin-configured values exactly.
+// Minimum safety floors are enforced at startup in env.js validation, not here.
 const apiLimiter = createDistributedRateLimiter({
   keyPrefix: "api",
   windowMs: env.rateLimitWindowMs,
-  limit: (req) => {
-    if (env.chatRateLimitStrictMode) {
-      return isAuthenticatedRequest(req) ? env.authenticatedRateLimitMax : env.rateLimitMax;
-    }
-    return isAuthenticatedRequest(req)
-      ? Math.max(env.authenticatedRateLimitMax, 5000)
-      : Math.max(env.rateLimitMax, 500);
-  },
+  limit: (req) => isAuthenticatedRequest(req) ? env.authenticatedRateLimitMax : env.rateLimitMax,
   message: "Too many requests. Please try again later.",
 });
 

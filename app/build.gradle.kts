@@ -41,9 +41,20 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Production API endpoints — single source of truth.
+        // Debug builds can override these via the debug block below (e.g. for local emulator dev).
+        buildConfigField("String", "API_BASE_URL", "\"https://stugram-beckend.onrender.com/\"")
+        buildConfigField("String", "SOCKET_URL",   "\"https://stugram-beckend.onrender.com\"")
     }
 
     buildTypes {
+        debug {
+            // Keep production URLs by default so debug builds always work against
+            // the real server. Override locally:
+            //   buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5001/\"")
+            //   buildConfigField("String", "SOCKET_URL",   "\"http://10.0.2.2:5001\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

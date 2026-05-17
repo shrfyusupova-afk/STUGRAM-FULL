@@ -1,15 +1,31 @@
 package com.example.myapplication.data.remote
 
+import com.example.myapplication.BuildConfig
 import com.example.myapplication.core.storage.TokenManager
+import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
+import okhttp3.TlsVersion
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
-import com.example.myapplication.BuildConfig
+
+// CERTIFICATE PINNING — DEFERRED
+// The backend runs on Render.com (stugram-beckend.onrender.com) which manages
+// TLS certificates automatically (Let's Encrypt, auto-rotation every 90 days).
+// Render does not expose upcoming leaf or intermediate pins before rotation,
+// so hardcoded pins would break the app silently when Render rotates the cert.
+// Trust strategy for closed beta:
+//   - Network security config (Phase 1) disables cleartext in production.
+//   - MODERN_TLS ConnectionSpec enforces TLS 1.2+ at the OkHttp layer.
+//   - Public CA validation remains in effect (system trust store).
+// Pinning can be added once the backend migrates to a host that provides
+// advance notice of certificate changes (e.g. a custom domain with manual cert).
 
 object RetrofitClient {
-    private const val BASE_URL = "https://stugram-beckend.onrender.com/"
+    // URL comes from BuildConfig so debug and release variants can use different
+    // endpoints without changing source code.
+    private val BASE_URL: String get() = BuildConfig.API_BASE_URL
 
     // Sensitive JSON field names to redact from debug logs.
     private val sensitiveJsonFields = listOf(
@@ -70,6 +86,15 @@ object RetrofitClient {
             .build()
     }
 
+    // Enforce TLS 1.2+ at the OkHttp layer. MODERN_TLS covers TLS 1.2 and 1.3.
+    // In release builds network_security_config.xml already blocks cleartext at
+    // the OS level; this is defense-in-depth at the library level.
+    private val tlsConnectionSpecs = if (BuildConfig.DEBUG) {
+        listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.CLEARTEXT)
+    } else {
+        listOf(ConnectionSpec.MODERN_TLS)
+    }
+
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor { chain ->
@@ -88,6 +113,7 @@ object RetrofitClient {
                         "MainActivity.onCreate() before any network request is made."
                     )
             )
+            .connectionSpecs(tlsConnectionSpecs)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

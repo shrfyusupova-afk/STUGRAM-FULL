@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.core.storage.TokenManager
+import com.example.myapplication.data.local.chat.ChatDatabase
 import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.chat.ChatSocketManager
 import kotlinx.coroutines.launch
@@ -85,6 +86,7 @@ fun SettingsScreen(isDarkMode: Boolean, onBack: () -> Unit) {
                     scope.launch {
                         isLoggingOut = true
                         runCatching { TokenManager(context).clearTokens() }
+                        runCatching { ChatDatabase.clearAndWipe(context) }
                         AuthSession.clearSession()
                         ChatSocketManager.disconnect()
                         isLoggingOut = false

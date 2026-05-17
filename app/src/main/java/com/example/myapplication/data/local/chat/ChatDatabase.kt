@@ -86,5 +86,17 @@ abstract class ChatDatabase : RoomDatabase() {
                 .also { INSTANCE = it }
             }
         }
+
+        // Called on logout: closes the open connection and deletes the DB file so
+        // private chat messages are not readable by the next device user or by an
+        // attacker with physical access. The DB is re-created from scratch on the
+        // next login.
+        fun clearAndWipe(context: Context) {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+            context.applicationContext.deleteDatabase("stugram-chat.db")
+        }
     }
 }
