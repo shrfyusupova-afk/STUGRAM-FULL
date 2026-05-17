@@ -60,9 +60,9 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
                         TokenManager(context).saveTokens(access, refresh)
+                        AuthSession.setToken(access)
+                        ChatSocketManager.updateAccessToken(access)
                     }
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 } else {
@@ -131,9 +131,9 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
                         TokenManager(context).saveTokens(access, refresh)
+                        AuthSession.setToken(access)
+                        ChatSocketManager.updateAccessToken(access)
                     } else {
                         _uiState.update {
                             it.copy(

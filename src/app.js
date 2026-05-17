@@ -95,10 +95,19 @@ const getQueueHealthSnapshot = async () => {
 };
 
 const isInternalMonitoringRequest = (req) => {
-  if (env.nodeEnv !== "production") return true;
   const internalKey = process.env.INTERNAL_METRICS_KEY;
   const suppliedKey = req.headers["x-internal-monitoring-key"];
-  return Boolean(internalKey && suppliedKey === internalKey);
+
+  // If a key is configured, require it in every environment so staging cannot
+  // leak atlas host, Redis topology, or Firebase internals to unauthenticated callers.
+  if (internalKey) {
+    return suppliedKey === internalKey;
+  }
+
+  // No key configured: allow only loopback requests so local dev still works
+  // without any extra setup, but deployed staging/prod is effectively locked out.
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 };
 
 const buildPublicHealthData = ({ database, redis, queueHealth, pushStatus }) => ({

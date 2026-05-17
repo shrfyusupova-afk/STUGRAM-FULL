@@ -27,6 +27,7 @@ let closeRedisConnection;
 let isRedisReady;
 let closeRecommendationQueueResources;
 let isFirebaseEnabled;
+let getFirebaseStatus;
 let isCloudinaryConfigured;
 let ensureBootstrapLoginUser;
 let startMaintenanceCleanupScheduler;
@@ -41,7 +42,7 @@ try {
   ({ registerChatSocket } = require("./src/socket/chatSocket"));
   ({ connectRedis, getRedisStatus, closeRedisConnection, isRedisReady } = require("./src/config/redis"));
   ({ closeRecommendationQueueResources } = require("./src/queues/recommendationRefreshQueue"));
-  ({ isFirebaseEnabled } = require("./src/config/firebaseAdmin"));
+  ({ isFirebaseEnabled, getFirebaseStatus } = require("./src/config/firebaseAdmin"));
   ({ isCloudinaryConfigured } = require("./src/config/cloudinary"));
   ({ ensureBootstrapLoginUser } = require("./src/services/bootstrapAuthService"));
   ({ startMaintenanceCleanupScheduler, stopMaintenanceCleanupScheduler } = require("./src/services/maintenanceService"));
@@ -89,6 +90,37 @@ process.on("unhandledRejection", (reason) => {
   logStartupFailure(error, startupPhase);
   process.exit(1);
 });
+
+const validateProductionDependencies = () => {
+  if (env.nodeEnv !== "production") return;
+
+  const hardFailures = [];
+
+  if (!isCloudinaryConfigured()) {
+    hardFailures.push(
+      "CLOUDINARY is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, " +
+      "CLOUDINARY_API_SECRET to enable media uploads."
+    );
+  }
+
+  if (hardFailures.length > 0) {
+    hardFailures.forEach((msg) => logger.error(`STARTUP_BLOCKED: ${msg}`));
+    throw new Error(
+      `Production startup blocked: ${hardFailures.length} required provider(s) not configured. ` +
+      "See error logs above for details."
+    );
+  }
+
+  // Firebase is soft-required: push notifications degrade gracefully without it,
+  // but log a prominent warning so ops can detect misconfiguration early.
+  if (!isFirebaseEnabled()) {
+    const status = getFirebaseStatus();
+    logger.warn("STARTUP_WARNING: Firebase Admin is not initialized — push notifications will not be delivered.", {
+      reason: status.reason,
+      missingFields: status.missingFields,
+    });
+  }
+};
 
 const logStartupSummary = () => {
   const mongo = getDatabaseStatus();
@@ -281,6 +313,9 @@ const startServer = async () => {
     setStartupPhase("before_maintenance_hooks");
     startMaintenanceCleanupScheduler();
     logStartupSummary();
+
+    setStartupPhase("before_production_validation");
+    validateProductionDependencies();
 
     setStartupPhase("before_http_listen", {
       port: PORT,

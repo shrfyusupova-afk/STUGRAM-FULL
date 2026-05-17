@@ -25,9 +25,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.ui.auth.AuthScreen
 import com.example.myapplication.ui.home.*
 
@@ -52,6 +54,22 @@ fun AuthNavGraph(
     isDarkMode: Boolean,
     onThemeChange: (Boolean) -> Unit
 ) {
+    // Observe session state so that a forced logout (e.g. expired refresh token)
+    // navigates the user back to the auth screen from anywhere in the app.
+    val sessionState by AuthSession.sessionState.collectAsState()
+    val currentBackStack by navController.currentBackStackEntryAsState()
+
+    LaunchedEffect(sessionState) {
+        if (sessionState == AuthSession.State.LOGGED_OUT) {
+            val currentRoute = currentBackStack?.destination?.route
+            if (currentRoute != null && currentRoute != Screen.Auth.route) {
+                navController.navigate(Screen.Auth.route) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Auth.route

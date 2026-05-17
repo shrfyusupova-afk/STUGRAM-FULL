@@ -59,7 +59,8 @@ const idempotency = async (req, res, next) => {
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     const statusCode = res.statusCode || 200;
-    if (statusCode < 500) {
+    if (statusCode >= 200 && statusCode < 300) {
+      // Only cache successful responses so clients can replay them safely.
       const replayBody = JSON.parse(JSON.stringify(body));
       return IdempotencyRecord.findOneAndUpdate(
         { keyHash },
@@ -82,6 +83,13 @@ const idempotency = async (req, res, next) => {
         })
         .then(() => originalJson(body));
     }
+
+    if (statusCode >= 400 && statusCode < 500) {
+      // 4xx errors must not permanently poison the key so clients can correct
+      // the request and retry with the same idempotency key.
+      IdempotencyRecord.deleteOne({ keyHash }).catch(() => null);
+    }
+
     return originalJson(body);
   };
 

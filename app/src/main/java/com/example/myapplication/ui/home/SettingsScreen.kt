@@ -85,7 +85,7 @@ fun SettingsScreen(isDarkMode: Boolean, onBack: () -> Unit) {
                     scope.launch {
                         isLoggingOut = true
                         runCatching { TokenManager(context).clearTokens() }
-                        AuthSession.accessToken = null
+                        AuthSession.clearSession()
                         ChatSocketManager.disconnect()
                         isLoggingOut = false
                         onBack()

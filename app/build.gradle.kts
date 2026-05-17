@@ -5,6 +5,30 @@ plugins {
     kotlin("kapt")
 }
 
+// Block assembleRelease if Google Web Client ID placeholder has not been replaced.
+// The runtime check in LoginViewModel already guards Google Sign-In, but this
+// catches the mistake at build time before the APK is distributed.
+tasks.register("checkGoogleClientId") {
+    doLast {
+        val stringsFile = file("src/main/res/values/strings.xml")
+        if (stringsFile.exists() && stringsFile.readText().contains("YOUR_GOOGLE_WEB_CLIENT_ID")) {
+            throw GradleException(
+                "\n\n  RELEASE BLOCKED: google_web_client_id is still the placeholder value.\n" +
+                "  Set a real OAuth 2.0 Web Client ID in app/src/main/res/values/strings.xml\n" +
+                "  before building a release APK.\n"
+            )
+        }
+    }
+}
+
+// Wire the check as a dependency of release assembly tasks. afterEvaluate is
+// required because Android tasks are created lazily during project evaluation.
+afterEvaluate {
+    listOf("assembleRelease", "bundleRelease").forEach { taskName ->
+        tasks.findByName(taskName)?.dependsOn("checkGoogleClientId")
+    }
+}
+
 android {
     namespace = "com.example.myapplication"
     compileSdk = 35
@@ -21,7 +45,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

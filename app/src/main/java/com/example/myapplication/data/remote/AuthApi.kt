@@ -5,6 +5,9 @@ import retrofit2.http.*
 import com.google.gson.JsonObject
 
 interface AuthApi {
+    @POST("api/v1/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<JsonObject>
+
     @POST("api/v1/auth/send-otp")
     suspend fun sendOtp(@Body request: OtpRequest): Response<JsonObject>
 
@@ -64,6 +67,8 @@ interface AuthApi {
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
 }
+
+data class RefreshTokenRequest(val refreshToken: String)
 
 data class GoogleLoginRequest(val idToken: String)
 

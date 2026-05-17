@@ -6,6 +6,7 @@ import com.example.myapplication.data.remote.FullRegisterRequest
 import com.example.myapplication.data.remote.GoogleLoginRequest
 import com.example.myapplication.data.remote.LoginRequest
 import com.example.myapplication.data.remote.OtpRequest
+import com.example.myapplication.data.remote.RefreshTokenRequest
 import com.example.myapplication.data.remote.UpdateProfileRequest
 import com.example.myapplication.data.remote.VerifyOtpRequest
 import com.google.gson.JsonArray
@@ -84,6 +85,7 @@ class SearchViewModelTest {
     private class FakeAuthApi(
         private val searchResponse: Response<JsonObject>
     ) : AuthApi {
+        override suspend fun refreshToken(request: RefreshTokenRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun sendOtp(request: OtpRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun verifyOtp(request: VerifyOtpRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun register(request: FullRegisterRequest): Response<JsonObject> = Response.success(JsonObject())

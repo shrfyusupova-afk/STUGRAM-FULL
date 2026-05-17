@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Production: HTTPS only for the backend domain.
+        Cleartext (HTTP) is blocked everywhere by default since Android 9+,
+        and this config makes that policy explicit and auditable.
+    -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">stugram-beckend.onrender.com</domain>
+    </domain-config>
+
+    <!--
+        Debug builds only: allow user-installed CA certificates so developers
+        can inspect traffic with Charles Proxy / Burp Suite without modifying
+        the APK. This block is IGNORED in release builds.
+    -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
