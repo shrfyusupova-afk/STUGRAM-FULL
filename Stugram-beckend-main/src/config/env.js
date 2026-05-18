@@ -25,8 +25,8 @@ const envSchema = z.object({
   BOOTSTRAP_USER_FULL_NAME: z.string().optional(),
   BOOTSTRAP_USER_ROLE: z.enum(["user", "moderator", "admin"]).optional(),
   CLIENT_URL: z.string().default("*"),
-  JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16),
+  JWT_ACCESS_SECRET: z.string().min(64, "JWT_ACCESS_SECRET must be at least 64 characters"),
+  JWT_REFRESH_SECRET: z.string().min(64, "JWT_REFRESH_SECRET must be at least 64 characters"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -207,7 +207,24 @@ if (parsedEnv.OTP_PROVIDER === "email") {
   }
 }
 
+const KNOWN_WEAK_SECRETS = new Set([
+  "stugram-secret-key-2024",
+  "secret",
+  "changeme",
+  "your-secret-key",
+  "jwt-secret",
+  "loadtest-access-secret-32chars-minimum",
+  "loadtest-refresh-secret-32chars-min",
+]);
+
 if (parsedEnv.NODE_ENV === "production") {
+  if (KNOWN_WEAK_SECRETS.has(parsedEnv.JWT_ACCESS_SECRET)) {
+    providerValidationErrors.push("JWT_ACCESS_SECRET is a known weak/default secret — generate a strong random 64+ character value");
+  }
+  if (KNOWN_WEAK_SECRETS.has(parsedEnv.JWT_REFRESH_SECRET)) {
+    providerValidationErrors.push("JWT_REFRESH_SECRET is a known weak/default secret — generate a strong random 64+ character value");
+  }
+
   if (parsedEnv.ALLOW_MEMORY_DB_FALLBACK === true) {
     providerValidationErrors.push("ALLOW_MEMORY_DB_FALLBACK must be disabled in production");
   }

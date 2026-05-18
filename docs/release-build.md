@@ -11,8 +11,8 @@ All must be set in Render → Service → Environment before deploying.
 | `NODE_ENV` | Must be `production` | `production` |
 | `PORT` | HTTP port (Render sets automatically) | `3000` |
 | `MONGODB_URI` | Atlas connection string (SRV format) | `mongodb+srv://user:pass@cluster.mongodb.net/stugram?retryWrites=true&w=majority` |
-| `JWT_ACCESS_SECRET` | ≥ 32-char random secret | — |
-| `JWT_REFRESH_SECRET` | ≥ 32-char random secret, different from access | — |
+| `JWT_ACCESS_SECRET` | **≥ 64-char** random secret (minimum enforced at startup) | — |
+| `JWT_REFRESH_SECRET` | **≥ 64-char** random secret, different from access secret | — |
 | `JWT_ACCESS_EXPIRES_IN` | Access token TTL | `15m` |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token TTL | `30d` |
 | `REDIS_URL` | Redis connection string | `rediss://default:pass@host:6379` |
@@ -66,11 +66,20 @@ Set these as GitHub Actions secrets **or** in `local.properties` (never commit):
 | `KEYSTORE_PASSWORD` / `signing.keystore.password` | Store password |
 | `KEY_ALIAS` / `signing.key.alias` | Key alias inside the keystore |
 | `KEY_PASSWORD` / `signing.key.password` | Key password |
-| `GOOGLE_WEB_CLIENT_ID` | OAuth 2.0 Web Client ID from Google Cloud Console |
+| `GOOGLE_WEB_CLIENT_ID` / `google.web.client.id` | OAuth 2.0 **Web** Client ID from Google Cloud Console |
 
-For CI (GitHub Actions), also set:
+**How to get `GOOGLE_WEB_CLIENT_ID`:**
+1. Open [Google Cloud Console](https://console.cloud.google.com) → your project
+2. APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID
+3. Application type: **Web application** (not Android — the Android client ID is separate)
+4. Copy the Client ID (looks like `123456789-abc.apps.googleusercontent.com`)
+5. Set as GitHub Actions secret `GOOGLE_WEB_CLIENT_ID` and/or in `local.properties` as `google.web.client.id=<value>`
+
+The build system reads it via `resolveSigningProp("GOOGLE_WEB_CLIENT_ID", "google.web.client.id")` and injects it as a `resValue` — no manual file editing needed.
+
+For CI (GitHub Actions), set:
 - `KEYSTORE_BASE64` — base64-encoded `.jks` file
-- `GOOGLE_WEB_CLIENT_ID` — patches `app/src/main/res/values/strings.xml` before build
+- `GOOGLE_WEB_CLIENT_ID` — injected at build time via `resValue()` (no sed patching needed)
 
 ### Creating a Release Keystore (first time)
 

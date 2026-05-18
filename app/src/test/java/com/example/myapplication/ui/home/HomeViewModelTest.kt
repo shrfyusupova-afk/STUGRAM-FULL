@@ -85,6 +85,7 @@ class HomeViewModelTest {
         override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
         override suspend fun forgotPassword(request: ForgotPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun resetPassword(request: ResetPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun deleteAccount(): Response<JsonObject> = Response.success(JsonObject())
     }
 }
 

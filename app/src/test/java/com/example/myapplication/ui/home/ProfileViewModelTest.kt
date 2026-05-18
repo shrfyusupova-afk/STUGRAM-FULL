@@ -129,5 +129,6 @@ class ProfileViewModelTest {
             Response.success(JsonObject().apply { add("data", JsonArray()) })
         override suspend fun forgotPassword(request: ForgotPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun resetPassword(request: ResetPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun deleteAccount(): Response<JsonObject> = Response.success(JsonObject())
     }
 }

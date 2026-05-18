@@ -29,6 +29,9 @@ interface AuthApi {
     @POST("api/v1/auth/reset-password")
     suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<JsonObject>
 
+    @DELETE("api/v1/auth/me")
+    suspend fun deleteAccount(): Response<JsonObject>
+
     @GET("api/v1/posts/feed/me")
     suspend fun getPostFeed(
         @Query("page") page: Int = 1,

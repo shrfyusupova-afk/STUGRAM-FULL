@@ -54,6 +54,7 @@ const applyUserVisibility = async (viewerId, users = []) => {
     const userId = String(item._id);
     if (blockedIds.has(userId)) return false;
     if (item.isSuspended) return false;
+    if (item.isDeleted) return false;
     if (viewerId && userId === String(viewerId)) return true;
     if (!item.isPrivateAccount) return true;
     return followedIds.has(userId);
@@ -199,7 +200,7 @@ const getSearchSuggestions = async (query = {}, viewerId = null) => {
         { school: regex },
         { location: regex },
       ],
-      isSuspended: false,
+      isSuspended: false, isDeleted: { $ne: true },
     })
       .select(suggestionUserProjection)
       .sort({ followersCount: -1, createdAt: -1 })
@@ -216,7 +217,7 @@ const getSearchSuggestions = async (query = {}, viewerId = null) => {
       {
         $match: {
           $and: [{ school: regex }, { school: { $ne: "" } }],
-          isSuspended: false,
+          isSuspended: false, isDeleted: { $ne: true },
         },
       },
       { $group: { _id: "$school" } },
@@ -226,7 +227,7 @@ const getSearchSuggestions = async (query = {}, viewerId = null) => {
       {
         $match: {
           $and: [{ location: regex }, { location: { $ne: "" } }],
-          isSuspended: false,
+          isSuspended: false, isDeleted: { $ne: true },
         },
       },
       { $group: { _id: "$location" } },

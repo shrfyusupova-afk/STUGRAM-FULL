@@ -1067,6 +1067,59 @@ const googleLogin = async (idToken, meta = {}) => {
   };
 };
 
+const deleteAccount = async (accountId, userId, meta = {}) => {
+  const user = await User.findOne({ _id: userId, accountId, isDeleted: false });
+  if (!user) throw new ApiError(404, "User not found");
+
+  const now = new Date();
+
+  // Soft-delete the user profile (tombstone — preserves audit trail)
+  await User.findByIdAndUpdate(userId, {
+    isDeleted: true,
+    deletedAt: now,
+    deletionReason: "user_self_deletion",
+    // Anonymise PII immediately
+    fullName: "Deleted User",
+    bio: null,
+    avatar: null,
+    avatarPublicId: null,
+    banner: null,
+    bannerPublicId: null,
+    location: null,
+    tokenInvalidBefore: now,
+  });
+
+  // Revoke all sessions for the account
+  await Session.updateMany({ account: accountId, isRevoked: false }, { isRevoked: true, revokedReason: "account_deleted" });
+
+  // Invalidate account-level tokens
+  await Account.findByIdAndUpdate(accountId, { tokenInvalidBefore: now });
+
+  // Denylist the current access token immediately
+  if (meta.accessTokenJti && meta.accessTokenExp) {
+    await denylistToken({
+      jti: meta.accessTokenJti,
+      tokenType: "access",
+      expiresAt: meta.accessTokenExp * 1000,
+    });
+  }
+
+  await createAuditLog({
+    actor: userId,
+    action: "auth.delete_account",
+    category: "auth",
+    status: "success",
+    targetUser: userId,
+    sessionId: meta.sessionId || null,
+    ipAddress: meta.ipAddress || null,
+    userAgent: meta.userAgent || null,
+    details: { deletedAt: now.toISOString() },
+  });
+
+  logger.info("Account self-deleted", { userId, accountId });
+  return { deleted: true };
+};
+
 module.exports = {
   sendOtp,
   verifyOtp,
@@ -1082,6 +1135,7 @@ module.exports = {
   listSessions,
   revokeSession,
   googleLogin,
+  deleteAccount,
   switchProfile: async (accountId, profileId, meta = {}) => {
     const profile = await User.findById(profileId);
     if (!profile) throw new ApiError(404, "Profile not found");
