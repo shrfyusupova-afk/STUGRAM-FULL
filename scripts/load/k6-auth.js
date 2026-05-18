@@ -23,7 +23,7 @@ const loginLatency = new Trend("auth_login_latency_ms", true);
 const refreshLatency = new Trend("auth_refresh_latency_ms", true);
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
-const TEST_USER = __ENV.TEST_USER || "loadtest@example.com";
+const TEST_USER = __ENV.TEST_USER || "loadtestuser";   // username or email
 const TEST_PASS = __ENV.TEST_PASS || "LoadTest1234!";
 const TARGET_VUS = parseInt(__ENV.TARGET_VUS || "50", 10);
 
@@ -51,7 +51,7 @@ export default function () {
   const loginStart = Date.now();
   const loginRes = http.post(
     LOGIN_URL,
-    JSON.stringify({ identity: TEST_USER, password: TEST_PASS }),
+    JSON.stringify({ identityOrUsername: TEST_USER, password: TEST_PASS }),
     { headers: JSON_HEADERS, tags: { name: "login" } }
   );
   loginLatency.add(Date.now() - loginStart);

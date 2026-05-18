@@ -1,5 +1,28 @@
 # Backup and Restore Strategy
 
+## Current Atlas Tier Status
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Atlas cluster tier | **M0 (Free)** | Active for beta; continuous backup NOT available |
+| Continuous Cloud Backup | ❌ BLOCKED | Requires M10+ ($57/month minimum on AWS/GCP) |
+| Scheduled snapshots (daily) | ⚠️ TODO | Must be enabled manually in Atlas dashboard — see §MongoDB Atlas Backup |
+| Upgrade to M10 before public launch | ❌ TODO | Required for RPO ≤ 1 min SLO |
+
+**Current RPO on M0: ≤ 24h (daily snapshot). This is acceptable for closed beta (≤ 100 users) but NOT for public launch.**
+
+### Upgrade Path: M0 → M10 (before public launch)
+
+1. Atlas Dashboard → **Database Deployments** → Click your cluster → **…** → **Edit Configuration**
+2. Change tier: **M0 → M10** (choose region matching Render: e.g. AWS `us-east-1`)
+3. Enable **Continuous Cloud Backup**: Cluster → **Backup** tab → toggle **Continuous Cloud Backup** → Save
+4. Verify backup policy: 1-hour snapshot interval, 2-day point-in-time window
+5. Update `MONGO_URI` in Render env vars if connection string changes (M0→M10 usually keeps same hostname, just check)
+6. Run `/readyz` and smoke tests after upgrade
+7. Cost: ~$57/month (M10, AWS us-east-1) — budget before Play Store launch
+
+---
+
 ## Overview
 
 StuGram's persistent data lives in two external services:
@@ -135,15 +158,59 @@ When users delete posts/stories, the Cloudinary asset is deleted immediately by 
 
 ---
 
-## RTO / RPO Targets (Beta)
+## RTO / RPO Targets
+
+### Beta (current — M0 free tier)
+
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| RPO (Recovery Point Objective) | ≤ 24h | ≤ 24h (daily snapshot) | ⚠️ Acceptable for beta |
+| RTO (Recovery Time Objective) | ≤ 4h | ~2h (Atlas restore + redeploy) | ✅ |
+| Media RPO | ≤ 7 days | ≤ 7 days (weekly Cloudinary→S3 sync) | ⚠️ TODO: implement sync |
+
+### Production target (M10+, required before public launch)
 
 | Metric | Target | How Achieved |
 |--------|--------|--------------|
-| RPO (Recovery Point Objective) | ≤ 24h | Daily Atlas snapshots |
-| RTO (Recovery Time Objective) | ≤ 4h | Atlas restore + env update + redeploy |
-| Media RPO | ≤ 7 days | Weekly Cloudinary → S3 sync |
+| RPO | ≤ 1 min | Atlas Continuous Cloud Backup (M10+) |
+| RTO | ≤ 2h | Atlas PITR restore + Render redeploy |
+| Media RPO | ≤ 24h | Cloudinary Backup Add-on or daily S3 sync cron |
 
-Upgrade to continuous backup (M10+ Atlas tier) for RPO ≤ 1 minute before public launch.
+**Gate:** Upgrade Atlas M0 → M10 and enable Continuous Cloud Backup before Play Store staged rollout begins.
+
+---
+
+## Restore Drill Schedule
+
+| Drill Type | Frequency | Owner | Target |
+|-----------|-----------|-------|--------|
+| Atlas snapshot restore (staging) | Monthly | Backend lead | Verify restore completes < 2h |
+| PITR restore to 1h ago (staging) | Quarterly | Backend lead | RPO ≤ 1 min verification |
+| Cloudinary media spot-check | Monthly | Backend lead | Confirm media accessible after restore |
+| Full runbook rehearsal | Before each major rollout | Team | Full restore + smoke test end-to-end |
+
+**Monthly restore drill procedure:**
+```bash
+# 1. In Atlas: trigger restore of yesterday's snapshot to a TEMP cluster (atlas-restore-YYYY-MM)
+# 2. Point staging MONGO_URI at the temp cluster in Render env vars
+# 3. Redeploy staging
+# 4. Run smoke tests
+npm run test:integration  # or: npx mocha tests/integration/
+# 5. Verify document counts match expected
+mongosh "$STAGING_MONGODB_URI" --eval "
+  print('users:', db.users.countDocuments());
+  print('posts:', db.posts.countDocuments());
+  print('messages:', db.messages.countDocuments());
+"
+# 6. Document result: date, snapshot date used, RPO achieved, pass/fail
+# 7. Delete temp cluster in Atlas
+```
+
+Record drill outcomes in the table below:
+
+| Date | Snapshot Used | Temp Cluster | Result | RPO Achieved | Notes |
+|------|--------------|--------------|--------|-------------|-------|
+| — | — | — | TODO | — | First drill before launch |
 
 ---
 

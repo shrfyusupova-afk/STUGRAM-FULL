@@ -182,6 +182,25 @@ class ChatLocalStoreTest {
     }
 
     @Test
+    fun deletedTombstone_isNotResurrectedBySeqZeroEvent() = runTest {
+        // Regression test for P2 gap: a socket new_message event with serverSequence=0
+        // (malformed/legacy payload) must not bypass tombstone protection.
+        msgDao.upsertMessage(
+            entity("backend:msg-tomb", backendId = "msg-tomb", isDeleted = true, serverSequence = 10L)
+        )
+
+        store.upsertIncomingSocketMessage(
+            conversationId = CONV, backendId = "msg-tomb", clientId = null,
+            senderId = "u", senderName = null, text = "resurrected by seq-0",
+            createdAtMillis = 999L, read = false, serverSequence = 0L  // seq=0 = unknown/missing
+        )
+
+        val stored = msgDao.findByBackendId(CONV, "msg-tomb")!!
+        assertTrue("seq=0 event must not resurrect tombstone", stored.isDeleted)
+        assertFalse("seq=0 event must not overwrite deleted text", stored.text == "resurrected by seq-0")
+    }
+
+    @Test
     fun duplicateSocketEvent_doesNotCreateSecondRow() = runTest {
         store.upsertIncomingSocketMessage(
             conversationId = CONV, backendId = "msg-4", clientId = null,

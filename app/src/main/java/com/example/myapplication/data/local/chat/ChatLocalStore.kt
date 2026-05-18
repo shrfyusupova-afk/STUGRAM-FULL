@@ -117,6 +117,11 @@ class ChatLocalStore(
         val existingByClientId = clientId?.let { dao.findByClientId(conversationId, it) }
         val existingByBackendId = dao.findByBackendId(conversationId, backendId)
         val base = existingByClientId ?: existingByBackendId
+        // Tombstone protection: a new_message socket event must never resurrect a deleted
+        // message, regardless of the incoming serverSequence (including seq=0 from old/malformed
+        // server payloads). Once a message is deleted locally at a higher sequence, it stays deleted.
+        if (base?.isDeleted == true && base.serverSequence >= serverSequence) return
+        // Stale update protection: skip if existing record has a strictly higher known sequence.
         if (base != null && base.serverSequence > serverSequence && serverSequence > 0L) return
         val stableId = when {
             !clientId.isNullOrBlank() -> "client:$clientId"

@@ -110,29 +110,32 @@ jobs:
         env:
           GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
 
-      - name: Patch strings.xml with production Client ID (CI only)
-        if: steps.secrets-check.outputs.secrets_available == 'true'
-        run: |
-          sed -i "s|YOUR_GOOGLE_WEB_CLIENT_ID|${GOOGLE_WEB_CLIENT_ID}|g" \
-            app/src/main/res/values/strings.xml
-        env:
-          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
-
       - name: Write keystore file (CI only)
-        if: steps.secrets-check.outputs.secrets_available == 'true' && secrets.KEYSTORE_FILE != ''
+        if: steps.secrets-check.outputs.secrets_available == 'true'
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > $RUNNER_TEMP/release.keystore
 
-      - name: Assemble release APK (with signing)
+      - name: Assemble release APK
         if: steps.secrets-check.outputs.secrets_available == 'true'
         run: ./gradlew assembleRelease --no-daemon
         env:
           GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          # GOOGLE_WEB_CLIENT_ID is read by build.gradle.kts via resolveSigningProp()
+          # and injected as a resValue — no sed patching needed.
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload release APK
+        if: steps.secrets-check.outputs.secrets_available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
 
       - name: Confirm release build is intentionally blocked (no secrets)
         if: steps.secrets-check.outputs.secrets_available == 'false'

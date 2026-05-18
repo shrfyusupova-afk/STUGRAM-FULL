@@ -38,17 +38,31 @@ val keyPassword      = resolveSigningProp("KEY_PASSWORD",      "signing.key.pass
 val hasSigningConfig = keystorePath != null && keystorePassword != null &&
                        keyAlias != null && keyPassword != null
 
+// ---------------------------------------------------------------------------
+// Google OAuth Web Client ID — resolved in priority order:
+//   1. GOOGLE_WEB_CLIENT_ID env var (CI/CD)
+//   2. google.web.client.id in local.properties (developer machine)
+//   3. value in strings.xml (must not be the placeholder)
+// ---------------------------------------------------------------------------
+val googleWebClientIdFromEnv = resolveSigningProp("GOOGLE_WEB_CLIENT_ID", "google.web.client.id")
+
 // Block assembleRelease if Google Web Client ID placeholder has not been replaced.
 // The runtime check in LoginViewModel already guards Google Sign-In, but this
 // catches the mistake at build time before the APK is distributed.
 tasks.register("checkGoogleClientId") {
     doLast {
         val stringsFile = file("src/main/res/values/strings.xml")
-        if (stringsFile.exists() && stringsFile.readText().contains("YOUR_GOOGLE_WEB_CLIENT_ID")) {
+        val hasEnvClientId = !googleWebClientIdFromEnv.isNullOrBlank()
+        val stringsStillHasPlaceholder = stringsFile.exists() &&
+            stringsFile.readText().contains("YOUR_GOOGLE_WEB_CLIENT_ID")
+
+        if (!hasEnvClientId && stringsStillHasPlaceholder) {
             throw GradleException(
                 "\n\n  RELEASE BLOCKED: google_web_client_id is still the placeholder value.\n" +
-                "  Set a real OAuth 2.0 Web Client ID in app/src/main/res/values/strings.xml\n" +
-                "  before building a release APK.\n"
+                "  Provide a real OAuth 2.0 Web Client ID via ONE of:\n" +
+                "    a) GOOGLE_WEB_CLIENT_ID env var (CI/CD)\n" +
+                "    b) google.web.client.id in local.properties\n" +
+                "    c) Edit app/src/main/res/values/strings.xml directly\n"
             )
         }
     }
@@ -96,6 +110,13 @@ android {
         val sentryDsn = resolveSigningProp("SENTRY_DSN", "sentry.dsn") ?: ""
         buildConfigField("String",  "SENTRY_DSN",              "\"$sentryDsn\"")
         buildConfigField("Boolean", "CRASH_REPORTING_ENABLED", "${sentryDsn.isNotBlank()}")
+
+        // If GOOGLE_WEB_CLIENT_ID is provided via env/local.properties, inject it as a
+        // resource value so it overrides the strings.xml placeholder at build time.
+        // This avoids the need for sed patching of strings.xml in CI.
+        if (!googleWebClientIdFromEnv.isNullOrBlank()) {
+            resValue("string", "google_web_client_id", googleWebClientIdFromEnv)
+        }
     }
 
     buildTypes {

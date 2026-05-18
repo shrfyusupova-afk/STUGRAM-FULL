@@ -54,7 +54,7 @@ const HEADERS_A = {
   Authorization:  `Bearer ${TOKEN_A}`,
 };
 
-const CONVERSATIONS_URL = `${BASE_URL}/api/v1/chat/conversations`;
+const CONVERSATIONS_URL = `${BASE_URL}/api/v1/chats/conversations`;
 
 let clientIdCounter = 0;
 function nextClientId() {
@@ -81,7 +81,7 @@ export default function () {
   sleep(0.3);
 
   // --- message history ---
-  const messagesUrl = `${BASE_URL}/api/v1/chat/conversations/${CONVERSATION}/messages`;
+  const messagesUrl = `${BASE_URL}/api/v1/chats/conversations/${CONVERSATION}/messages`;
   const msgStart = Date.now();
   const msgRes = http.get(messagesUrl, {
     headers: HEADERS_A,
@@ -99,7 +99,7 @@ export default function () {
   sleep(0.3);
 
   // --- send a message ---
-  const sendUrl = `${BASE_URL}/api/v1/chat/conversations/${CONVERSATION}/messages`;
+  const sendUrl = `${BASE_URL}/api/v1/chats/conversations/${CONVERSATION}/messages`;
   const sendStart = Date.now();
   const sendRes = http.post(
     sendUrl,
@@ -113,7 +113,7 @@ export default function () {
   sleep(0.3);
 
   // --- replay sync (fetch events since seq 0) ---
-  const replayUrl = `${BASE_URL}/api/v1/chat/conversations/${CONVERSATION}/events?after=0&limit=50`;
+  const replayUrl = `${BASE_URL}/api/v1/chats/conversations/${CONVERSATION}/events?after=0&limit=50`;
   const replayStart = Date.now();
   const replayRes = http.get(replayUrl, {
     headers: HEADERS_A,

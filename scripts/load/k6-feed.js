@@ -49,8 +49,8 @@ const HEADERS = {
   Authorization:   `Bearer ${TOKEN}`,
 };
 
-const FEED_URL    = `${BASE_URL}/api/v1/posts/feed`;
-const PROFILE_URL = `${BASE_URL}/api/v1/users/${TEST_USERNAME}`;
+const FEED_URL    = `${BASE_URL}/api/v1/posts/feed/me`;
+const PROFILE_URL = `${BASE_URL}/api/v1/profiles/${TEST_USERNAME}/summary`;
 
 export default function () {
   // --- feed page 1 ---
