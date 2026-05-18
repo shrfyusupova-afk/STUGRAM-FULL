@@ -1,11 +1,14 @@
 package com.example.myapplication.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -211,19 +214,71 @@ fun SettingsScreen(isDarkMode: Boolean, onBack: () -> Unit) {
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Transparent)
-                        .padding(16.dp)
-                ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
-                        text = "Advanced settings are hidden for this school alpha until backend persistence is ready.",
-                        color = contentColor.copy(alpha = 0.7f),
-                        fontSize = 12.sp
+                        text = "Legal",
+                        color = contentColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LegalLinkRow(
+                        label = "Privacy Policy",
+                        url = "https://shrfyusupova-afk.github.io/stugram-full/privacy.html",
+                        contentColor = contentColor,
+                        accentBlue = accentBlue
+                    )
+                    LegalLinkRow(
+                        label = "Terms of Service",
+                        url = "https://shrfyusupova-afk.github.io/stugram-full/terms.html",
+                        contentColor = contentColor,
+                        accentBlue = accentBlue
+                    )
+                    LegalLinkRow(
+                        label = "Data Deletion",
+                        url = "https://shrfyusupova-afk.github.io/stugram-full/delete-account.html",
+                        contentColor = contentColor,
+                        accentBlue = accentBlue
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LegalLinkRow(
+    label: String,
+    url: String,
+    contentColor: Color,
+    accentBlue: Color
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = contentColor,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }
+        }) {
+            Text("Open", color = accentBlue, fontSize = 13.sp)
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Rounded.OpenInNew,
+                contentDescription = null,
+                tint = accentBlue,
+                modifier = Modifier.size(14.dp)
+            )
         }
     }
 }

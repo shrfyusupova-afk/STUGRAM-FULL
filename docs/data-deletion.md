@@ -1,7 +1,9 @@
 # Data Deletion Policy — StuGram
 
 **Last updated:** 2026-05-18  
-**Live URL:** [https://stugram.uz/delete-data — TO BE PUBLISHED BEFORE LAUNCH]
+**Live URL:** https://shrfyusupova-afk.github.io/stugram-full/delete-account.html
+
+> Rendered HTML version: see `website/delete-account.html` (auto-deployed to GitHub Pages).
 
 This page describes how to delete your StuGram account and what happens to your data.
 

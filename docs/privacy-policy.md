@@ -1,8 +1,10 @@
 # Privacy Policy — StuGram
 
 **Last updated:** 2026-05-18  
-**Effective date:** [TO BE SET BEFORE LAUNCH]  
-**Live URL:** [https://stugram.uz/privacy — TO BE PUBLISHED BEFORE LAUNCH]
+**Effective date:** 2026-05-18  
+**Live URL:** https://shrfyusupova-afk.github.io/stugram-full/privacy.html
+
+> Rendered HTML version: see `website/privacy.html` (auto-deployed to GitHub Pages).
 
 ---
 
