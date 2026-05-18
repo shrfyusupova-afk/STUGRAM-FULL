@@ -3,6 +3,7 @@ const { verifyAccessToken } = require("../utils/token");
 const User = require("../models/User");
 const Account = require("../models/Account");
 const { isTokenDenied } = require("../services/redisSecurityService");
+const { recordAuthFailure } = require("../services/metricsService");
 
 const isTokenIssuedBeforeInvalidation = (payloadIat, tokenInvalidBefore) => {
   if (!payloadIat || !tokenInvalidBefore) {
@@ -113,7 +114,11 @@ const requireAuth = async (req, _res, next) => {
     await authenticateRequest(req);
     next();
   } catch (error) {
-    next(error instanceof ApiError ? error : new ApiError(401, "Invalid or expired token"));
+    const apiError = error instanceof ApiError ? error : new ApiError(401, "Invalid or expired token");
+    if (apiError.statusCode === 401 || apiError.statusCode === 403) {
+      recordAuthFailure(apiError.message.replace(/\s+/g, "_").toLowerCase());
+    }
+    next(apiError);
   }
 };
 

@@ -17,6 +17,7 @@ const { getFirebaseStatus } = require("./config/firebaseAdmin");
 const { isCloudinaryConfigured } = require("./config/cloudinary");
 const recommendationRefreshService = require("./services/recommendationRefreshService");
 const { renderPrometheusMetrics, getMetricsSnapshot } = require("./services/chatMetricsService");
+const { renderPrometheusText, getFullSnapshot } = require("./services/metricsService");
 
 const app = express();
 
@@ -300,6 +301,31 @@ app.get("/metrics/chat", (req, res) => {
 
   res.setHeader("Content-Type", "text/plain; version=0.0.4");
   return res.status(200).send(renderPrometheusMetrics());
+});
+
+// General Prometheus-format metrics endpoint (HTTP counters + latency histograms).
+// Internal only — requires X-Internal-Monitoring-Key header in production.
+app.get("/metrics", (req, res) => {
+  if (!isInternalMonitoringRequest(req)) {
+    return res.status(404).send("Not found");
+  }
+
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  return res.status(200).send(renderPrometheusText());
+});
+
+// JSON snapshot of all metrics for dashboards that prefer structured data.
+app.get("/metrics/snapshot", (req, res) => {
+  if (!isInternalMonitoringRequest(req)) {
+    return res.status(404).json({ success: false, message: "Not found", data: null, meta: null });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Metrics snapshot",
+    data: getFullSnapshot(),
+    meta: null,
+  });
 });
 
 app.use("/api/v1", routes);

@@ -1,9 +1,42 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     kotlin("kapt")
 }
+
+// ---------------------------------------------------------------------------
+// Release signing configuration
+// ---------------------------------------------------------------------------
+// Values are resolved in priority order:
+//   1. Environment variables (CI/CD)
+//   2. local.properties (developer machine, never committed)
+//   3. Absent → release build uses debug signing (APK is not distributable)
+//
+// Required env vars for a distributable release APK:
+//   KEYSTORE_PATH      — absolute path to the .jks keystore file
+//   KEYSTORE_PASSWORD  — password for the keystore
+//   KEY_ALIAS          — key alias inside the keystore
+//   KEY_PASSWORD       — password for the key alias
+// ---------------------------------------------------------------------------
+val localProps = Properties().also { props ->
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) props.load(localFile.inputStream())
+}
+
+fun resolveSigningProp(envKey: String, propKey: String = envKey.lowercase().replace('_', '.')): String? =
+    System.getenv(envKey)?.takeIf { it.isNotBlank() }
+        ?: localProps.getProperty(propKey)?.takeIf { it.isNotBlank() }
+
+val keystorePath     = resolveSigningProp("KEYSTORE_PATH",     "signing.keystore.path")
+val keystorePassword = resolveSigningProp("KEYSTORE_PASSWORD", "signing.keystore.password")
+val keyAlias         = resolveSigningProp("KEY_ALIAS",         "signing.key.alias")
+val keyPassword      = resolveSigningProp("KEY_PASSWORD",      "signing.key.password")
+
+val hasSigningConfig = keystorePath != null && keystorePassword != null &&
+                       keyAlias != null && keyPassword != null
 
 // Block assembleRelease if Google Web Client ID placeholder has not been replaced.
 // The runtime check in LoginViewModel already guards Google Sign-In, but this
@@ -33,6 +66,17 @@ android {
     namespace = "com.example.myapplication"
     compileSdk = 35
 
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                storeFile     = file(keystorePath!!)
+                storePassword = keystorePassword!!
+                keyAlias      = keyAlias!!
+                keyPassword   = keyPassword!!
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "uz.stugram.app"
         minSdk = 26
@@ -47,10 +91,11 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"https://stugram-beckend.onrender.com/\"")
         buildConfigField("String", "SOCKET_URL",   "\"https://stugram-beckend.onrender.com\"")
 
-        // Sentry crash reporting. Set SENTRY_DSN in local.properties or CI env;
-        // leave empty to disable reporting (e.g. during development).
-        buildConfigField("String",  "SENTRY_DSN",               "\"\"")
-        buildConfigField("Boolean", "CRASH_REPORTING_ENABLED",  "false")
+        // Sentry crash reporting — resolved from env var or local.properties at build time.
+        // CRASH_REPORTING_ENABLED is only true when a non-empty DSN is supplied.
+        val sentryDsn = resolveSigningProp("SENTRY_DSN", "sentry.dsn") ?: ""
+        buildConfigField("String",  "SENTRY_DSN",              "\"$sentryDsn\"")
+        buildConfigField("Boolean", "CRASH_REPORTING_ENABLED", "${sentryDsn.isNotBlank()}")
     }
 
     buildTypes {
@@ -67,6 +112,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // No signing config supplied — APK will use debug signing and is
+                // not distributable via Play Store. Set KEYSTORE_PATH, KEYSTORE_PASSWORD,
+                // KEY_ALIAS, and KEY_PASSWORD (env vars or local.properties) to enable.
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
     compileOptions {
