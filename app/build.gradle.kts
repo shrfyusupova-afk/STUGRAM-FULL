@@ -32,11 +32,11 @@ fun resolveSigningProp(envKey: String, propKey: String = envKey.lowercase().repl
 
 val keystorePath     = resolveSigningProp("KEYSTORE_PATH",     "signing.keystore.path")
 val keystorePassword = resolveSigningProp("KEYSTORE_PASSWORD", "signing.keystore.password")
-val keyAlias         = resolveSigningProp("KEY_ALIAS",         "signing.key.alias")
-val keyPassword      = resolveSigningProp("KEY_PASSWORD",      "signing.key.password")
+val resolvedKeyAlias = resolveSigningProp("KEY_ALIAS",         "signing.key.alias")
+val resolvedKeyPassword = resolveSigningProp("KEY_PASSWORD",   "signing.key.password")
 
 val hasSigningConfig = keystorePath != null && keystorePassword != null &&
-                       keyAlias != null && keyPassword != null
+                       resolvedKeyAlias != null && resolvedKeyPassword != null
 
 // ---------------------------------------------------------------------------
 // Google OAuth Web Client ID — resolved in priority order:
@@ -85,8 +85,8 @@ android {
             create("release") {
                 storeFile     = file(keystorePath!!)
                 storePassword = keystorePassword!!
-                keyAlias      = keyAlias!!
-                keyPassword   = keyPassword!!
+                keyAlias      = resolvedKeyAlias!!
+                keyPassword   = resolvedKeyPassword!!
             }
         }
     }
