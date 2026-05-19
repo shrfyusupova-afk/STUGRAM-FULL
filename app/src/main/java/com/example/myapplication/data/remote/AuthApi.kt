@@ -60,6 +60,18 @@ interface AuthApi {
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
 
+    @GET("api/v1/search/users/advanced")
+    suspend fun searchUsersAdvanced(
+        @Query("q") query: String? = null,
+        @Query("region") region: String? = null,
+        @Query("district") district: String? = null,
+        @Query("school") school: String? = null,
+        @Query("grade") grade: String? = null,
+        @Query("group") group: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<JsonObject>
+
     @POST("api/v1/follows/{userId}")
     suspend fun followUser(@Path("userId") userId: String): Response<JsonObject>
 

@@ -99,6 +99,7 @@ class SearchViewModelTest {
         override suspend fun updateMyProfile(request: UpdateProfileRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun getProfileByUsername(username: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun searchUsers(query: String, page: Int, limit: Int): Response<JsonObject> = searchResponse
+        override suspend fun searchUsersAdvanced(query: String?, region: String?, district: String?, school: String?, grade: String?, group: String?, page: Int, limit: Int): Response<JsonObject> = searchResponse
         override suspend fun followUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun unfollowUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun createPost(request: CreatePostRequest): Response<JsonObject> = Response.success(JsonObject())
