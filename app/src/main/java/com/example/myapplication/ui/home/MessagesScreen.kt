@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -177,28 +178,70 @@ fun MessagesScreen(
 @Composable
 private fun ChatItem(chat: ChatMessage, contentColor: Color, secondaryColor: Color, accent: Color, onChatClick: (String) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onChatClick(chat.name) }.padding(horizontal = 24.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onChatClick(chat.name) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(modifier = Modifier.size(56.dp), shape = CircleShape, color = secondaryColor.copy(0.1f)) {
-            Icon(Icons.Default.Person, null, modifier = Modifier.padding(12.dp), tint = secondaryColor.copy(0.3f))
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(secondaryColor.copy(0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Person, null, modifier = Modifier.size(26.dp), tint = secondaryColor.copy(0.35f))
         }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            Text(chat.name, color = contentColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp)
+        ) {
             Text(
-                chat.lastMessage,
-                color = if (chat.unreadCount > 0) contentColor else secondaryColor,
+                text = chat.name,
+                color = contentColor,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = chat.lastMessage,
+                color = if (chat.unreadCount > 0) contentColor.copy(0.85f) else secondaryColor.copy(0.7f),
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontWeight = if (chat.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                fontWeight = if (chat.unreadCount > 0) FontWeight.Medium else FontWeight.Normal
             )
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(chat.time, color = accent, fontSize = 11.sp)
-            if (chat.unreadCount > 0) Box(modifier = Modifier.padding(top = 4.dp).size(8.dp).background(accent, CircleShape))
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(chat.time, color = if (chat.unreadCount > 0) accent else secondaryColor.copy(0.5f), fontSize = 11.sp)
+            if (chat.unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 20.dp)
+                        .height(20.dp)
+                        .background(accent, CircleShape)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString(),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 80.dp, end = 16.dp),
+        thickness = 0.5.dp,
+        color = contentColor.copy(alpha = 0.06f)
+    )
 }
 
 private data class ChatMessage(

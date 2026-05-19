@@ -298,15 +298,18 @@ fun ChatDetailScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
                 ) {
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        val isSameDay = if (index < messages.size - 1) {
-                            isSameDay(message.timestamp, messages[index + 1].timestamp)
-                        } else false
+                        // reverseLayout=true: index 0 = newest (bottom), index n-1 = oldest (top)
+                        val prevMsg = if (index > 0) messages[index - 1] else null
+                        val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
+                        val isLastInGroup = prevMsg == null || prevMsg.isMe != message.isMe
+                        val isFirstInGroup = nextMsg == null || nextMsg.isMe != message.isMe
+                        val showDateHeader = nextMsg == null || !isSameDay(message.timestamp, nextMsg.timestamp)
 
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            if (index == messages.size - 1 || !isSameDay) {
+                            if (showDateHeader) {
                                 DateHeader(message.timestamp, isDarkMode)
                             }
-                            MessageBubble(message, isDarkMode)
+                            MessageBubble(message, isDarkMode, isFirstInGroup, isLastInGroup)
                         }
                     }
                 }
@@ -398,6 +401,14 @@ fun ChatDetailScreen(
             }
 
             // --- BOTTOM AREA ---
+            AnimatedVisibility(visible = !isRequest && !errorText.isNullOrBlank()) {
+                Text(
+                    text = errorText.orEmpty(),
+                    color = if (isDarkMode) Color(0xFFFFB4AB) else Color(0xFFB3261E),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
             if (isRequest) {
                 RequestActionButtons(isDarkMode, onBack)
             } else {
@@ -537,14 +548,6 @@ fun ChatDetailScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
-if (!errorText.isNullOrBlank()) {
-                    Text(
-                        text = errorText.orEmpty(),
-                        color = if (isDarkMode) Color(0xFFFFB4AB) else Color(0xFFB3261E),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                    )
-                }
             }
         }
 
@@ -595,21 +598,39 @@ if (!errorText.isNullOrBlank()) {
 }
 
 @Composable
-fun MessageBubble(message: MessageData, isDarkMode: Boolean) {
+fun MessageBubble(
+    message: MessageData,
+    isDarkMode: Boolean,
+    isFirstInGroup: Boolean = true,
+    isLastInGroup: Boolean = true
+) {
     val alignment = if (message.isMe) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isMe) PremiumBlue else (if (isDarkMode) Color(0xFF262626) else Color(0xFFF0F2F0))
     val textColor = if (message.isMe) Color.White else (if (isDarkMode) Color.White else Color.Black)
-    val shape = if (message.isMe) {
-        RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp)
-    } else {
-        RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
+
+    val r = 18.dp
+    val t = 4.dp
+    val shape = when {
+        message.isMe -> when {
+            isLastInGroup -> RoundedCornerShape(r, r, t, r)
+            isFirstInGroup -> RoundedCornerShape(r, t, r, r)
+            else -> RoundedCornerShape(r, t, t, r)
+        }
+        else -> when {
+            isLastInGroup -> RoundedCornerShape(r, r, r, t)
+            isFirstInGroup -> RoundedCornerShape(t, r, r, r)
+            else -> RoundedCornerShape(t, r, r, t)
+        }
     }
 
+    val bottomPad = if (isLastInGroup) 6.dp else 2.dp
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val timeString = timeFormat.format(Date(message.timestamp))
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), 
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = bottomPad, top = 1.dp),
         horizontalAlignment = alignment
     ) {
         Surface(
@@ -617,47 +638,47 @@ fun MessageBubble(message: MessageData, isDarkMode: Boolean) {
             shape = shape,
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
-            Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
                 Text(
                     text = message.text,
                     color = textColor,
                     fontSize = 15.sp,
-                    lineHeight = 19.sp,
-                    fontFamily = IosEmojiFont,
-                    modifier = Modifier.padding(end = 60.dp)
+                    lineHeight = 20.sp,
+                    fontFamily = IosEmojiFont
                 )
-
                 Row(
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.align(Alignment.BottomEnd)
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(text = timeString, color = textColor.copy(alpha = 0.5f), fontSize = 10.sp)
                     if (message.isMe) {
-                        Spacer(Modifier.width(3.dp))
                         when (message.status) {
-                            MessageStatus.FAILED -> {
-                                Icon(
-                                    imageVector = Icons.Default.ErrorOutline,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF5350),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                            MessageStatus.SENDING -> {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    strokeWidth = 1.dp,
-                                    color = textColor.copy(alpha = 0.7f)
-                                )
-                            }
-                            else -> {
-                                Icon(
-                                    imageVector = if (message.status == MessageStatus.READ) Icons.Default.DoneAll else Icons.Default.Done,
-                                    contentDescription = null,
-                                    tint = if (message.status == MessageStatus.READ) Color(0xFF4CAF50) else textColor.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
+                            MessageStatus.FAILED -> Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = Color(0xFFEF5350),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            MessageStatus.SENDING -> CircularProgressIndicator(
+                                modifier = Modifier.size(11.dp),
+                                strokeWidth = 1.dp,
+                                color = textColor.copy(alpha = 0.6f)
+                            )
+                            MessageStatus.READ -> Icon(
+                                imageVector = Icons.Default.DoneAll,
+                                contentDescription = null,
+                                tint = Color(0xFF4FC3F7),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            MessageStatus.SENT -> Icon(
+                                imageVector = Icons.Default.Done,
+                                contentDescription = null,
+                                tint = textColor.copy(alpha = 0.5f),
+                                modifier = Modifier.size(13.dp)
+                            )
                         }
                     }
                 }
