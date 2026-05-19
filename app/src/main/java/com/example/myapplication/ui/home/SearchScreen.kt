@@ -3,10 +3,12 @@ package com.example.myapplication.ui.home
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -14,20 +16,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,23 +203,17 @@ fun SearchScreen(
                     TextButton(onClick = { vm.search() }) { Text("Qayta urinish", color = accent) }
                 }
             }
-            !ui.isFilterActive && ui.query.trim().length < 2 -> Box(
-                Modifier.fillMaxSize(),
-                Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Search,
-                        null,
-                        tint = secondary.copy(0.4f),
-                        modifier = Modifier.size(56.dp)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("Foydalanuvchi yoki maktabni qidiring", color = secondary, fontSize = 14.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("yoki viloyat bo'yicha filtrlang", color = secondary.copy(0.6f), fontSize = 12.sp)
-                }
-            }
+            !ui.isFilterActive && ui.query.trim().length < 2 -> DiscoverySection(
+                discoveryCreators = ui.discoveryCreators,
+                trendingPosts = ui.trendingPosts,
+                isLoading = ui.isLoadingDiscovery,
+                isDarkMode = isDarkMode,
+                contentColor = contentColor,
+                secondary = secondary,
+                accent = accent,
+                cardBg = cardBg,
+                onOpenProfile = onOpenProfile
+            )
             ui.users.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text("Natija topilmadi", color = secondary, fontSize = 14.sp)
             }
@@ -465,6 +465,255 @@ private fun FilterChip(label: String, accent: Color, contentColor: Color) {
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+// ── Discovery section (empty-query state) ────────────────────────────
+@Composable
+private fun DiscoverySection(
+    discoveryCreators: List<RecommendedProfile>,
+    trendingPosts: List<PostData>,
+    isLoading: Boolean,
+    isDarkMode: Boolean,
+    contentColor: Color,
+    secondary: Color,
+    accent: Color,
+    cardBg: Color,
+    onOpenProfile: (String) -> Unit
+) {
+    if (isLoading) {
+        Box(Modifier.fillMaxSize(), Alignment.Center) {
+            CircularProgressIndicator(color = accent, modifier = Modifier.size(32.dp))
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 80.dp)
+    ) {
+        if (discoveryCreators.isNotEmpty()) {
+            item {
+                Text(
+                    "Tavsiya etilgan kreatorlar",
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp)
+                )
+            }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(discoveryCreators, key = { it.id }) { creator ->
+                        DiscoveryCreatorCard(
+                            creator = creator,
+                            contentColor = contentColor,
+                            accent = accent,
+                            cardBg = cardBg,
+                            onOpenProfile = onOpenProfile
+                        )
+                    }
+                }
+            }
+        }
+
+        if (trendingPosts.isNotEmpty()) {
+            item {
+                Text(
+                    "Trending postlar",
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+                )
+            }
+            items(trendingPosts, key = { it.id }) { post ->
+                TrendingPostCard(
+                    post = post,
+                    contentColor = contentColor,
+                    secondary = secondary,
+                    cardBg = cardBg,
+                    onOpenProfile = onOpenProfile
+                )
+            }
+        }
+
+        if (discoveryCreators.isEmpty() && trendingPosts.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillParentMaxSize()
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Search, null, tint = secondary.copy(0.4f), modifier = Modifier.size(56.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Foydalanuvchi yoki maktabni qidiring", color = secondary, fontSize = 14.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("yoki viloyat bo'yicha filtrlang", color = secondary.copy(0.6f), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoveryCreatorCard(
+    creator: RecommendedProfile,
+    contentColor: Color,
+    accent: Color,
+    cardBg: Color,
+    onOpenProfile: (String) -> Unit
+) {
+    var isFollowed by remember(creator.id) { mutableStateOf(creator.followStatus == "following") }
+    Card(
+        modifier = Modifier.width(130.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { if (creator.username.isNotBlank()) onOpenProfile(creator.username) }
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(contentColor.copy(0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (creator.avatar.isNotBlank()) {
+                    AsyncImage(
+                        model = creator.avatar,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Default.Person, null, tint = contentColor.copy(0.4f), modifier = Modifier.size(32.dp))
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                creator.name.ifBlank { creator.username },
+                color = contentColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text("@${creator.username}", color = accent, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (creator.followersCount > 0) {
+                Text(
+                    "${formatDiscoveryCount(creator.followersCount)} kuzatuvchi",
+                    color = contentColor.copy(0.5f),
+                    fontSize = 10.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { isFollowed = !isFollowed },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(30.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isFollowed) contentColor.copy(0.1f) else accent
+                )
+            ) {
+                Text(
+                    if (isFollowed) "Kuzatilmoqda" else "Kuzatish",
+                    fontSize = 11.sp,
+                    color = if (isFollowed) contentColor else Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrendingPostCard(
+    post: PostData,
+    contentColor: Color,
+    secondary: Color,
+    cardBg: Color,
+    onOpenProfile: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(contentColor.copy(0.1f))
+            ) {
+                if (!post.image.isNullOrBlank()) {
+                    AsyncImage(
+                        model = post.image,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onOpenProfile(post.user) }
+            ) {
+                Text("@${post.user}", color = Color(0xFF00A3FF), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                if (post.caption.isNotBlank()) {
+                    Text(
+                        post.caption,
+                        color = contentColor,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Icon(Icons.Default.FavoriteBorder, null, tint = secondary, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.likes}", color = secondary, fontSize = 11.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Outlined.ChatBubbleOutline, null, tint = secondary, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.comments}", color = secondary, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun formatDiscoveryCount(count: Int): String = when {
+    count >= 1_000_000 -> "${count / 1_000_000}M"
+    count >= 1_000 -> "${count / 1_000}k"
+    else -> count.toString()
 }
 
 // ── User card ────────────────────────────────────────────────────────

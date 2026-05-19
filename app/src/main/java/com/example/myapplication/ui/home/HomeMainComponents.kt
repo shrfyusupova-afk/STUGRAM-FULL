@@ -87,6 +87,11 @@ fun HomeTabScreen(
             item {
                 CreatePostButton(onCreateClick, accentBlue, isDarkMode)
             }
+            if (recommendedProfiles.isNotEmpty()) {
+                item {
+                    RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode)
+                }
+            }
             if (posts.isEmpty()) {
                 item {
                     EmptyFeedSection(
@@ -405,7 +410,7 @@ fun RecommendedProfilesSlider(profiles: List<RecommendedProfile>, accentBlue: Co
 
 @Composable
 fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDarkMode: Boolean) {
-    var isFollowed by remember { mutableStateOf(false) }
+    var isFollowed by remember(profile.id) { mutableStateOf(profile.followStatus == "following") }
     val cardBg = if (isDarkMode) Color(0xFF1A1A1A) else Color.White
     val textColor = if (isDarkMode) Color.White else Color.Black
 
@@ -426,7 +431,7 @@ fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDar
                     .clip(RoundedCornerShape(18.dp))
             ) {
                 AsyncImage(
-                    model = profile.image,
+                    model = profile.avatar,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

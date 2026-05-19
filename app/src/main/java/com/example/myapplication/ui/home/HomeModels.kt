@@ -45,7 +45,27 @@ data class StoryActivityUser(
 data class TabItem(val name: String, val icon: ImageVector)
 
 @Immutable
-data class RecommendedProfile(val id: Int, val name: String, val image: String, val username: String)
+data class RecommendedProfile(
+    val id: String,
+    val name: String,
+    val username: String,
+    val avatar: String = "",
+    val bio: String = "",
+    val followersCount: Int = 0,
+    val followStatus: String = "not_following"
+)
+
+@Immutable
+data class ReelItem(
+    val id: String,
+    val authorUsername: String,
+    val authorAvatar: String = "",
+    val mediaUrl: String?,
+    val caption: String,
+    val likes: Int = 0,
+    val comments: Int = 0,
+    val isVideo: Boolean = true
+)
 
 @Immutable
 data class CommentData(

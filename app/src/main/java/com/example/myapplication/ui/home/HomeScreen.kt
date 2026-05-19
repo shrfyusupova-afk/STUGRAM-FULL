@@ -19,8 +19,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -89,7 +87,11 @@ fun HomeScreen(
                             onRefresh = { viewModel.refreshSearch() },
                             onOpenProfile = onNavigateToProfile
                         )
-                        2 -> AlphaReelsDisabledScreen(isDarkMode = isDarkMode)
+                        2 -> ReelsScreen(
+                            accentBlue = accentBlue,
+                            isDarkMode = isDarkMode,
+                            onProfileClick = onNavigateToProfile
+                        )
                         3 -> MessagesScreen(
                             isDarkMode = isDarkMode,
                             onBack = { viewModel.onTabSelected(0) },
@@ -207,33 +209,6 @@ private fun CreatePostDialog(
             ) { Text("Cancel") }
         }
     )
-}
-
-@Composable
-private fun AlphaReelsDisabledScreen(isDarkMode: Boolean) {
-    val bg = if (isDarkMode) Color.Black else Color.White
-    val fg = if (isDarkMode) Color.White else Color.Black
-    Box(
-        modifier = Modifier.fillMaxSize().background(bg),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(
-                text = "Reels is disabled for this alpha",
-                color = fg,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "It will be enabled after backend-backed reels reliability is ready.",
-                color = fg.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
 }
 
 @Composable

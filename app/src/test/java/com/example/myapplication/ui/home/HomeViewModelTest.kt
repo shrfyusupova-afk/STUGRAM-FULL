@@ -87,6 +87,11 @@ class HomeViewModelTest {
         override suspend fun forgotPassword(request: ForgotPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun resetPassword(request: ResetPasswordRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun deleteAccount(): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun getRecommendedFeed(page: Int, limit: Int): Response<JsonObject> = feedResponse
+        override suspend fun getRecommendedReels(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
+        override suspend fun getProfileSuggestions(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun getTrendingPosts(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
+        override suspend fun getCreatorsDiscovery(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
     }
 }
 

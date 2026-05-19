@@ -87,6 +87,36 @@ interface AuthApi {
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
+
+    @GET("api/v1/feed/me")
+    suspend fun getRecommendedFeed(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/reels/me")
+    suspend fun getRecommendedReels(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/profiles/suggestions")
+    suspend fun getProfileSuggestions(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/explore/trending")
+    suspend fun getTrendingPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/explore/creators")
+    suspend fun getCreatorsDiscovery(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
 }
 
 data class RefreshTokenRequest(val refreshToken: String)

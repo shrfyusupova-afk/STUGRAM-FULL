@@ -143,11 +143,34 @@ class HomeViewModel(
         viewModelScope.launch {
             isHomeRefreshing = true
             try {
-                val postResponse = withContext(ioDispatcher) { authApi.getPostFeed(page = 1, limit = 10) }
-                if (postResponse.isSuccessful) {
-                    val dataArray = postResponse.body()?.getAsJsonArray("data")
-                    posts = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                // Try recommended discovery feed first; fall back to regular followed-only feed
+                var postFetched = false
+                try {
+                    val recResp = withContext(ioDispatcher) { authApi.getRecommendedFeed(page = 1, limit = 10) }
+                    if (recResp.isSuccessful) {
+                        val dataArray = recResp.body()?.getAsJsonArray("data")
+                        posts = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                        postFetched = true
+                    }
+                } catch (_: Exception) { }
+
+                if (!postFetched) {
+                    val postResponse = withContext(ioDispatcher) { authApi.getPostFeed(page = 1, limit = 10) }
+                    if (postResponse.isSuccessful) {
+                        val dataArray = postResponse.body()?.getAsJsonArray("data")
+                        posts = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                    }
                 }
+
+                // Load "who to follow" suggestions alongside the feed
+                try {
+                    val sugResp = withContext(ioDispatcher) { authApi.getProfileSuggestions(limit = 10) }
+                    if (sugResp.isSuccessful) {
+                        val dataArray = sugResp.body()?.getAsJsonArray("data")
+                        recommendedProfiles = if (dataArray != null) parseProfiles(dataArray) else emptyList()
+                    }
+                } catch (_: Exception) { }
+
                 if (AlphaFeatureFlags.STORIES_ENABLED) {
                     val storyResponse = withContext(ioDispatcher) { authApi.getStoryFeed(page = 1, limit = 20) }
                     if (storyResponse.isSuccessful) {
@@ -158,12 +181,30 @@ class HomeViewModel(
                     storyProfiles = emptyList()
                 }
             } catch (_: Exception) {
-                // UI ko'rinishini o'zgartirmaslik uchun xatoni yutamiz, empty-state ko'rsatiladi.
                 posts = emptyList()
                 storyProfiles = emptyList()
             } finally {
                 isHomeRefreshing = false
             }
+        }
+    }
+
+    private fun parseProfiles(data: com.google.gson.JsonArray): List<RecommendedProfile> {
+        return data.mapIndexedNotNull { _, element ->
+            runCatching {
+                val obj = element.asJsonObject
+                val id = stringOr(obj, "_id")
+                if (id.isBlank()) return@runCatching null
+                RecommendedProfile(
+                    id = id,
+                    name = stringOr(obj, "fullName").ifBlank { stringOr(obj, "username", "User") },
+                    username = stringOr(obj, "username"),
+                    avatar = stringOr(obj, "avatar").ifBlank { stringOr(obj, "profileImage") },
+                    bio = stringOr(obj, "bio"),
+                    followersCount = intOr(obj, "followersCount"),
+                    followStatus = stringOr(obj, "followStatus", "not_following")
+                )
+            }.getOrNull()
         }
     }
 

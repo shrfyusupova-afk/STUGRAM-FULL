@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.RetrofitClient
+import com.google.gson.JsonObject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,11 @@ data class SearchUiState(
     val selectedRegion: String? = null,
     val selectedDistrict: String? = null,
     val schoolInput: String = "",
-    val isFilterActive: Boolean = false
+    val isFilterActive: Boolean = false,
+    // discovery (shown before the user types)
+    val trendingPosts: List<PostData> = emptyList(),
+    val discoveryCreators: List<RecommendedProfile> = emptyList(),
+    val isLoadingDiscovery: Boolean = false
 )
 
 class SearchViewModel(
@@ -45,6 +50,75 @@ class SearchViewModel(
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
+
+    init {
+        loadDiscovery()
+    }
+
+    private fun loadDiscovery() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingDiscovery = true) }
+            try {
+                val trendingResp = withContext(ioDispatcher) { authApi.getTrendingPosts(limit = 10) }
+                val creatorsResp = withContext(ioDispatcher) { authApi.getCreatorsDiscovery(limit = 10) }
+                val trending = if (trendingResp.isSuccessful) parseTrendingPosts(trendingResp.body()) else emptyList()
+                val creators = if (creatorsResp.isSuccessful) parseCreators(creatorsResp.body()) else emptyList()
+                _uiState.update { it.copy(isLoadingDiscovery = false, trendingPosts = trending, discoveryCreators = creators) }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isLoadingDiscovery = false) }
+            }
+        }
+    }
+
+    private fun parseTrendingPosts(body: JsonObject?): List<PostData> {
+        val data = body?.getAsJsonArray("data") ?: return emptyList()
+        return data.mapIndexedNotNull { _, el ->
+            runCatching {
+                val obj = el.asJsonObject
+                val id = if (obj.has("_id") && !obj.get("_id").isJsonNull) obj.get("_id").asString else ""
+                if (id.isBlank()) return@runCatching null
+                val author = if (obj.has("author") && !obj.get("author").isJsonNull) obj.getAsJsonObject("author") else null
+                val media = if (obj.has("media") && obj.get("media").isJsonArray) obj.getAsJsonArray("media") else null
+                val firstMedia = media?.firstOrNull()?.asJsonObject
+                val image = firstMedia?.let {
+                    when {
+                        it.has("url") && !it.get("url").isJsonNull -> it.get("url").asString
+                        it.has("secureUrl") && !it.get("secureUrl").isJsonNull -> it.get("secureUrl").asString
+                        else -> null
+                    }
+                }
+                PostData(
+                    id = id,
+                    user = author?.let { if (it.has("username") && !it.get("username").isJsonNull) it.get("username").asString else "user" } ?: "user",
+                    image = image,
+                    caption = if (obj.has("caption") && !obj.get("caption").isJsonNull) obj.get("caption").asString else "",
+                    likes = if (obj.has("likesCount") && !obj.get("likesCount").isJsonNull) obj.get("likesCount").asInt else 0,
+                    comments = if (obj.has("commentsCount") && !obj.get("commentsCount").isJsonNull) obj.get("commentsCount").asInt else 0
+                )
+            }.getOrNull()
+        }
+    }
+
+    private fun parseCreators(body: JsonObject?): List<RecommendedProfile> {
+        val data = body?.getAsJsonArray("data") ?: return emptyList()
+        return data.mapIndexedNotNull { _, el ->
+            runCatching {
+                val obj = el.asJsonObject
+                val id = if (obj.has("_id") && !obj.get("_id").isJsonNull) obj.get("_id").asString else ""
+                if (id.isBlank()) return@runCatching null
+                RecommendedProfile(
+                    id = id,
+                    name = (if (obj.has("fullName") && !obj.get("fullName").isJsonNull) obj.get("fullName").asString else "")
+                        .ifBlank { if (obj.has("username") && !obj.get("username").isJsonNull) obj.get("username").asString else "User" },
+                    username = if (obj.has("username") && !obj.get("username").isJsonNull) obj.get("username").asString else "",
+                    avatar = if (obj.has("avatar") && !obj.get("avatar").isJsonNull) obj.get("avatar").asString else "",
+                    bio = if (obj.has("bio") && !obj.get("bio").isJsonNull) obj.get("bio").asString else "",
+                    followersCount = if (obj.has("followersCount") && !obj.get("followersCount").isJsonNull) obj.get("followersCount").asInt else 0,
+                    followStatus = if (obj.has("followStatus") && !obj.get("followStatus").isJsonNull) obj.get("followStatus").asString else "not_following"
+                )
+            }.getOrNull()
+        }
+    }
 
     fun onQueryChange(value: String) {
         _uiState.update { it.copy(query = value, error = null) }
