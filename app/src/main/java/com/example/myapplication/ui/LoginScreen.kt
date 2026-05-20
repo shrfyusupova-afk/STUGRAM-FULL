@@ -23,6 +23,7 @@ import com.example.myapplication.ui.auth.components.PremiumButton
 import com.example.myapplication.ui.auth.components.PremiumTextField
 import com.example.myapplication.ui.auth.components.PremiumSocialButton
 import com.example.myapplication.ui.theme.PremiumBlue
+import com.example.myapplication.ui.theme.PremiumError
 import com.example.myapplication.ui.theme.PremiumTextSecondary
 
 @Composable
@@ -117,7 +118,7 @@ fun LoginContent(
         uiState.error?.let {
             Text(
                 text = it,
-                color = Color.Red,
+                color = PremiumError,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 16.dp)
             )

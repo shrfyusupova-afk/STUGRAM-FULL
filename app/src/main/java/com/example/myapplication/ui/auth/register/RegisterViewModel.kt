@@ -8,6 +8,7 @@ import com.example.myapplication.data.remote.OtpRequest
 import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.VerifyOtpRequest
 import com.example.myapplication.data.remote.chat.ChatSocketManager
+import com.example.myapplication.ui.home.UzbekistanData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -21,23 +22,9 @@ class RegisterViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState = _uiState.asStateFlow()
 
-    val regions = listOf(
-        "Toshkent sh.", "Toshkent v.", "Andijon", "Buxoro", "Farg'ona", 
-        "Jizzax", "Xorazm", "Namangan", "Navoiy", "Qashqadaryo", 
-        "Qoraqalpog'iston R.", "Samarqand", "Sirdaryo", "Surxondaryo"
-    )
+    val regions: List<String> = UzbekistanData.regions
 
-    private val districtsMap = mapOf(
-        "Toshkent sh." to listOf("Chilonzor", "Yunusobod", "Mirzo Ulug'bek", "Olmazor", "Shayxontohur", "Yakkasaroy"),
-        "Toshkent v." to listOf("Chirchiq", "Angren", "Olmaliq", "Bekobod", "Yangiyo'l"),
-        "Andijon" to listOf("Andijon sh.", "Asaka", "Shahrixon", "Xonobod"),
-        "Buxoro" to listOf("Buxoro sh.", "Gijduvon", "Kogon"),
-        "Samarqand" to listOf("Samarqand sh.", "Kattaqo'rg'on", "Urgut")
-    )
-
-    fun getDistricts(region: String): List<String> {
-        return districtsMap[region] ?: listOf("Tuman tanlanmagan")
-    }
+    fun getDistricts(region: String): List<String> = UzbekistanData.districtsByRegion[region] ?: emptyList()
 
     val grades = (1..11).map { it.toString() }
     val groups = listOf("A", "B", "D", "E")
