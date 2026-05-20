@@ -22,6 +22,7 @@ import com.example.myapplication.ui.auth.components.*
 import com.example.myapplication.ui.auth.register.RegisterContent
 import com.example.myapplication.ui.auth.register.RegisterViewModel
 import com.example.myapplication.ui.theme.*
+import com.example.myapplication.ui.auth.PasswordResetModal
 
 @Composable
 fun AuthScreen(
@@ -76,7 +77,7 @@ fun AuthScreen(
             )
             
             Text(
-                text = "Talabalar uchun zamonaviy fintech-style\nijtimoiy tarmoq platformasi",
+                text = "Talabalar uchun ijtimoiy tarmoq",
                 color = PremiumTextSecondary,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
@@ -127,6 +128,22 @@ fun AuthScreen(
             }
             
             Spacer(modifier = Modifier.height(40.dp))
+        }
+
+        // Password Reset Modal
+        if (loginState.showPasswordResetModal) {
+            PasswordResetModal(
+                uiState = loginState,
+                onDismiss = { loginViewModel.togglePasswordResetModal(false) },
+                onEmailChange = loginViewModel::onResetEmailChange,
+                onOtpChange = loginViewModel::onResetOtpChange,
+                onNewPasswordChange = loginViewModel::onResetNewPasswordChange,
+                onConfirmPasswordChange = loginViewModel::onResetConfirmPasswordChange,
+                onSendOtp = loginViewModel::submitForgotPassword,
+                onAdvanceToStep3 = loginViewModel::advanceResetToStep3,
+                onSubmitReset = loginViewModel::submitResetPassword,
+                onPrevStep = loginViewModel::prevResetStep
+            )
         }
     }
 }

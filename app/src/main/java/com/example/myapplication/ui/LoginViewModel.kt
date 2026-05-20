@@ -167,7 +167,19 @@ class LoginViewModel : ViewModel() {
     }
 
     fun togglePasswordResetModal(show: Boolean) {
-        _uiState.update { it.copy(showPasswordResetModal = show, resetError = null, resetSuccess = false) }
+        _uiState.update {
+            it.copy(
+                showPasswordResetModal = show,
+                resetStep = 1,
+                resetEmail = "",
+                resetOtp = "",
+                resetNewPassword = "",
+                resetConfirmPassword = "",
+                resetError = null,
+                resetSuccess = false,
+                resetOtpSent = false
+            )
+        }
     }
 
     fun onResetEmailChange(value: String) {
@@ -180,6 +192,27 @@ class LoginViewModel : ViewModel() {
 
     fun onResetNewPasswordChange(value: String) {
         _uiState.update { it.copy(resetNewPassword = value, resetError = null) }
+    }
+
+    fun onResetConfirmPasswordChange(value: String) {
+        _uiState.update { it.copy(resetConfirmPassword = value, resetError = null) }
+    }
+
+    fun advanceResetToStep3() {
+        if (_uiState.value.resetOtp.length != 6) {
+            _uiState.update { it.copy(resetError = "6 xonali kodni to'liq kiriting") }
+            return
+        }
+        _uiState.update { it.copy(resetStep = 3, resetError = null) }
+    }
+
+    fun prevResetStep() {
+        val step = _uiState.value.resetStep
+        if (step > 1) {
+            _uiState.update { it.copy(resetStep = step - 1, resetError = null) }
+        } else {
+            togglePasswordResetModal(false)
+        }
     }
 
     fun submitForgotPassword() {
@@ -195,7 +228,7 @@ class LoginViewModel : ViewModel() {
                     RetrofitClient.instance.forgotPassword(ForgotPasswordRequest(identity = email))
                 }
                 if (response.isSuccessful) {
-                    _uiState.update { it.copy(isResetLoading = false, resetOtpSent = true) }
+                    _uiState.update { it.copy(isResetLoading = false, resetOtpSent = true, resetStep = 2) }
                 } else {
                     val body = response.errorBody()?.string()?.take(250)
                     _uiState.update {
@@ -213,12 +246,16 @@ class LoginViewModel : ViewModel() {
 
     fun submitResetPassword() {
         val state = _uiState.value
-        if (state.resetOtp.isBlank() || state.resetNewPassword.isBlank()) {
+        if (state.resetOtp.isBlank() || state.resetNewPassword.isBlank() || state.resetConfirmPassword.isBlank()) {
             _uiState.update { it.copy(resetError = "Barcha maydonlarni to'ldiring") }
             return
         }
         if (state.resetNewPassword.length < 8) {
             _uiState.update { it.copy(resetError = "Parol kamida 8 ta belgidan iborat bo'lishi kerak") }
+            return
+        }
+        if (state.resetNewPassword != state.resetConfirmPassword) {
+            _uiState.update { it.copy(resetError = "Parollar mos kelmadi") }
             return
         }
         viewModelScope.launch {
@@ -230,12 +267,12 @@ class LoginViewModel : ViewModel() {
                             identity = state.resetEmail.trim(),
                             otp = state.resetOtp.trim(),
                             password = state.resetNewPassword,
-                            confirmPassword = state.resetNewPassword
+                            confirmPassword = state.resetConfirmPassword
                         )
                     )
                 }
                 if (response.isSuccessful) {
-                    _uiState.update { it.copy(isResetLoading = false, resetSuccess = true, showPasswordResetModal = false) }
+                    _uiState.update { it.copy(isResetLoading = false, resetSuccess = true, resetStep = 4) }
                 } else {
                     val body = response.errorBody()?.string()?.take(250)
                     _uiState.update {
@@ -259,9 +296,11 @@ data class LoginUiState(
     val error: String? = null,
     val isSuccess: Boolean = false,
     val showPasswordResetModal: Boolean = false,
+    val resetStep: Int = 1,
     val resetEmail: String = "",
     val resetOtp: String = "",
     val resetNewPassword: String = "",
+    val resetConfirmPassword: String = "",
     val isResetLoading: Boolean = false,
     val resetError: String? = null,
     val resetOtpSent: Boolean = false,
