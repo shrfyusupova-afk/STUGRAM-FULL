@@ -1,5 +1,7 @@
 package com.example.myapplication.data.remote
 
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 import com.google.gson.JsonObject
@@ -80,6 +82,14 @@ interface AuthApi {
 
     @POST("api/v1/posts")
     suspend fun createPost(@Body request: CreatePostRequest): Response<JsonObject>
+
+    @Multipart
+    @POST("api/v1/posts")
+    suspend fun createPostWithMedia(
+        @Part media: MultipartBody.Part?,
+        @Part("caption") caption: RequestBody,
+        @Part("location") location: RequestBody
+    ): Response<JsonObject>
 
     @GET("api/v1/posts/user/{username}")
     suspend fun getUserPosts(

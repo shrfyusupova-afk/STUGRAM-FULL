@@ -33,6 +33,15 @@ const createPostSchema = {
     caption: z.string().max(2200).optional(),
     hashtags: hashtagsSchema,
     location: z.string().trim().max(150).optional(),
+    audience: z.enum(["everyone", "followers"]).optional(),
+    taggedUsers: z.preprocess(
+      (v) => {
+        if (!v) return [];
+        if (Array.isArray(v)) return v;
+        try { return JSON.parse(v); } catch { return []; }
+      },
+      z.array(z.string()).optional()
+    ),
   }),
 };
 

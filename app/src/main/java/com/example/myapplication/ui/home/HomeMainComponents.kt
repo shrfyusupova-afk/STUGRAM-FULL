@@ -508,15 +508,19 @@ fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDar
 fun GlassSlidingNavigation(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
+    onCreatePost: () -> Unit = {},
     isDarkMode: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val items = listOf(
-        TabItem("Home", Icons.Rounded.Home),
-        TabItem("Search", Icons.Rounded.Search),
-        TabItem("Reels", Icons.Rounded.Movie),
-        TabItem("Messages", Icons.Rounded.ChatBubble),
-        TabItem("Profile", Icons.Rounded.Person)
+    // Nav layout: Home(0) | Search(1) | [+] | Messages(3) | Profile(4)
+    // Tab indices before "+" map directly; after "+" are offset by 1 in internal model
+    val leftItems = listOf(
+        TabItem("Home", Icons.Rounded.Home) to 0,
+        TabItem("Search", Icons.Rounded.Search) to 1
+    )
+    val rightItems = listOf(
+        TabItem("Messages", Icons.Rounded.ChatBubble) to 3,
+        TabItem("Profile", Icons.Rounded.Person) to 4
     )
 
     val backgroundColor = if (isDarkMode) Color(0xFF0F0F0F).copy(0.84f) else Color.White.copy(0.78f)
@@ -524,31 +528,90 @@ fun GlassSlidingNavigation(
     val accentBlue = Color(0xFF00A3FF)
 
     Surface(
-        modifier = modifier.width(320.dp).height(66.dp),
+        modifier = modifier.width(360.dp).height(66.dp),
         shape = RoundedCornerShape(33.dp),
         color = backgroundColor,
         border = BorderStroke(1.dp, Color.White.copy(0.1f)),
         shadowElevation = 8.dp
     ) {
-        Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            items.forEachIndexed { index, item ->
-                val isSelected = selectedTab == index
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left tabs
+            leftItems.forEach { (item, tabIndex) ->
+                val isSelected = selectedTab == tabIndex
                 val glow by animateFloatAsState(
                     targetValue = if (isSelected) 1f else 0f,
                     animationSpec = tween(220),
-                    label = "nav_glow"
+                    label = "glow_$tabIndex"
                 )
-                Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onTabSelected(index) }, contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onTabSelected(tabIndex) },
+                    contentAlignment = Alignment.Center
+                ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .blur(14.dp)
-                            .background(
-                                accentBlue.copy(alpha = 0.28f * glow),
-                                CircleShape
-                            )
+                            .background(accentBlue.copy(0.28f * glow), CircleShape)
                     )
-                    val color by animateColorAsState(if (isSelected) accentBlue else contentColor.copy(0.6f), label = "iconColor")
+                    val color by animateColorAsState(
+                        if (isSelected) accentBlue else contentColor.copy(0.6f),
+                        label = "ic_$tabIndex"
+                    )
+                    Icon(item.icon, null, tint = color, modifier = Modifier.size(26.dp))
+                }
+            }
+
+            // Center "+" create button
+            Box(
+                modifier = Modifier
+                    .size(50.dp)
+                    .background(accentBlue, CircleShape)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onCreatePost
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Yangi post",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            // Right tabs
+            rightItems.forEach { (item, tabIndex) ->
+                val isSelected = selectedTab == tabIndex
+                val glow by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0f,
+                    animationSpec = tween(220),
+                    label = "glow_$tabIndex"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onTabSelected(tabIndex) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .blur(14.dp)
+                            .background(accentBlue.copy(0.28f * glow), CircleShape)
+                    )
+                    val color by animateColorAsState(
+                        if (isSelected) accentBlue else contentColor.copy(0.6f),
+                        label = "ic_$tabIndex"
+                    )
                     Icon(item.icon, null, tint = color, modifier = Modifier.size(26.dp))
                 }
             }

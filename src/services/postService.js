@@ -71,6 +71,8 @@ const createPost = async (userId, payload, files) => {
       caption: normalizedCaption,
       hashtags: normalizeHashtags(payload.hashtags || []),
       location: payload.location || "",
+      audience: payload.audience || "everyone",
+      taggedUsers: Array.isArray(payload.taggedUsers) ? payload.taggedUsers : [],
     });
 
     await User.findByIdAndUpdate(userId, { $inc: { postsCount: 1 } });

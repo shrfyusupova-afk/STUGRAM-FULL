@@ -32,6 +32,8 @@ import com.example.myapplication.config.AlphaFeatureFlags
 import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.ui.auth.AuthScreen
 import com.example.myapplication.ui.home.*
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 
 sealed class Screen(val route: String) {
     object Auth : Screen("auth")
@@ -46,6 +48,7 @@ sealed class Screen(val route: String) {
     object UserProfile : Screen("profile/{username}") {
         fun createRoute(username: String) = "profile/$username"
     }
+    object CreatePost : Screen("create_post")
 }
 
 @Composable
@@ -99,6 +102,9 @@ fun AuthNavGraph(
                 },
                 onNavigateToProfile = { username ->
                     navController.navigate(Screen.UserProfile.createRoute(username))
+                },
+                onNavigateToCreatePost = {
+                    navController.navigate(Screen.CreatePost.route)
                 }
             )
         }
@@ -169,6 +175,22 @@ fun AuthNavGraph(
                 isMyProfile = false,
                 targetUsername = username,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.CreatePost.route,
+            enterTransition = {
+                slideInHorizontally(tween(340)) { it } + fadeIn(tween(340))
+            },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = {
+                slideOutHorizontally(tween(340)) { it } + fadeOut(tween(280))
+            }
+        ) {
+            CreatePostHost(
+                onClose = { navController.popBackStack() }
             )
         }
     }

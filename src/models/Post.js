@@ -66,6 +66,16 @@ const postSchema = new mongoose.Schema(
       default: "",
       maxlength: 300,
     },
+    audience: {
+      type: String,
+      enum: ["everyone", "followers"],
+      default: "everyone",
+      index: true,
+    },
+    taggedUsers: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
   },
   { timestamps: true }
 );

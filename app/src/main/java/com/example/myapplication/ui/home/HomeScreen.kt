@@ -34,6 +34,7 @@ fun HomeScreen(
     onNavigateToChat: (String, Boolean) -> Unit,
     onNavigateToGroupChat: (String) -> Unit,
     onNavigateToProfile: (String) -> Unit,
+    onNavigateToCreatePost: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val backgroundColor = if (isDarkMode) GlobalBackgroundColor else Color(0xFFF2F2F2)
@@ -52,6 +53,7 @@ fun HomeScreen(
                     GlassSlidingNavigation(
                         selectedTab = viewModel.currentTab,
                         onTabSelected = { viewModel.onTabSelected(it) },
+                        onCreatePost = onNavigateToCreatePost,
                         isDarkMode = isDarkMode,
                         modifier = Modifier.padding(bottom = 24.dp)
                     )
@@ -75,7 +77,7 @@ fun HomeScreen(
                             contentColor = contentColor,
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
-                            onCreateClick = { viewModel.openCreatePostModal() },
+                            onCreateClick = onNavigateToCreatePost,
                             onCommentsClick = { viewModel.toggleComments(true) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
@@ -117,6 +119,7 @@ fun HomeScreen(
                         GlassSlidingNavigation(
                             selectedTab = viewModel.currentTab,
                             onTabSelected = { viewModel.onTabSelected(it) },
+                            onCreatePost = onNavigateToCreatePost,
                             isDarkMode = true,
                             modifier = Modifier.graphicsLayer(alpha = 0.8f)
                         )

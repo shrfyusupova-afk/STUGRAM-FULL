@@ -1,81 +1,273 @@
 package com.example.myapplication.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.view.LifecycleCameraController
+import androidx.camera.view.PreviewView
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import java.io.File
 
 @Composable
 fun CameraScreen(
-    onDismiss: () -> Unit,
-    accentBlue: Color
+    onImageSelected: (Uri) -> Unit,
+    onClose: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .statusBarsPadding()
-    ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasPermission = granted }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { onImageSelected(it) } }
+
+    val cameraController = remember { LifecycleCameraController(context) }
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+    var isCapturing by remember { mutableStateOf(false) }
+    var flashEnabled by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+        cameraController.bindToLifecycle(lifecycleOwner)
+    }
+
+    LaunchedEffect(lensFacing) {
+        cameraController.cameraSelector = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+            CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
+    }
+
+    LaunchedEffect(flashEnabled) {
+        cameraController.imageCaptureFlashMode = if (flashEnabled)
+            ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        if (hasPermission) {
+            AndroidView(
+                factory = { ctx ->
+                    PreviewView(ctx).apply {
+                        controller = cameraController
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            CameraNoPermission(onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) })
+        }
+
+        // Top bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onDismiss) {
+            CameraIconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(22.dp))
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // Post | Reels | Story tabs (only Post active)
+            Row(
+                modifier = Modifier
+                    .background(Color.Black.copy(0.5f), RoundedCornerShape(24.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                listOf("Post" to true, "Reels" to false, "Story" to false).forEach { (label, active) ->
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (active) Color.White else Color.Transparent,
+                                RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (active) Color.Black else Color.White.copy(0.7f),
+                            fontSize = 13.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            val flashTint by animateColorAsState(
+                targetValue = if (flashEnabled) Color(0xFFFFE082) else Color.White,
+                label = "flash"
+            )
+            CameraIconButton(onClick = { flashEnabled = !flashEnabled }) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
+                    if (flashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                    null,
+                    tint = flashTint,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        Card(
+        // Bottom controls
+        val captureScale by animateFloatAsState(
+            targetValue = if (isCapturing) 0.88f else 1f,
+            animationSpec = tween(100),
+            label = "cap_scale"
+        )
+
+        Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f))
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 36.dp, start = 32.dp, end = 32.dp)
         ) {
-            Column(
+            // Gallery button
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .align(Alignment.CenterStart)
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(0.2f))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { galleryLauncher.launch("image/*") },
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Create is disabled for this alpha",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    textAlign = TextAlign.Center
+                Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+
+            // Shutter button
+            Box(modifier = Modifier.align(Alignment.Center).size(88.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(88.dp).border(3.5.dp, Color.White, CircleShape))
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .scale(captureScale)
+                        .background(if (isCapturing) Color.LightGray else Color.White, CircleShape)
+                        .clickable(
+                            enabled = hasPermission && !isCapturing,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            isCapturing = true
+                            val outputFile = File(context.filesDir, "post_${System.currentTimeMillis()}.jpg")
+                            val opts = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                            cameraController.takePicture(
+                                opts,
+                                ContextCompat.getMainExecutor(context),
+                                object : ImageCapture.OnImageSavedCallback {
+                                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                        isCapturing = false
+                                        onImageSelected(output.savedUri ?: Uri.fromFile(outputFile))
+                                    }
+                                    override fun onError(e: ImageCaptureException) { isCapturing = false }
+                                }
+                            )
+                        }
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Story/Post/Reels creation will be enabled after media reliability hardening.",
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = accentBlue)
-                ) {
-                    Text("Close", color = Color.White)
-                }
+            }
+
+            // Flip camera
+            CameraIconButton(
+                onClick = {
+                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+                        CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                },
+                modifier = Modifier.align(Alignment.CenterEnd).size(58.dp)
+            ) {
+                Icon(Icons.Default.Cameraswitch, null, tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.size(44.dp),
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(Color.Black.copy(0.45f), CircleShape)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center,
+        content = content
+    )
+}
+
+@Composable
+private fun CameraNoPermission(onRequest: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Icon(Icons.Default.CameraAlt, null, tint = Color.White.copy(0.5f), modifier = Modifier.size(72.dp))
+            Text("Kamera ruxsati kerak", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onRequest
+                    )
+                    .padding(horizontal = 28.dp, vertical = 12.dp)
+            ) {
+                Text("Ruxsat berish", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

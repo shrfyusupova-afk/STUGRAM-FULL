@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools" >
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Required to show push notifications on Android 13+ (API 33+).
          On API < 33 this is automatically granted; no runtime dialog is shown. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
