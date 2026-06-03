@@ -102,8 +102,8 @@ android {
 
         // Production API endpoints — single source of truth.
         // Debug builds can override these via the debug block below (e.g. for local emulator dev).
-        buildConfigField("String", "API_BASE_URL", "\"https://stugram-beckend.onrender.com/\"")
-        buildConfigField("String", "SOCKET_URL",   "\"https://stugram-beckend.onrender.com\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://stugram-full.onrender.com/\"")
+        buildConfigField("String", "SOCKET_URL",   "\"https://stugram-full.onrender.com\"")
 
         // Sentry crash reporting — resolved from env var or local.properties at build time.
         // CRASH_REPORTING_ENABLED is only true when a non-empty DSN is supplied.

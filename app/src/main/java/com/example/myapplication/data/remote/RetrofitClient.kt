@@ -11,7 +11,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 // CERTIFICATE PINNING — DEFERRED
-// The backend runs on Render.com (stugram-beckend.onrender.com) which manages
+// The backend runs on Render.com (stugram-full.onrender.com) which manages
 // TLS certificates automatically (Let's Encrypt, auto-rotation every 90 days).
 // Render does not expose upcoming leaf or intermediate pins before rotation,
 // so hardcoded pins would break the app silently when Render rotates the cert.

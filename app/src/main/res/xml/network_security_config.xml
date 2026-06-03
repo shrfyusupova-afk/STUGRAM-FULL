@@ -6,7 +6,7 @@
         and this config makes that policy explicit and auditable.
     -->
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">stugram-beckend.onrender.com</domain>
+        <domain includeSubdomains="true">stugram-full.onrender.com</domain>
     </domain-config>
 
     <!--
