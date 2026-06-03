@@ -106,13 +106,7 @@ object RetrofitClient {
                 chain.proceed(requestBuilder.build())
             }
             .addInterceptor(loggingInterceptor)
-            .authenticator(
-                authenticator
-                    ?: throw IllegalStateException(
-                        "RetrofitClient.initialize(tokenManager) must be called from " +
-                        "MainActivity.onCreate() before any network request is made."
-                    )
-            )
+            .apply { authenticator?.let { authenticator(it) } }
             .connectionSpecs(tlsConnectionSpecs)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,9 +29,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Make RetrofitClient aware of TokenManager so the TokenAuthenticator
-        // can refresh tokens and clear the session on 401 failures.
-        RetrofitClient.initialize(TokenManager(applicationContext))
+        try {
+            RetrofitClient.initialize(TokenManager(applicationContext))
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Failed to initialize RetrofitClient/TokenManager", e)
+        }
 
         setContent {
             val systemTheme = isSystemInDarkTheme()
@@ -53,21 +56,22 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         lifecycleScope.launch {
-            // Restore access token from encrypted storage into the in-memory
-            // AuthSession so that the socket and outgoing requests can use it
-            // immediately after the app returns from the background.
-            val tokenManager = TokenManager(applicationContext)
-            val storedToken = tokenManager.accessToken.first()
-            if (storedToken != null && AuthSession.accessToken == null) {
-                AuthSession.setToken(storedToken)
-            }
-            ChatSocketManager.updateAccessToken(AuthSession.accessToken)
+            try {
+                val tokenManager = TokenManager(applicationContext)
+                val storedToken = tokenManager.accessToken.first()
+                if (storedToken != null && AuthSession.accessToken == null) {
+                    AuthSession.setToken(storedToken)
+                }
+                ChatSocketManager.updateAccessToken(AuthSession.accessToken)
 
-            val hasPending = ChatDatabase.getInstance(applicationContext)
-                .chatPendingMessageDao()
-                .hasPending()
-            if (hasPending) {
-                ChatOutboxScheduler.schedule(applicationContext)
+                val hasPending = ChatDatabase.getInstance(applicationContext)
+                    .chatPendingMessageDao()
+                    .hasPending()
+                if (hasPending) {
+                    ChatOutboxScheduler.schedule(applicationContext)
+                }
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "onStart background init failed", e)
             }
         }
     }
