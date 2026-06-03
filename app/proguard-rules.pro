@@ -69,3 +69,38 @@
 
 # ─── Coil image loading ───────────────────────────────────────────────────────
 -dontwarn coil.**
+
+# ─── EncryptedSharedPreferences / Security Crypto ───────────────────────────
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn androidx.security.crypto.**
+-dontwarn com.google.crypto.tink.**
+
+# ─── DataStore preferences ───────────────────────────────────────────────────
+-keep class androidx.datastore.** { *; }
+-keepclassmembers class * extends androidx.datastore.preferences.protobuf.GeneratedMessageLite {
+    <fields>;
+}
+-dontwarn androidx.datastore.**
+
+# ─── CameraX ─────────────────────────────────────────────────────────────────
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+
+# ─── Kotlin Serialization ────────────────────────────────────────────────────
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+
+# ─── UI data classes (Gson deserialization) ──────────────────────────────────
+-keep class com.example.myapplication.ui.home.PostData { *; }
+-keep class com.example.myapplication.ui.home.StoryProfile { *; }
+-keep class com.example.myapplication.ui.home.** { *; }
+-keepclassmembers class com.example.myapplication.ui.home.** { *; }
+
+# ─── Application & Activity ──────────────────────────────────────────────────
+-keep class com.example.myapplication.StugramApplication { *; }
+-keep class com.example.myapplication.MainActivity { *; }
+
+# ─── Sentry ──────────────────────────────────────────────────────────────────
+-dontwarn io.sentry.**
+-keep class io.sentry.** { *; }
