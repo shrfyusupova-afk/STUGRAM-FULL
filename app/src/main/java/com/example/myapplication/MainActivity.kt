@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -27,7 +28,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        try { enableEdgeToEdge() } catch (_: Throwable) {}
 
         try {
             RetrofitClient.initialize(TokenManager(applicationContext))
