@@ -78,11 +78,15 @@ fun AuthNavGraph(
         startDestination = Screen.Auth.route
     ) {
         composable(route = Screen.Auth.route) {
-            AuthScreen(onNavigateToHome = {
-                navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Auth.route) { inclusive = true }
-                }
-            })
+            AuthScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Auth.route) { inclusive = true }
+                    }
+                },
+                isDarkMode = isDarkMode,
+                onThemeChange = onThemeChange
+            )
         }
 
         composable(

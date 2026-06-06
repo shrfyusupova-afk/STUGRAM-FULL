@@ -3,6 +3,7 @@ package com.example.myapplication.ui.auth
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -36,6 +39,7 @@ import com.example.myapplication.ui.theme.*
 @Composable
 fun PasswordResetModal(
     uiState: LoginUiState,
+    isDarkMode: Boolean = true,
     onDismiss: () -> Unit,
     onEmailChange: (String) -> Unit,
     onOtpChange: (String) -> Unit,
@@ -46,6 +50,8 @@ fun PasswordResetModal(
     onSubmitReset: () -> Unit,
     onPrevStep: () -> Unit
 ) {
+    val p = authPalette(isDarkMode)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -57,25 +63,10 @@ fun PasswordResetModal(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(PremiumBg)
+                .background(p.bg)
         ) {
-            // Dekorativ glow bloblari
-            Box(
-                modifier = Modifier
-                    .size(300.dp)
-                    .align(Alignment.TopEnd)
-                    .offset(x = 80.dp, y = (-50).dp)
-                    .blur(110.dp)
-                    .background(PremiumBlue.copy(0.13f), CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .size(240.dp)
-                    .align(Alignment.BottomStart)
-                    .offset(x = (-70).dp, y = 70.dp)
-                    .blur(110.dp)
-                    .background(PremiumBlue.copy(0.08f), CircleShape)
-            )
+            // Liquid glass backdrop blobs
+            BackdropBlobs(isDarkMode = isDarkMode)
 
             Column(
                 modifier = Modifier
@@ -87,26 +78,34 @@ fun PasswordResetModal(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onPrevStep) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = PremiumTextPrimary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Orqaga",
+                            tint = p.textPrimary
+                        )
                     }
                     Text(
                         text = "Parolni tiklash",
-                        color = PremiumTextPrimary,
+                        color = p.textPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Center
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, null, tint = PremiumTextSecondary)
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Yopish",
+                            tint = p.textSecondary
+                        )
                     }
                 }
 
-                // ── Scrollable content ───────────────────────────────
+                // ── Scrollable content area ──────────────────────────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -115,22 +114,21 @@ fun PasswordResetModal(
                         .padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
 
-                    // Step indicator (faqat 1-3 qadamlarda ko'rinadi)
                     AnimatedVisibility(
                         visible = uiState.resetStep < 4,
                         enter = fadeIn(tween(300)),
                         exit = fadeOut(tween(300))
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            ResetStepIndicator(currentStep = uiState.resetStep)
-                        }
+                        ResetStepIndicator(
+                            currentStep = uiState.resetStep,
+                            isDarkMode = isDarkMode
+                        )
                     }
 
-                    Spacer(Modifier.height(40.dp))
+                    Spacer(Modifier.height(28.dp))
 
-                    // ── Qadam kontenti ────────────────────────────────
                     AnimatedContent(
                         targetState = uiState.resetStep,
                         transitionSpec = {
@@ -154,7 +152,8 @@ fun PasswordResetModal(
                                     onIdentityChange = onEmailChange,
                                     isLoading = uiState.isResetLoading,
                                     hasError = uiState.resetError != null,
-                                    onSendOtp = onSendOtp
+                                    onSendOtp = onSendOtp,
+                                    isDarkMode = isDarkMode
                                 )
                                 2 -> Step2Content(
                                     identity = uiState.resetEmail,
@@ -162,7 +161,8 @@ fun PasswordResetModal(
                                     onOtpChange = onOtpChange,
                                     onAdvance = onAdvanceToStep3,
                                     onResend = onSendOtp,
-                                    isLoading = uiState.isResetLoading
+                                    isLoading = uiState.isResetLoading,
+                                    isDarkMode = isDarkMode
                                 )
                                 3 -> Step3Content(
                                     newPassword = uiState.resetNewPassword,
@@ -170,14 +170,17 @@ fun PasswordResetModal(
                                     onNewPasswordChange = onNewPasswordChange,
                                     onConfirmPasswordChange = onConfirmPasswordChange,
                                     onSubmit = onSubmitReset,
-                                    isLoading = uiState.isResetLoading
+                                    isLoading = uiState.isResetLoading,
+                                    isDarkMode = isDarkMode
                                 )
-                                4 -> SuccessContent(onClose = onDismiss)
+                                4 -> SuccessContent(
+                                    onClose = onDismiss,
+                                    isDarkMode = isDarkMode
+                                )
                             }
                         }
                     }
 
-                    // ── Xato xabari ───────────────────────────────────
                     AnimatedVisibility(
                         visible = !uiState.resetError.isNullOrBlank() && uiState.resetStep < 4,
                         enter = fadeIn(tween(250)) + expandVertically(),
@@ -188,18 +191,18 @@ fun PasswordResetModal(
                                 .fillMaxWidth()
                                 .padding(top = 16.dp),
                             shape = RoundedCornerShape(14.dp),
-                            color = PremiumError.copy(0.1f),
-                            border = BorderStroke(1.dp, PremiumError.copy(0.3f))
+                            color = p.error.copy(0.10f),
+                            border = BorderStroke(1.dp, p.error.copy(0.30f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Error, null, tint = PremiumError, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Error, null, tint = p.error, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     text = uiState.resetError ?: "",
-                                    color = PremiumError,
+                                    color = p.error,
                                     fontSize = 13.sp,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -207,42 +210,45 @@ fun PasswordResetModal(
                         }
                     }
 
-                    Spacer(Modifier.height(40.dp))
+                    Spacer(Modifier.height(32.dp))
                 }
             }
         }
     }
 }
 
-// ── Qadam 1: Identity ────────────────────────────────────────────────
+// ── Qadam 1 ────────────────────────────────────────────────────────────
 @Composable
 private fun Step1Content(
     identity: String,
     onIdentityChange: (String) -> Unit,
     isLoading: Boolean,
     hasError: Boolean,
-    onSendOtp: () -> Unit
+    onSendOtp: () -> Unit,
+    isDarkMode: Boolean
 ) {
     StepHeader(
         icon = Icons.Default.AlternateEmail,
         iconTint = PremiumBlue,
         title = "Email yoki Username",
-        subtitle = "Hisobingizga bog'liq emailga\n6 xonali tasdiqlash kodi yuboramiz"
+        subtitle = "Hisobingizga bog'liq emailga\n6 xonali tasdiqlash kodi yuboramiz",
+        isDarkMode = isDarkMode
     )
-    Spacer(Modifier.height(36.dp))
+    Spacer(Modifier.height(32.dp))
     PremiumTextField(
         value = identity,
         onValueChange = onIdentityChange,
         label = "Email yoki Username",
         placeholder = "example@gmail.com",
         leadingIcon = Icons.Default.AlternateEmail,
-        isError = hasError
+        isError = hasError,
+        isDarkMode = isDarkMode
     )
-    Spacer(Modifier.height(28.dp))
+    Spacer(Modifier.height(24.dp))
     PremiumButton(text = "Kodni yuborish", onClick = onSendOtp, isLoading = isLoading)
 }
 
-// ── Qadam 2: OTP (6 xonali, Telegram uslubi) ────────────────────────
+// ── Qadam 2 ────────────────────────────────────────────────────────────
 @Composable
 private fun Step2Content(
     identity: String,
@@ -250,7 +256,8 @@ private fun Step2Content(
     onOtpChange: (String) -> Unit,
     onAdvance: () -> Unit,
     onResend: () -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isDarkMode: Boolean
 ) {
     val displayIdentity = if (identity.length > 24) identity.take(24) + "…" else identity
 
@@ -258,17 +265,19 @@ private fun Step2Content(
         icon = Icons.Default.Email,
         iconTint = Color(0xFF4FC3F7),
         title = "Kodni kiriting",
-        subtitle = "$displayIdentity ga\nyuborilgan 6 xonali kodni kiriting"
+        subtitle = "$displayIdentity ga\nyuborilgan 6 xonali kodni kiriting",
+        isDarkMode = isDarkMode
     )
-    Spacer(Modifier.height(40.dp))
+    Spacer(Modifier.height(32.dp))
 
     OtpInputField(
         otpText = otp,
         onOtpTextChange = { code, _ -> onOtpChange(code) },
-        otpCount = 6
+        otpCount = 6,
+        isDarkMode = isDarkMode
     )
 
-    Spacer(Modifier.height(36.dp))
+    Spacer(Modifier.height(28.dp))
     PremiumButton(
         text = "Davom etish",
         onClick = onAdvance,
@@ -280,7 +289,7 @@ private fun Step2Content(
     }
 }
 
-// ── Qadam 3: Yangi parol ─────────────────────────────────────────────
+// ── Qadam 3 ────────────────────────────────────────────────────────────
 @Composable
 private fun Step3Content(
     newPassword: String,
@@ -288,8 +297,10 @@ private fun Step3Content(
     onNewPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isDarkMode: Boolean
 ) {
+    val p = authPalette(isDarkMode)
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     val mismatch = confirmPassword.isNotBlank() && newPassword != confirmPassword
@@ -298,9 +309,10 @@ private fun Step3Content(
         icon = Icons.Default.Lock,
         iconTint = PremiumBlue,
         title = "Yangi parol",
-        subtitle = "Xavfsiz yangi parol kiriting\n(kamida 8 ta belgi)"
+        subtitle = "Xavfsiz yangi parol kiriting\n(kamida 8 ta belgi)",
+        isDarkMode = isDarkMode
     )
-    Spacer(Modifier.height(32.dp))
+    Spacer(Modifier.height(28.dp))
     PremiumTextField(
         value = newPassword,
         onValueChange = onNewPasswordChange,
@@ -312,10 +324,11 @@ private fun Step3Content(
             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                 Icon(
                     if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    null, tint = PremiumTextSecondary.copy(0.6f)
+                    null, tint = p.textSecondary.copy(0.7f)
                 )
             }
-        }
+        },
+        isDarkMode = isDarkMode
     )
     Spacer(Modifier.height(14.dp))
     PremiumTextField(
@@ -331,12 +344,13 @@ private fun Step3Content(
             IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                 Icon(
                     if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    null, tint = PremiumTextSecondary.copy(0.6f)
+                    null, tint = p.textSecondary.copy(0.7f)
                 )
             }
-        }
+        },
+        isDarkMode = isDarkMode
     )
-    Spacer(Modifier.height(28.dp))
+    Spacer(Modifier.height(24.dp))
     PremiumButton(
         text = "Parolni yangilash",
         onClick = onSubmit,
@@ -345,9 +359,10 @@ private fun Step3Content(
     )
 }
 
-// ── Qadam 4: Muvaffaqiyat ────────────────────────────────────────────
+// ── Qadam 4: Muvaffaqiyat ─────────────────────────────────────────────
 @Composable
-private fun SuccessContent(onClose: () -> Unit) {
+private fun SuccessContent(onClose: () -> Unit, isDarkMode: Boolean) {
+    val p = authPalette(isDarkMode)
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
@@ -369,23 +384,20 @@ private fun SuccessContent(onClose: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // Animatsiyali muvaffaqiyat doirasi
         Box(
             modifier = Modifier
                 .size(120.dp)
                 .graphicsLayer { scaleX = scale; scaleY = scale },
             contentAlignment = Alignment.Center
         ) {
-            // Yashil glow
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .blur(36.dp)
                     .background(Color(0xFF4CAF50).copy(0.35f), CircleShape)
             )
-            // Doira
             Box(
                 modifier = Modifier
                     .size(100.dp)
@@ -403,36 +415,40 @@ private fun SuccessContent(onClose: () -> Unit) {
         }
 
         Column(modifier = Modifier.graphicsLayer { this.alpha = alpha }) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(24.dp))
             Text(
                 text = "Parol yangilandi!",
-                color = PremiumTextPrimary,
+                color = p.textPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(12.dp))
             Text(
                 text = "Parolingiz muvaffaqiyatli yangilandi.\nEndi yangi parolingiz bilan kirishingiz mumkin.",
-                color = PremiumTextSecondary,
+                color = p.textSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 22.sp
+                lineHeight = 22.sp,
+                modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(32.dp))
             PremiumButton(text = "Kirish sahifasiga", onClick = onClose)
         }
     }
 }
 
-// ── Qadam sarlavhasi (icon + title + subtitle) ───────────────────────
+// ── Qadam sarlavhasi ──────────────────────────────────────────────────
 @Composable
 private fun StepHeader(
     icon: ImageVector,
     iconTint: Color,
     title: String,
-    subtitle: String
+    subtitle: String,
+    isDarkMode: Boolean
 ) {
+    val p = authPalette(isDarkMode)
     Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -443,17 +459,20 @@ private fun StepHeader(
         Box(
             modifier = Modifier
                 .size(64.dp)
-                .background(iconTint.copy(0.14f), CircleShape)
+                .background(
+                    if (isDarkMode) iconTint.copy(0.14f) else iconTint.copy(0.10f),
+                    CircleShape
+                )
                 .border(1.dp, iconTint.copy(0.35f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, null, tint = iconTint, modifier = Modifier.size(32.dp))
         }
     }
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(18.dp))
     Text(
         text = title,
-        color = PremiumTextPrimary,
+        color = p.textPrimary,
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Center
@@ -461,16 +480,17 @@ private fun StepHeader(
     Spacer(Modifier.height(8.dp))
     Text(
         text = subtitle,
-        color = PremiumTextSecondary,
+        color = p.textSecondary,
         fontSize = 14.sp,
         textAlign = TextAlign.Center,
         lineHeight = 20.sp
     )
 }
 
-// ── Qadam ko'rsatkichi ───────────────────────────────────────────────
+// ── Qadam ko'rsatkichi ────────────────────────────────────────────────
 @Composable
-private fun ResetStepIndicator(currentStep: Int) {
+private fun ResetStepIndicator(currentStep: Int, isDarkMode: Boolean) {
+    val p = authPalette(isDarkMode)
     Row(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -480,12 +500,12 @@ private fun ResetStepIndicator(currentStep: Int) {
             val isActive = i == currentStep
 
             val dotColor by animateColorAsState(
-                targetValue = if (isCompleted || isActive) PremiumBlue else PremiumTextSecondary.copy(0.2f),
+                targetValue = if (isCompleted || isActive) p.accent else p.textSecondary.copy(0.25f),
                 animationSpec = tween(400),
                 label = "dot_$i"
             )
             val dotSize by animateDpAsState(
-                targetValue = if (isActive) 11.dp else 8.dp,
+                targetValue = if (isActive) 12.dp else 8.dp,
                 animationSpec = tween(300),
                 label = "size_$i"
             )
@@ -493,7 +513,7 @@ private fun ResetStepIndicator(currentStep: Int) {
 
             if (i < 3) {
                 val lineColor by animateColorAsState(
-                    targetValue = if (isCompleted) PremiumBlue else PremiumTextSecondary.copy(0.15f),
+                    targetValue = if (isCompleted) p.accent else p.textSecondary.copy(0.18f),
                     animationSpec = tween(400),
                     label = "line_$i"
                 )
@@ -504,6 +524,42 @@ private fun ResetStepIndicator(currentStep: Int) {
                         .background(lineColor, RoundedCornerShape(1.dp))
                 )
             }
+        }
+    }
+}
+
+// ── Backdrop blobs (liquid glass) ─────────────────────────────────────
+@Composable
+private fun BackdropBlobs(isDarkMode: Boolean) {
+    val infinite = rememberInfiniteTransition(label = "reset_bg")
+    val drift by infinite.animateFloat(
+        initialValue = -40f,
+        targetValue = 40f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5500, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "drift"
+    )
+    val blobA = if (isDarkMode) Color(0xFF1B5EBC) else Color(0xFF7EC8FF)
+    val blobB = if (isDarkMode) Color(0xFF36B6FF) else Color(0xFFB8D6FF)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(100.dp)
+        ) {
+            drawCircle(
+                brush = Brush.radialGradient(listOf(blobA.copy(alpha = if (isDarkMode) 0.40f else 0.22f), Color.Transparent)),
+                radius = size.minDimension * 0.40f,
+                center = Offset(size.width * 0.20f + drift, size.height * 0.25f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(blobB.copy(alpha = if (isDarkMode) 0.35f else 0.22f), Color.Transparent)),
+                radius = size.minDimension * 0.45f,
+                center = Offset(size.width * 0.80f - drift, size.height * 0.78f)
+            )
         }
     }
 }

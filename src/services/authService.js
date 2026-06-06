@@ -475,6 +475,26 @@ const forgotPassword = async (identity, meta = {}) => {
 
     return buildForgotPasswordResponse(normalizedIdentity, null, undefined);
   }
+
+  // Mobile app uses 6-digit OTP flow — generate and email the code so the
+  // client can complete reset by entering it on the next screen.
+  await OtpCode.deleteMany({ identity: normalizedIdentity, purpose: "forgot_password" });
+  const otp = generateOtp();
+  const otpExpiresAt = new Date(Date.now() + env.otpExpiresMinutes * 60 * 1000);
+  await OtpCode.create({
+    identity: normalizedIdentity,
+    purpose: "forgot_password",
+    codeHash: hashOtp(normalizedIdentity, otp),
+    expiresAt: otpExpiresAt,
+  });
+  try {
+    await sendOtpForIdentity(normalizedIdentity, otp);
+  } catch (error) {
+    logger.error("Forgot-password OTP delivery failed", {
+      identity: maskIdentity(normalizedIdentity),
+      message: error.message,
+    });
+  }
   const { rawToken, expiresAt } = await issuePasswordResetToken({
     user,
     identity: normalizedIdentity,
@@ -602,7 +622,6 @@ const resetPassword = async (payload, meta = {}) => {
   if (
     !otpRecord ||
     otpRecord.expiresAt < new Date() ||
-    !otpRecord.isVerified ||
     otpRecord.codeHash !== hashOtp(normalizedIdentity, otp)
   ) {
     await createAuditLog({

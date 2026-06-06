@@ -26,13 +26,16 @@ import com.example.myapplication.ui.auth.components.*
 import com.example.myapplication.ui.theme.PremiumBlue
 import com.example.myapplication.ui.theme.PremiumError
 import com.example.myapplication.ui.theme.PremiumTextSecondary
+import com.example.myapplication.ui.theme.authPalette
 
 @Composable
 fun RegisterContent(
     viewModel: RegisterViewModel,
     uiState: RegisterUiState,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -42,7 +45,7 @@ fun RegisterContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Qadam ko'rsatkichi
-        StepProgressIndicator(currentStep = uiState.currentStep, totalSteps = 3)
+        StepProgressIndicator(currentStep = uiState.currentStep, totalSteps = 3, isDarkMode = isDarkMode)
 
         Spacer(Modifier.height(28.dp))
 
@@ -73,7 +76,8 @@ fun RegisterContent(
                             label = "Email yoki Telefon",
                             placeholder = "example@gmail.com / +998...",
                             leadingIcon = Icons.Default.Email,
-                            isError = uiState.error != null
+                            isError = uiState.error != null,
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(24.dp))
                         PremiumButton(
@@ -83,15 +87,16 @@ fun RegisterContent(
                         )
                         Spacer(Modifier.height(24.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
-                            Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = PremiumTextSecondary, fontSize = 12.sp)
-                            HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = p.divider)
+                            Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = p.textSecondary, fontSize = 12.sp)
+                            HorizontalDivider(modifier = Modifier.weight(1f), color = p.divider)
                         }
                         Spacer(Modifier.height(24.dp))
                         PremiumSocialButton(
                             painter = painterResource(id = R.drawable.ic_google_g),
                             text = "Google orqali ro'yxatdan o'tish",
-                            onClick = { viewModel.loginWithGoogle(context) }
+                            onClick = { viewModel.loginWithGoogle(context) },
+                            isDarkMode = isDarkMode
                         )
                     }
 
@@ -99,7 +104,7 @@ fun RegisterContent(
                     2 -> {
                         Text(
                             text = "${uiState.identity} ga yuborilgan\n6 xonali kodni kiriting",
-                            color = PremiumTextSecondary,
+                            color = p.textSecondary,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 24.dp)
@@ -107,7 +112,8 @@ fun RegisterContent(
                         OtpInputField(
                             otpText = uiState.otp,
                             onOtpTextChange = { code, _ -> viewModel.onOtpChange(code) },
-                            otpCount = 6
+                            otpCount = 6,
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(32.dp))
                         PremiumButton(
@@ -116,7 +122,7 @@ fun RegisterContent(
                             isLoading = uiState.isLoading
                         )
                         TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                            Text("Orqaga qaytish", color = PremiumTextSecondary, fontSize = 13.sp)
+                            Text("Orqaga qaytish", color = p.textSecondary, fontSize = 13.sp)
                         }
                     }
 
@@ -127,7 +133,8 @@ fun RegisterContent(
                             onValueChange = { viewModel.updateField(RegisterField.FullName(it)) },
                             label = "Ism Familiya",
                             placeholder = "To'liq ismingiz",
-                            leadingIcon = Icons.Default.Person
+                            leadingIcon = Icons.Default.Person,
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(12.dp))
                         PremiumTextField(
@@ -135,7 +142,8 @@ fun RegisterContent(
                             onValueChange = { viewModel.updateField(RegisterField.Username(it)) },
                             label = "Username",
                             placeholder = "@username",
-                            leadingIcon = Icons.Default.AlternateEmail
+                            leadingIcon = Icons.Default.AlternateEmail,
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -144,7 +152,8 @@ fun RegisterContent(
                                     value = uiState.selectedRegion,
                                     onValueChange = { viewModel.updateField(RegisterField.Region(it)) },
                                     label = "Viloyat",
-                                    options = viewModel.regions
+                                    options = viewModel.regions,
+                                    isDarkMode = isDarkMode
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -152,7 +161,8 @@ fun RegisterContent(
                                     value = uiState.selectedDistrict,
                                     onValueChange = { viewModel.updateField(RegisterField.District(it)) },
                                     label = "Tuman",
-                                    options = viewModel.getDistricts(uiState.selectedRegion)
+                                    options = viewModel.getDistricts(uiState.selectedRegion),
+                                    isDarkMode = isDarkMode
                                 )
                             }
                         }
@@ -162,7 +172,8 @@ fun RegisterContent(
                             onValueChange = { viewModel.updateField(RegisterField.School(it)) },
                             label = "Maktab / OTM",
                             placeholder = "Maktab yoki OTM nomini kiriting",
-                            leadingIcon = Icons.Default.School
+                            leadingIcon = Icons.Default.School,
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -171,7 +182,8 @@ fun RegisterContent(
                                     value = uiState.grade,
                                     onValueChange = { viewModel.updateField(RegisterField.Grade(it)) },
                                     label = "Sinf",
-                                    options = viewModel.grades
+                                    options = viewModel.grades,
+                                    isDarkMode = isDarkMode
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -179,7 +191,8 @@ fun RegisterContent(
                                     value = uiState.group,
                                     onValueChange = { viewModel.updateField(RegisterField.Group(it)) },
                                     label = "Guruh",
-                                    options = viewModel.groups
+                                    options = viewModel.groups,
+                                    isDarkMode = isDarkMode
                                 )
                             }
                         }
@@ -196,10 +209,11 @@ fun RegisterContent(
                                     Icon(
                                         imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                         contentDescription = null,
-                                        tint = PremiumTextSecondary.copy(0.6f)
+                                        tint = p.textSecondary.copy(0.7f)
                                     )
                                 }
-                            }
+                            },
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(12.dp))
                         PremiumTextField(
@@ -214,10 +228,11 @@ fun RegisterContent(
                                     Icon(
                                         imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                         contentDescription = null,
-                                        tint = PremiumTextSecondary.copy(0.6f)
+                                        tint = p.textSecondary.copy(0.7f)
                                     )
                                 }
-                            }
+                            },
+                            isDarkMode = isDarkMode
                         )
                         Spacer(Modifier.height(24.dp))
                         PremiumButton(
@@ -226,7 +241,7 @@ fun RegisterContent(
                             isLoading = uiState.isLoading
                         )
                         TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                            Text("Orqaga", color = PremiumTextSecondary, fontSize = 13.sp)
+                            Text("Orqaga", color = p.textSecondary, fontSize = 13.sp)
                         }
                     }
                 }
@@ -247,7 +262,8 @@ fun RegisterContent(
 }
 
 @Composable
-private fun StepProgressIndicator(currentStep: Int, totalSteps: Int) {
+private fun StepProgressIndicator(currentStep: Int, totalSteps: Int, isDarkMode: Boolean = true) {
+    val p = authPalette(isDarkMode)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -259,14 +275,14 @@ private fun StepProgressIndicator(currentStep: Int, totalSteps: Int) {
 
             val dotColor by animateColorAsState(
                 targetValue = when {
-                    isCompleted || isActive -> PremiumBlue
-                    else -> PremiumTextSecondary.copy(0.2f)
+                    isCompleted || isActive -> p.accent
+                    else -> p.textSecondary.copy(0.25f)
                 },
                 animationSpec = tween(400),
                 label = "dot_color"
             )
             val dotSize by animateDpAsState(
-                targetValue = if (isActive) 10.dp else 8.dp,
+                targetValue = if (isActive) 11.dp else 8.dp,
                 animationSpec = tween(300),
                 label = "dot_size"
             )
@@ -283,7 +299,7 @@ private fun StepProgressIndicator(currentStep: Int, totalSteps: Int) {
                         .width(32.dp)
                         .height(2.dp)
                         .background(
-                            if (isCompleted) PremiumBlue else PremiumTextSecondary.copy(0.15f),
+                            if (isCompleted) p.accent else p.textSecondary.copy(0.18f),
                             RoundedCornerShape(1.dp)
                         )
                 )
