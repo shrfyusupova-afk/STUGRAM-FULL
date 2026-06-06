@@ -2,6 +2,8 @@ package com.example.myapplication
 
 import android.app.Application
 import android.util.Log
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
 import io.sentry.android.core.SentryAndroid
@@ -9,10 +11,19 @@ import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 
-class StugramApplication : Application() {
+class StugramApplication : Application(), Configuration.Provider {
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setMinimumLoggingLevel(Log.ERROR)
+            .build()
+
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
+        try {
+            WorkManager.initialize(this, workManagerConfiguration)
+        } catch (_: Throwable) {}
         if (BuildConfig.CRASH_REPORTING_ENABLED && BuildConfig.SENTRY_DSN.isNotBlank()) {
             SentryAndroid.init(this) { options ->
                 options.dsn = BuildConfig.SENTRY_DSN
@@ -34,7 +45,7 @@ class StugramApplication : Application() {
             try {
                 val sw = StringWriter()
                 throwable.printStackTrace(PrintWriter(sw))
-                val crashDir = File(getExternalFilesDir(null), "crashes").apply { mkdirs() }
+                val crashDir = File(getExternalFilesDir(null) ?: filesDir, "crashes").apply { mkdirs() }
                 val crashFile = File(crashDir, "crash-${System.currentTimeMillis()}.txt")
                 crashFile.writeText(
                     "Thread: ${thread.name}\n" +
@@ -43,9 +54,7 @@ class StugramApplication : Application() {
                     sw.toString()
                 )
                 Log.e("StugramCrash", "Crash written to ${crashFile.absolutePath}", throwable)
-            } catch (_: Throwable) {
-                // Ignore — must never throw inside crash handler
-            }
+            } catch (_: Throwable) {}
             previous?.uncaughtException(thread, throwable)
         }
     }
