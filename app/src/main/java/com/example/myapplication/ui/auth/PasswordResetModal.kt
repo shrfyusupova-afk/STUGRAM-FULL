@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.auth
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -56,10 +57,12 @@ fun PasswordResetModal(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
+            dismissOnBackPress = false,
             dismissOnClickOutside = false
         )
     ) {
+        BackHandler { onPrevStep() }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
