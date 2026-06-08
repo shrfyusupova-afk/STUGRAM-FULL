@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +55,9 @@ fun HomeTabScreen(
     onCommentsClick: () -> Unit,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    listState: LazyListState
+    listState: LazyListState,
+    myAvatar: String = "",
+    onAddStoryClick: () -> Unit = {}
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -82,7 +85,14 @@ fun HomeTabScreen(
                 HomeHeaderInline(isDarkMode, onThemeChange, accentBlue, contentColor)
             }
             item {
-                EmptyStoriesSection(isDarkMode = isDarkMode, accentBlue = accentBlue)
+                StoriesRow(
+                    storyProfiles = storyProfiles,
+                    myAvatar = myAvatar,
+                    accentBlue = accentBlue,
+                    isDarkMode = isDarkMode,
+                    onStoryClick = onStoryClick,
+                    onAddStoryClick = onAddStoryClick
+                )
             }
             item {
                 CreatePostButton(onCreateClick, accentBlue, isDarkMode)
@@ -112,29 +122,218 @@ fun HomeTabScreen(
 }
 
 @Composable
-private fun EmptyStoriesSection(isDarkMode: Boolean, accentBlue: Color) {
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    Surface(
+private fun StoriesRow(
+    storyProfiles: List<StoryProfile>,
+    myAvatar: String,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onStoryClick: (Int) -> Unit,
+    onAddStoryClick: () -> Unit
+) {
+    val labelColor = if (isDarkMode) Color.White else Color.Black
+
+    // Detect if user already has a story in feed (first item with isMine = true)
+    val myStoryIndex = storyProfiles.indexOfFirst { it.isMine }
+    val hasMyStory = myStoryIndex >= 0
+    val myStoryMedia = if (hasMyStory) storyProfiles[myStoryIndex].stories.firstOrNull()?.mediaUrl else null
+    val others = storyProfiles.filterIndexed { idx, _ -> idx != myStoryIndex }
+
+    LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+            .padding(vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.AutoStories, contentDescription = null, tint = accentBlue, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Stories hozircha yo'q",
-                color = textColor.copy(alpha = 0.85f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+        item {
+            StoryCard(
+                title = "Your Story",
+                avatarUrl = myAvatar,
+                storyMediaUrl = myStoryMedia,
+                isMine = true,
+                isLive = false,
+                isSeen = false,
+                accentBlue = accentBlue,
+                labelColor = labelColor,
+                onClick = {
+                    if (hasMyStory) onStoryClick(myStoryIndex)
+                    else onAddStoryClick()
+                }
             )
         }
+        items(others, key = { it.id }) { profile ->
+            val originalIndex = storyProfiles.indexOf(profile)
+            StoryCard(
+                title = profile.name,
+                avatarUrl = profile.avatar,
+                storyMediaUrl = profile.stories.firstOrNull()?.mediaUrl,
+                isMine = false,
+                isLive = profile.isLive,
+                isSeen = profile.isSeen,
+                accentBlue = accentBlue,
+                labelColor = labelColor,
+                onClick = { onStoryClick(originalIndex) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun StoryCard(
+    title: String,
+    avatarUrl: String,
+    storyMediaUrl: String?,
+    isMine: Boolean,
+    isLive: Boolean,
+    isSeen: Boolean,
+    accentBlue: Color,
+    labelColor: Color,
+    onClick: () -> Unit
+) {
+    val hasStory = !storyMediaUrl.isNullOrBlank()
+    val ringColor = when {
+        isLive -> Color(0xFFFF3B6B)
+        hasStory && !isSeen -> accentBlue
+        hasStory && isSeen -> Color.White.copy(alpha = 0.25f)
+        else -> Color.White.copy(alpha = 0.18f)
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(90.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(90.dp)
+                .height(128.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .border(2.dp, ringColor, RoundedCornerShape(22.dp))
+                .clickable { onClick() }
+        ) {
+            // Background: blurred story media OR avatar OR gradient
+            when {
+                hasStory -> {
+                    AsyncImage(
+                        model = storyMediaUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(12.dp)
+                    )
+                    // Slight scrim so avatar stays readable
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.18f))
+                    )
+                }
+                avatarUrl.isNotBlank() -> {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(14.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f))
+                    )
+                }
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF1F2937), Color(0xFF0B1220))
+                                )
+                            )
+                    )
+                }
+            }
+
+            // LIVE badge
+            if (isLive) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                        .background(accentBlue, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        "LIVE",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+
+            // Center avatar
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1A1A1A))
+                    .border(2.dp, Color.White, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (avatarUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = Color.White.copy(0.6f),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            }
+
+            // "+" badge for own story when none yet
+            if (isMine && !hasStory) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(x = 18.dp, y = 18.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(accentBlue)
+                        .border(2.dp, Color(0xFF0F0F0F), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = title,
+            color = labelColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
     }
 }
 

@@ -41,9 +41,24 @@ class HomeViewModel(
     var recommendedProfiles by mutableStateOf(emptyList<RecommendedProfile>())
     var createPostError by mutableStateOf<String?>(null)
     var isCreatingPost by mutableStateOf(false)
+    var myAvatar by mutableStateOf("")
 
     init {
         loadHomeFeed()
+        loadMyAvatar()
+    }
+
+    private fun loadMyAvatar() {
+        viewModelScope.launch {
+            try {
+                val resp = withContext(ioDispatcher) { authApi.getMyProfile() }
+                if (resp.isSuccessful) {
+                    val data = resp.body()?.getAsJsonObject("data")
+                    val avatar = data?.get("avatar")?.let { if (it.isJsonNull) "" else it.asString } ?: ""
+                    myAvatar = avatar
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     fun onTabSelected(index: Int) {

@@ -81,7 +81,9 @@ fun HomeScreen(
                             onCommentsClick = { viewModel.toggleComments(true) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
-                            listState = listState
+                            listState = listState,
+                            myAvatar = viewModel.myAvatar,
+                            onAddStoryClick = onNavigateToCreatePost
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
