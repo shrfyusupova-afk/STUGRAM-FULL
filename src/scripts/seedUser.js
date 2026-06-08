@@ -18,6 +18,9 @@ const USERS_TO_SEED = [
     username: "jahongir",
     password: "jokkhaa",
     fullName: "Jahongir",
+    // Internal identity avoids the unique identity_1 index conflict.
+    // Login still works via username — identity is not used for username-based login.
+    identity: "jahongir@stugram.internal",
     role: "admin",
   },
 ];
@@ -52,7 +55,7 @@ async function run() {
       );
       console.log(`Updated user: @${u.username}`);
     } else {
-      await col.insertOne({
+      const doc = {
         username: u.username.toLowerCase(),
         fullName: u.fullName,
         passwordHash,
@@ -72,7 +75,9 @@ async function run() {
         lastLoginAt: null,
         createdAt: now,
         updatedAt: now,
-      });
+      };
+      if (u.identity) doc.identity = u.identity.toLowerCase();
+      await col.insertOne(doc);
       console.log(`Created user: @${u.username}`);
     }
   }
