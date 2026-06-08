@@ -32,12 +32,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -719,43 +722,151 @@ fun GlassSlidingNavigation(
         TabItem("Profile", Icons.Rounded.Person)
     )
 
-    val backgroundColor = if (isDarkMode) Color(0xFF0F0F0F).copy(0.84f) else Color.White.copy(0.78f)
-    val contentColor = if (isDarkMode) Color.White else Color.Black
     val accentBlue = Color(0xFF00A3FF)
+    val accentEnd  = Color(0xFF5EA3FF)
+    val contentColor = if (isDarkMode) Color.White else Color.Black
+    val surfaceTint  = if (isDarkMode) Color(0xFF0F0F0F).copy(0.78f) else Color.White.copy(0.72f)
+    val borderTint   = if (isDarkMode) Color.White.copy(0.10f) else Color.Black.copy(0.06f)
+    val density = LocalDensity.current
 
-    Surface(
-        modifier = modifier.width(320.dp).height(66.dp),
-        shape = RoundedCornerShape(33.dp),
-        color = backgroundColor,
-        border = BorderStroke(1.dp, Color.White.copy(0.1f)),
-        shadowElevation = 8.dp
-    ) {
-        Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            items.forEachIndexed { index, item ->
-                val isSelected = selectedTab == index
-                val glow by animateFloatAsState(
-                    targetValue = if (isSelected) 1f else 0f,
-                    animationSpec = tween(220),
-                    label = "nav_glow_$index"
+    // Spring-animated index → smooth follow even on rapid taps
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedTab.toFloat(),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "nav_index"
+    )
+
+    Box(
+        modifier = modifier
+            .width(320.dp)
+            .height(66.dp)
+            .shadow(
+                elevation = 18.dp,
+                shape = RoundedCornerShape(33.dp),
+                ambientColor = accentBlue.copy(0.15f),
+                spotColor = accentBlue.copy(0.25f)
+            )
+            .clip(RoundedCornerShape(33.dp))
+            // Liquid-glass body: subtle gradient + translucent tint
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        surfaceTint,
+                        surfaceTint.copy(alpha = (surfaceTint.alpha - 0.08f).coerceAtLeast(0.5f))
+                    )
                 )
+            )
+            .border(1.dp, borderTint, RoundedCornerShape(33.dp))
+    ) {
+        // Glassy top highlight (the "wet" sheen on liquid glass)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(0.10f), Color.Transparent)
+                    )
+                )
+        )
+
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val tabWidthDp = maxWidth / items.size
+            val tabWidthPx = with(density) { tabWidthDp.toPx() }
+            val pillOffsetPx = (animatedIndex * tabWidthPx)
+                .coerceIn(0f, (items.size - 1) * tabWidthPx)
+
+            // Soft outer glow behind the sliding pill — creates the "liquid" feel
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillOffsetPx.roundToInt(), 0) }
+                    .width(tabWidthDp)
+                    .fillMaxHeight()
+                    .padding(horizontal = 6.dp, vertical = 10.dp)
+                    .blur(18.dp)
+                    .background(
+                        Brush.radialGradient(listOf(accentBlue.copy(0.55f), Color.Transparent)),
+                        CircleShape
+                    )
+            )
+
+            // The sliding pill itself — gradient fill with inner sheen
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillOffsetPx.roundToInt(), 0) }
+                    .width(tabWidthDp)
+                    .fillMaxHeight()
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+            ) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { onTabSelected(index) },
-                    contentAlignment = Alignment.Center
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.linearGradient(listOf(accentBlue, accentEnd))
+                        )
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(Color.White.copy(0.45f), Color.White.copy(0.05f))),
+                            RoundedCornerShape(50)
+                        )
                 ) {
+                    // Inner top sheen on the pill (liquid glass highlight)
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .blur(14.dp)
-                            .background(accentBlue.copy(alpha = 0.28f * glow), CircleShape)
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .align(Alignment.TopCenter)
+                            .clip(RoundedCornerShape(topStart = 50f, topEnd = 50f, bottomStart = 50f, bottomEnd = 50f))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.White.copy(0.35f), Color.Transparent)
+                                )
+                            )
                     )
-                    val color by animateColorAsState(
-                        if (isSelected) accentBlue else contentColor.copy(0.6f),
-                        label = "iconColor_$index"
+                }
+            }
+
+            // Icons row sits on top of the pill
+            Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                items.forEachIndexed { index, item ->
+                    val isSelected = selectedTab == index
+                    val tint by animateColorAsState(
+                        targetValue = if (isSelected) Color.White else contentColor.copy(0.6f),
+                        animationSpec = tween(220),
+                        label = "icon_tint_$index"
                     )
-                    Icon(item.icon, null, tint = color, modifier = Modifier.size(26.dp))
+                    val scale by animateFloatAsState(
+                        targetValue = if (isSelected) 1.12f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "icon_scale_$index"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onTabSelected(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = item.name,
+                            tint = tint,
+                            modifier = Modifier
+                                .size(26.dp)
+                                .graphicsLayer { scaleX = scale; scaleY = scale }
+                        )
+                    }
                 }
             }
         }
