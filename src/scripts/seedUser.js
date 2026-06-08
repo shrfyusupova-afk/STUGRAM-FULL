@@ -16,7 +16,7 @@ if (!MONGO_URI) {
 const USERS_TO_SEED = [
   {
     username: "jahongir",
-    password: "jokkhaa",
+    password: "jokkhaa78",
     fullName: "Jahongir",
     // Internal identity avoids the unique identity_1 index conflict.
     // Login still works via username — identity is not used for username-based login.
