@@ -28,14 +28,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val ProfileBg       = Color(0xFF0F0F0F)
 private val ProfileSurface  = Color(0xFF1A1A1A)
@@ -101,28 +104,10 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(ProfileBg)
-                .statusBarsPadding()
         ) {
-            // ── Back button ─────────────────────────────────────────────
-            if (onBack != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null,
-                            tint = ProfileFg
-                        )
-                    }
-                }
-            }
-
             when {
                 ui.error != null -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = ui.error!!,
@@ -139,13 +124,13 @@ fun ProfileScreen(
                 }
 
                 else -> {
-                    // ── Banner + Avatar + Name/Stats ─────────────────────────
+                    // ── Banner + Avatar + Name/Stats — edge-to-edge, behind status bar
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
+                            .height(250.dp)
                     ) {
-                        // Banner image or gradient fallback
+                        // Banner image or gradient fallback (fills entire box, including under status bar)
                         if (!ui.banner.isNullOrBlank()) {
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
@@ -168,11 +153,24 @@ fun ProfileScreen(
                             )
                         }
 
-                        // Bottom scrim so text is readable
+                        // Top scrim so status bar icons remain readable on bright banners
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(100.dp)
+                                .height(80.dp)
+                                .align(Alignment.TopStart)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Black.copy(0.45f), Color.Transparent)
+                                    )
+                                )
+                        )
+
+                        // Bottom scrim so the avatar + text are readable against the photo
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
                                 .align(Alignment.BottomStart)
                                 .background(
                                     Brush.verticalGradient(
@@ -181,12 +179,33 @@ fun ProfileScreen(
                                 )
                         )
 
-                        // Avatar + Name/Stats row — at banner bottom
+                        // Floating back button (only when navigated to)
+                        if (onBack != null) {
+                            Box(
+                                modifier = Modifier
+                                    .statusBarsPadding()
+                                    .padding(start = 12.dp, top = 6.dp)
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(0.45f))
+                                    .clickable(onClick = onBack),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = null,
+                                    tint = ProfileFg,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        // Avatar + Name/Stats row — anchored at banner bottom
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                                .padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
                             verticalAlignment = Alignment.Bottom,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
@@ -378,67 +397,21 @@ fun ProfileScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(18.dp))
 
-                    // ── 4-icon tab row ───────────────────────────────────────
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.08f),
-                        thickness = 0.5.dp
+                    // ── Tab row with sliding gradient indicator ──────────────
+                    val tabs = listOf(
+                        Icons.Default.GridOn       to "Posts",
+                        Icons.Default.PlayCircle   to "Reels",
+                        Icons.Default.PersonPin    to "Tagged",
+                        Icons.Default.Info         to "Info"
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        val tabIcons = listOf(
-                            Icons.Default.GridOn       to "Posts",
-                            Icons.Default.PlayCircle   to "Reels",
-                            Icons.Default.PersonPin    to "Tagged",
-                            Icons.Default.Info         to "Info"
-                        )
-                        tabIcons.forEachIndexed { index, (icon, label) ->
-                            val selected = pagerState.currentPage == index
-                            val iconTint by animateColorAsState(
-                                targetValue = if (selected) ProfileAccent else ProfileSecondary,
-                                animationSpec = tween(200),
-                                label = "tab_tint"
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clickable {
-                                        scope.launch { pagerState.animateScrollToPage(index) }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = label,
-                                        tint = iconTint,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    if (selected) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .width(22.dp)
-                                                .height(2.dp)
-                                                .background(ProfileAccent, RoundedCornerShape(1.dp))
-                                        )
-                                    }
-                                }
-                            }
+                    ProfileTabSwitcher(
+                        tabs = tabs,
+                        pagerState = pagerState,
+                        onTabClick = { index ->
+                            scope.launch { pagerState.animateScrollToPage(index) }
                         }
-                    }
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.08f),
-                        thickness = 0.5.dp
                     )
 
                     // ── Pager content ────────────────────────────────────────
@@ -454,6 +427,91 @@ fun ProfileScreen(
                             2 -> TaggedPage()
                             3 -> InfoPage(ui)
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Tab switcher with sliding gradient indicator ──────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileTabSwitcher(
+    tabs: List<Pair<ImageVector, String>>,
+    pagerState: androidx.compose.foundation.pager.PagerState,
+    onTabClick: (Int) -> Unit
+) {
+    val density = LocalDensity.current
+    // Continuous fractional position — drives the sliding indicator smoothly while swiping
+    val offsetFraction = pagerState.currentPage + pagerState.currentPageOffsetFraction
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.04f))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(16.dp)
+                )
+        ) {
+            val tabWidthDp = maxWidth / tabs.size
+            val tabWidthPx = with(density) { tabWidthDp.toPx() }
+            val indicatorOffsetPx = (offsetFraction * tabWidthPx)
+                .coerceIn(0f, (tabs.size - 1) * tabWidthPx)
+
+            // Sliding pill — follows pager position with gradient fill
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(indicatorOffsetPx.roundToInt(), 0) }
+                    .width(tabWidthDp)
+                    .fillMaxHeight()
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                ProfileAccent,
+                                Color(0xFF5EA3FF)
+                            )
+                        )
+                    )
+            )
+
+            // Tab icons row on top of the sliding pill
+            Row(modifier = Modifier.fillMaxSize()) {
+                tabs.forEachIndexed { index, (icon, label) ->
+                    // Selected when the pager is closest to this tab
+                    val selected = pagerState.currentPage == index
+                    val tint by animateColorAsState(
+                        targetValue = if (selected) Color.White else ProfileSecondary,
+                        animationSpec = tween(180),
+                        label = "tab_tint"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                            ) { onTabClick(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = tint,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
             }
