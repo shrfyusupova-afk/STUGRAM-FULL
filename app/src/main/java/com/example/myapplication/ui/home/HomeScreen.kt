@@ -35,6 +35,8 @@ fun HomeScreen(
     onNavigateToGroupChat: (String) -> Unit,
     onNavigateToProfile: (String) -> Unit,
     onNavigateToCreatePost: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToSaved: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val backgroundColor = if (isDarkMode) GlobalBackgroundColor else Color(0xFFF2F2F2)
@@ -43,6 +45,9 @@ fun HomeScreen(
 
     val listState = rememberLazyListState()
     var commentsForPost by remember { mutableStateOf<PostData?>(null) }
+    var moreMenuForPost by remember { mutableStateOf<PostData?>(null) }
+    var editingPost by remember { mutableStateOf<PostData?>(null) }
+    var deletingPost by remember { mutableStateOf<PostData?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
@@ -85,7 +90,10 @@ fun HomeScreen(
                             listState = listState,
                             myAvatar = viewModel.myAvatar,
                             onAddStoryClick = onNavigateToCreatePost,
-                            onProfileClick = onNavigateToProfile
+                            onProfileClick = onNavigateToProfile,
+                            onPostMoreClick = { post -> moreMenuForPost = post },
+                            onNotificationsClick = onNavigateToNotifications,
+                            onSavedClick = onNavigateToSaved
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -178,6 +186,48 @@ fun HomeScreen(
                 visible = true,
                 accent = accentBlue,
                 onDismiss = { commentsForPost = null }
+            )
+        }
+
+        // Post "⋯" menu sheet — Edit / Delete (o'z postlari uchun) yoki Report / Block
+        moreMenuForPost?.let { post ->
+            val isOwn = post.user.equals(viewModel.myUsername, ignoreCase = true) &&
+                viewModel.myUsername.isNotBlank()
+            PostMoreMenuSheet(
+                isOwn = isOwn,
+                postId = post.id,
+                onDismiss = { moreMenuForPost = null },
+                onEdit = {
+                    editingPost = post
+                    moreMenuForPost = null
+                },
+                onDelete = {
+                    deletingPost = post
+                    moreMenuForPost = null
+                }
+            )
+        }
+
+        // Edit caption dialog
+        editingPost?.let { post ->
+            EditCaptionDialog(
+                initialCaption = post.caption,
+                onConfirm = { newCaption ->
+                    viewModel.updatePostCaption(post.id, newCaption)
+                    editingPost = null
+                },
+                onDismiss = { editingPost = null }
+            )
+        }
+
+        // Delete confirmation
+        deletingPost?.let { post ->
+            ConfirmDeleteDialog(
+                onConfirm = {
+                    viewModel.deletePost(post.id)
+                    deletingPost = null
+                },
+                onDismiss = { deletingPost = null }
             )
         }
     }

@@ -49,6 +49,8 @@ sealed class Screen(val route: String) {
         fun createRoute(username: String) = "profile/$username"
     }
     object CreatePost : Screen("create_post")
+    object Notifications : Screen("notifications")
+    object SavedPosts : Screen("saved_posts")
 }
 
 @Composable
@@ -109,7 +111,38 @@ fun AuthNavGraph(
                 },
                 onNavigateToCreatePost = {
                     navController.navigate(Screen.CreatePost.route)
+                },
+                onNavigateToNotifications = {
+                    navController.navigate(Screen.Notifications.route)
+                },
+                onNavigateToSaved = {
+                    navController.navigate(Screen.SavedPosts.route)
                 }
+            )
+        }
+
+        composable(
+            route = Screen.Notifications.route,
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) {
+            NotificationsScreen(
+                isDarkMode = isDarkMode,
+                onBack = { navController.popBackStack() },
+                onOpenProfile = { username ->
+                    navController.navigate(Screen.UserProfile.createRoute(username))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.SavedPosts.route,
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) {
+            SavedPostsScreen(
+                isDarkMode = isDarkMode,
+                onBack = { navController.popBackStack() }
             )
         }
 

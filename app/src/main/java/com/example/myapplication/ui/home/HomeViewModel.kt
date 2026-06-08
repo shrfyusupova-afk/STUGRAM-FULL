@@ -42,6 +42,7 @@ class HomeViewModel(
     var createPostError by mutableStateOf<String?>(null)
     var isCreatingPost by mutableStateOf(false)
     var myAvatar by mutableStateOf("")
+    var myUsername by mutableStateOf("")
 
     init {
         loadHomeFeed()
@@ -55,7 +56,9 @@ class HomeViewModel(
                 if (resp.isSuccessful) {
                     val data = resp.body()?.getAsJsonObject("data")
                     val avatar = data?.get("avatar")?.let { if (it.isJsonNull) "" else it.asString } ?: ""
+                    val username = data?.get("username")?.let { if (it.isJsonNull) "" else it.asString } ?: ""
                     myAvatar = avatar
+                    myUsername = username
                 }
             } catch (_: Exception) { }
         }
@@ -112,6 +115,9 @@ class HomeViewModel(
                 val postId = stringOr(post, "_id", "")
                 if (postId.isBlank()) return@runCatching null
 
+                val isVideo = firstMedia?.let {
+                    it.has("type") && !it.get("type").isJsonNull && it.get("type").asString == "video"
+                } ?: false
                 PostData(
                     id = postId,
                     user = author?.let { stringOr(it, "username", "user") } ?: "user",
@@ -120,7 +126,7 @@ class HomeViewModel(
                     likes = intOr(post, "likesCount", 0),
                     comments = intOr(post, "commentsCount", 0),
                     reposts = 0,
-                    isVideo = false
+                    isVideo = isVideo
                 )
             }.getOrNull()
         }
@@ -246,6 +252,34 @@ class HomeViewModel(
                 createPostError = "Tarmoq xatosi: ${e.message}"
             } finally {
                 isCreatingPost = false
+            }
+        }
+    }
+
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            val previous = posts
+            posts = posts.filterNot { it.id == postId }
+            try {
+                val resp = withContext(ioDispatcher) { authApi.deletePost(postId) }
+                if (!resp.isSuccessful) posts = previous
+            } catch (_: Exception) {
+                posts = previous
+            }
+        }
+    }
+
+    fun updatePostCaption(postId: String, newCaption: String) {
+        viewModelScope.launch {
+            val previous = posts
+            posts = posts.map { if (it.id == postId) it.copy(caption = newCaption) else it }
+            try {
+                val resp = withContext(ioDispatcher) {
+                    authApi.updatePost(postId, com.example.myapplication.data.remote.UpdatePostRequest(caption = newCaption))
+                }
+                if (!resp.isSuccessful) posts = previous
+            } catch (_: Exception) {
+                posts = previous
             }
         }
     }

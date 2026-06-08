@@ -160,7 +160,54 @@ interface AuthApi {
 
     @DELETE("api/v1/likes/posts/{postId}")
     suspend fun unlikePost(@Path("postId") postId: String): Response<JsonObject>
+
+    // ── Notifications ──
+    @GET("api/v1/notifications")
+    suspend fun getNotifications(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/notifications/unread-count")
+    suspend fun getNotificationsUnreadCount(): Response<JsonObject>
+
+    @PATCH("api/v1/notifications/{notificationId}/read")
+    suspend fun markNotificationRead(@Path("notificationId") id: String): Response<JsonObject>
+
+    @PATCH("api/v1/notifications/read-all")
+    suspend fun markAllNotificationsRead(): Response<JsonObject>
+
+    // ── Saved posts ──
+    @POST("api/v1/posts/{postId}/save")
+    suspend fun savePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @DELETE("api/v1/posts/{postId}/save")
+    suspend fun unsavePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @GET("api/v1/posts/saved/me")
+    suspend fun getSavedPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    // ── Post delete / update ──
+    @DELETE("api/v1/posts/{postId}")
+    suspend fun deletePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @PATCH("api/v1/posts/{postId}")
+    suspend fun updatePost(
+        @Path("postId") postId: String,
+        @Body request: UpdatePostRequest
+    ): Response<JsonObject>
+
+    @GET("api/v1/posts/{postId}")
+    suspend fun getPost(@Path("postId") postId: String): Response<JsonObject>
 }
+
+data class UpdatePostRequest(
+    val caption: String? = null,
+    val location: String? = null
+)
 
 data class AddCommentRequest(
     val content: String,

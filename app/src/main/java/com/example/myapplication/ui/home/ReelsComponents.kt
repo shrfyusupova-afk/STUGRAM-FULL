@@ -135,6 +135,7 @@ private fun ReelsPager(
                 rank = page,
                 isMuted = isMuted,
                 isSaved = isSaved(reel.id),
+                isActive = pagerState.currentPage == page,
                 onToggleMute = onToggleMute,
                 onToggleSave = { onSave(reel.id) },
                 onNotInterested = { onNotInterested(reel.id) },
@@ -237,6 +238,7 @@ private fun ReelPage(
     rank: Int,
     isMuted: Boolean,
     isSaved: Boolean,
+    isActive: Boolean = true,
     onToggleMute: () -> Unit,
     onToggleSave: () -> Unit,
     onNotInterested: () -> Unit,
@@ -284,23 +286,34 @@ private fun ReelPage(
             }
     ) {
         // Background media
-        if (!reel.mediaUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = reel.mediaUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460))
+        when {
+            reel.isVideo && !reel.mediaUrl.isNullOrBlank() -> {
+                ReelVideoPlayer(
+                    videoUrl = reel.mediaUrl,
+                    isPlaying = isActive && !isPaused,
+                    isMuted = isMuted,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            !reel.mediaUrl.isNullOrBlank() -> {
+                AsyncImage(
+                    model = reel.mediaUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            else -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460))
+                            )
                         )
-                    )
-            )
+                )
+            }
         }
 
         // Top + bottom scrims

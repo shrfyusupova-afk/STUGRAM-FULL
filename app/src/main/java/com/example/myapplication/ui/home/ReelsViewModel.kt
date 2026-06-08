@@ -60,7 +60,17 @@ class ReelsViewModel(
     fun toggleMute() { isMuted = !isMuted }
 
     fun toggleSave(id: String) {
-        savedIds = if (id in savedIds) savedIds - id else savedIds + id
+        val wasSaved = id in savedIds
+        savedIds = if (wasSaved) savedIds - id else savedIds + id
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) {
+                    if (wasSaved) authApi.unsavePost(id) else authApi.savePost(id)
+                }
+            } catch (_: Exception) {
+                savedIds = if (wasSaved) savedIds + id else savedIds - id
+            }
+        }
     }
 
     fun isSaved(id: String): Boolean = id in savedIds

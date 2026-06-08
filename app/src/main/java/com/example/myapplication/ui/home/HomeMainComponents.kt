@@ -61,7 +61,10 @@ fun HomeTabScreen(
     listState: LazyListState,
     myAvatar: String = "",
     onAddStoryClick: () -> Unit = {},
-    onProfileClick: (String) -> Unit = {}
+    onProfileClick: (String) -> Unit = {},
+    onPostMoreClick: (PostData) -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    onSavedClick: () -> Unit = {}
 ) {
     val pullState = rememberPullToRefreshState()
     PullToRefreshBox(
@@ -88,7 +91,14 @@ fun HomeTabScreen(
             )
         ) {
             item {
-                HomeHeaderInline(isDarkMode, onThemeChange, accentBlue, contentColor)
+                HomeHeaderInline(
+                    isDarkMode = isDarkMode,
+                    onThemeChange = onThemeChange,
+                    accentBlue = accentBlue,
+                    contentColor = contentColor,
+                    onNotificationsClick = onNotificationsClick,
+                    onSavedClick = onSavedClick
+                )
             }
             item {
                 StoriesRow(
@@ -123,7 +133,8 @@ fun HomeTabScreen(
                         accentBlue = accentBlue,
                         isDarkMode = isDarkMode,
                         onCommentsClick = { onCommentsClick(post) },
-                        onProfileClick = { onProfileClick(post.user) }
+                        onProfileClick = { onProfileClick(post.user) },
+                        onMoreClick = { onPostMoreClick(post) }
                     )
                 }
             }
@@ -397,7 +408,9 @@ fun HomeHeaderInline(
     isDarkMode: Boolean,
     onThemeChange: (Boolean) -> Unit,
     accentBlue: Color,
-    contentColor: Color
+    contentColor: Color,
+    onNotificationsClick: () -> Unit = {},
+    onSavedClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -426,12 +439,12 @@ fun HomeHeaderInline(
             IconButton(onClick = { onThemeChange(!isDarkMode) }) {
                 Icon(if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode, null, tint = contentColor)
             }
-            Icon(
-                Icons.Default.NotificationsNone,
-                null,
-                tint = contentColor.copy(alpha = 0.6f),
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
+            IconButton(onClick = onSavedClick) {
+                Icon(Icons.Default.BookmarkBorder, null, tint = contentColor)
+            }
+            IconButton(onClick = onNotificationsClick) {
+                Icon(Icons.Default.NotificationsNone, null, tint = contentColor)
+            }
         }
     }
 }
@@ -469,7 +482,8 @@ fun DashboardPostItem(
     accentBlue: Color,
     isDarkMode: Boolean,
     onCommentsClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onMoreClick: () -> Unit = {}
 ) {
     val glassBaseColor = if (isDarkMode) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.75f)
     val textColor = if (isDarkMode) Color.White else Color.Black
@@ -565,7 +579,8 @@ fun DashboardPostItem(
                     modifier = Modifier.size(36.dp),
                     color = glassBaseColor,
                     shape = CircleShape,
-                    border = BorderStroke(0.5.dp, Color.White.copy(0.2f))
+                    border = BorderStroke(0.5.dp, Color.White.copy(0.2f)),
+                    onClick = onMoreClick
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.MoreHoriz, null, tint = iconColor, modifier = Modifier.size(18.dp))

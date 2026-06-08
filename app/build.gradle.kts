@@ -197,6 +197,10 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.accompanist.permissions)
 
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.exoplayer.hls)
+
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(libs.androidx.junit)
