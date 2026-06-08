@@ -5,7 +5,7 @@ object AlphaFeatureFlags {
 
     const val FEED_INTERACTIONS_ENABLED: Boolean = false
     const val STORIES_ENABLED: Boolean = false
-    const val REELS_ENABLED: Boolean = false
+    const val REELS_ENABLED: Boolean = true
     const val SEARCH_DISCOVERY_ENABLED: Boolean = false
     const val CAMERA_CREATE_ENABLED: Boolean = false
     const val GROUP_CHAT_ENABLED: Boolean = false
