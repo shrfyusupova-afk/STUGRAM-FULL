@@ -17,7 +17,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
-enum class CreatePostStep { CAMERA, EDIT, PUBLISH }
+enum class CreatePostStep { CAMERA, EDIT, PUBLISH, STORY_EDIT, REELS_PUBLISH }
+enum class CreateMode { POST, REELS, STORY }
 
 enum class PostFilter(val label: String) {
     NORMAL("Normal"),
@@ -46,7 +47,9 @@ data class AudioTrack(
 
 data class CreatePostState(
     val step: CreatePostStep = CreatePostStep.CAMERA,
+    val mode: CreateMode = CreateMode.POST,
     val imageUri: Uri? = null,
+    val isVideo: Boolean = false,
     val caption: String = "",
     val location: String = "",
     val taggedUsers: List<String> = emptyList(),
@@ -77,8 +80,18 @@ class CreatePostViewModel : ViewModel() {
     private val _state = MutableStateFlow(CreatePostState())
     val state = _state.asStateFlow()
 
-    fun setImageUri(uri: Uri) {
-        _state.update { it.copy(imageUri = uri, step = CreatePostStep.EDIT, error = null) }
+    fun setImageUri(uri: Uri, isVideo: Boolean = false) {
+        val mode = _state.value.mode
+        val nextStep = when (mode) {
+            CreateMode.POST -> CreatePostStep.EDIT
+            CreateMode.STORY -> CreatePostStep.STORY_EDIT
+            CreateMode.REELS -> CreatePostStep.REELS_PUBLISH
+        }
+        _state.update { it.copy(imageUri = uri, isVideo = isVideo, step = nextStep, error = null) }
+    }
+
+    fun setMode(mode: CreateMode) {
+        _state.update { it.copy(mode = mode, error = null) }
     }
 
     fun goToCamera() {
@@ -155,6 +168,85 @@ class CreatePostViewModel : ViewModel() {
             val list = it.taggedUsers.toMutableList()
             if (list.contains(username)) list.remove(username) else list.add(username)
             it.copy(taggedUsers = list)
+        }
+    }
+
+    fun publishStory(context: Context) {
+        val s = _state.value
+        val uri = s.imageUri ?: run {
+            _state.update { it.copy(error = "Media tanlanmagan") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                        ?: throw Exception("Media o'qib bo'lmadi")
+                }
+                val mimeType = if (s.isVideo) "video/mp4" else "image/jpeg"
+                val fileName = if (s.isVideo) "story_${System.currentTimeMillis()}.mp4" else "story_${System.currentTimeMillis()}.jpg"
+                val mediaBody = bytes.toRequestBody(mimeType.toMediaType())
+                val mediaPart = MultipartBody.Part.createFormData("media", fileName, mediaBody)
+                val captionPart = s.caption.trim().toRequestBody("text/plain".toMediaType())
+
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.createStoryWithMedia(
+                        media = mediaPart,
+                        caption = captionPart
+                    )
+                }
+                if (response.isSuccessful) {
+                    _state.update { it.copy(isLoading = false, isSuccess = true) }
+                } else {
+                    val body = response.errorBody()?.string()?.take(250)
+                    _state.update {
+                        it.copy(isLoading = false, error = "Story xatosi (${response.code()}): ${body ?: ""}")
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = "Xato: ${e.message}") }
+            }
+        }
+    }
+
+    fun publishReel(context: Context) {
+        // Reels go through the posts endpoint with video media
+        val s = _state.value
+        val uri = s.imageUri ?: run {
+            _state.update { it.copy(error = "Video tanlanmagan") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                        ?: throw Exception("Video o'qib bo'lmadi")
+                }
+                val mediaBody = bytes.toRequestBody("video/mp4".toMediaType())
+                val mediaPart = MultipartBody.Part.createFormData("media", "reel_${System.currentTimeMillis()}.mp4", mediaBody)
+                val captionPart = s.caption.trim().toRequestBody("text/plain".toMediaType())
+                val locationPart = s.location.trim().toRequestBody("text/plain".toMediaType())
+
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.createPostWithMedia(
+                        media = mediaPart,
+                        caption = captionPart,
+                        location = locationPart
+                    )
+                }
+                if (response.isSuccessful) {
+                    _state.update { it.copy(isLoading = false, isSuccess = true) }
+                } else {
+                    val body = response.errorBody()?.string()?.take(250)
+                    _state.update {
+                        it.copy(isLoading = false, error = "Reel xatosi (${response.code()}): ${body ?: ""}")
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = "Xato: ${e.message}") }
+            }
         }
     }
 

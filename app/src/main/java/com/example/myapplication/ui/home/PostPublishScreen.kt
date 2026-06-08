@@ -46,7 +46,7 @@ fun PostPublishScreen(
         if (state.isSuccess) onSuccess()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F0F))) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F0F)).imePadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top bar
             Row(
@@ -76,48 +76,62 @@ fun PostPublishScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Image + caption row
+                // Thumbnail row (preview only)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.Top
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     AsyncImage(
                         model = imageUri,
                         contentDescription = null,
                         modifier = Modifier
-                            .size(80.dp)
+                            .size(64.dp)
                             .clip(RoundedCornerShape(10.dp)),
                         contentScale = ContentScale.Crop,
                         colorFilter = buildPostColorFilter(state)
                     )
                     Spacer(Modifier.width(12.dp))
-                    // Caption
-                    OutlinedTextField(
-                        value = state.caption,
-                        onValueChange = viewModel::onCaptionChange,
-                        placeholder = {
-                            Text(
-                                "Izoh qo'shish...",
-                                color = Color.White.copy(0.35f),
-                                fontSize = 15.sp
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 80.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        textStyle = LocalTextStyle.current.copy(fontSize = 15.sp),
-                        maxLines = 8
-                    )
+                    Column {
+                        Text("Post oldindan ko'rinishi", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Izoh yozing, joylashuv tanlang",
+                            color = Color.White.copy(0.5f),
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
+                // Caption — full-width, scrollable internally
+                OutlinedTextField(
+                    value = state.caption,
+                    onValueChange = viewModel::onCaptionChange,
+                    placeholder = {
+                        Text(
+                            "Izoh qo'shing — fikringizni baham ko'ring...",
+                            color = Color.White.copy(0.35f),
+                            fontSize = 15.sp
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .heightIn(min = 120.dp, max = 220.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color.White.copy(0.18f),
+                        unfocusedBorderColor = Color.White.copy(0.08f),
+                        focusedContainerColor = Color.White.copy(0.04f),
+                        unfocusedContainerColor = Color.White.copy(0.04f),
+                        cursorColor = Color(0xFF3897F0)
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 15.sp, lineHeight = 21.sp)
+                )
+
+                Spacer(Modifier.height(12.dp))
                 HorizontalDivider(color = Color.White.copy(0.07f))
 
                 // Suggested audio chips

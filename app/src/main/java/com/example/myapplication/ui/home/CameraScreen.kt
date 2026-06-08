@@ -42,7 +42,10 @@ import java.io.File
 @Composable
 fun CameraScreen(
     onImageSelected: (Uri) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    currentMode: CreateMode = CreateMode.POST,
+    onModeChange: (CreateMode) -> Unit = {},
+    onVideoSelected: (Uri) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -61,6 +64,10 @@ fun CameraScreen(
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { onImageSelected(it) } }
+
+    val videoGalleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { onVideoSelected(it) } }
 
     val cameraController = remember { LifecycleCameraController(context) }
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
@@ -111,20 +118,28 @@ fun CameraScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // Post | Reels | Story tabs (only Post active)
+            // Post | Reels | Story tabs
             Row(
                 modifier = Modifier
                     .background(Color.Black.copy(0.5f), RoundedCornerShape(24.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                listOf("Post" to true, "Reels" to false, "Story" to false).forEach { (label, active) ->
+                val tabs = listOf(
+                    "Post" to CreateMode.POST,
+                    "Reels" to CreateMode.REELS,
+                    "Story" to CreateMode.STORY
+                )
+                tabs.forEach { (label, mode) ->
+                    val active = mode == currentMode
                     Box(
                         modifier = Modifier
-                            .background(
-                                if (active) Color.White else Color.Transparent,
-                                RoundedCornerShape(20.dp)
-                            )
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (active) Color.White else Color.Transparent)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onModeChange(mode) }
                             .padding(horizontal = 16.dp, vertical = 7.dp)
                     ) {
                         Text(
@@ -167,7 +182,7 @@ fun CameraScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 36.dp, start = 32.dp, end = 32.dp)
         ) {
-            // Gallery button
+            // Gallery button — video picker for Reels, image picker for Post/Story
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -177,41 +192,72 @@ fun CameraScreen(
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
-                    ) { galleryLauncher.launch("image/*") },
+                    ) {
+                        if (currentMode == CreateMode.REELS) videoGalleryLauncher.launch("video/*")
+                        else galleryLauncher.launch("image/*")
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Icon(
+                    if (currentMode == CreateMode.REELS) Icons.Default.VideoLibrary else Icons.Default.PhotoLibrary,
+                    null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
 
-            // Shutter button
+            // Shutter button. Reels mode uses gallery — show ring with video icon
             Box(modifier = Modifier.align(Alignment.Center).size(88.dp), contentAlignment = Alignment.Center) {
-                Box(modifier = Modifier.size(88.dp).border(3.5.dp, Color.White, CircleShape))
+                val shutterRingColor = if (currentMode == CreateMode.REELS) Color(0xFFFF3B6B) else Color.White
+                Box(modifier = Modifier.size(88.dp).border(3.5.dp, shutterRingColor, CircleShape))
                 Box(
                     modifier = Modifier
                         .size(72.dp)
                         .scale(captureScale)
-                        .background(if (isCapturing) Color.LightGray else Color.White, CircleShape)
+                        .background(
+                            when {
+                                isCapturing -> Color.LightGray
+                                currentMode == CreateMode.REELS -> Color(0xFFFF3B6B)
+                                else -> Color.White
+                            },
+                            CircleShape
+                        )
                         .clickable(
                             enabled = hasPermission && !isCapturing,
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
                         ) {
-                            isCapturing = true
-                            val outputFile = File(context.filesDir, "post_${System.currentTimeMillis()}.jpg")
-                            val opts = ImageCapture.OutputFileOptions.Builder(outputFile).build()
-                            cameraController.takePicture(
-                                opts,
-                                ContextCompat.getMainExecutor(context),
-                                object : ImageCapture.OnImageSavedCallback {
-                                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                        isCapturing = false
-                                        onImageSelected(output.savedUri ?: Uri.fromFile(outputFile))
+                            if (currentMode == CreateMode.REELS) {
+                                // No in-camera video record yet — open gallery instead
+                                videoGalleryLauncher.launch("video/*")
+                            } else {
+                                isCapturing = true
+                                val outputFile = File(context.filesDir, "capture_${System.currentTimeMillis()}.jpg")
+                                val opts = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                                cameraController.takePicture(
+                                    opts,
+                                    ContextCompat.getMainExecutor(context),
+                                    object : ImageCapture.OnImageSavedCallback {
+                                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                            isCapturing = false
+                                            onImageSelected(output.savedUri ?: Uri.fromFile(outputFile))
+                                        }
+                                        override fun onError(e: ImageCaptureException) { isCapturing = false }
                                     }
-                                    override fun onError(e: ImageCaptureException) { isCapturing = false }
-                                }
-                            )
-                        }
-                )
+                                )
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (currentMode == CreateMode.REELS && !isCapturing) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
             }
 
             // Flip camera

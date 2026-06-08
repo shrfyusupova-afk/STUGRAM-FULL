@@ -23,6 +23,8 @@ fun CreatePostHost(
             CreatePostStep.CAMERA -> onClose()
             CreatePostStep.EDIT -> viewModel.goToCamera()
             CreatePostStep.PUBLISH -> viewModel.goBackFromPublish()
+            CreatePostStep.STORY_EDIT -> viewModel.goToCamera()
+            CreatePostStep.REELS_PUBLISH -> viewModel.goToCamera()
         }
     }
 
@@ -42,8 +44,11 @@ fun CreatePostHost(
         ) { step ->
             when (step) {
                 CreatePostStep.CAMERA -> CameraScreen(
-                    onImageSelected = { uri -> viewModel.setImageUri(uri) },
-                    onClose = onClose
+                    onImageSelected = { uri -> viewModel.setImageUri(uri, isVideo = false) },
+                    onClose = onClose,
+                    currentMode = state.mode,
+                    onModeChange = { viewModel.setMode(it) },
+                    onVideoSelected = { uri -> viewModel.setImageUri(uri, isVideo = true) }
                 )
                 CreatePostStep.EDIT -> state.imageUri?.let { uri ->
                     PostEditScreen(
@@ -60,6 +65,24 @@ fun CreatePostHost(
                         state = state,
                         viewModel = viewModel,
                         onBack = viewModel::goBackFromPublish,
+                        onSuccess = onClose
+                    )
+                }
+                CreatePostStep.STORY_EDIT -> state.imageUri?.let { uri ->
+                    StoryEditScreen(
+                        imageUri = uri,
+                        state = state,
+                        viewModel = viewModel,
+                        onBack = viewModel::goToCamera,
+                        onSuccess = onClose
+                    )
+                }
+                CreatePostStep.REELS_PUBLISH -> state.imageUri?.let { uri ->
+                    ReelsPublishScreen(
+                        videoUri = uri,
+                        state = state,
+                        viewModel = viewModel,
+                        onBack = viewModel::goToCamera,
                         onSuccess = onClose
                     )
                 }

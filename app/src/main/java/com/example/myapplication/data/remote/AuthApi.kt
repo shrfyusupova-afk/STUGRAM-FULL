@@ -91,6 +91,13 @@ interface AuthApi {
         @Part("location") location: RequestBody
     ): Response<JsonObject>
 
+    @Multipart
+    @POST("api/v1/stories")
+    suspend fun createStoryWithMedia(
+        @Part media: MultipartBody.Part?,
+        @Part("caption") caption: RequestBody
+    ): Response<JsonObject>
+
     @GET("api/v1/posts/user/{username}")
     suspend fun getUserPosts(
         @Path("username") username: String,
