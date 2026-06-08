@@ -17,8 +17,21 @@ class ReelsViewModel(
 ) : ViewModel() {
 
     var reels by mutableStateOf(emptyList<ReelItem>())
+        private set
     var isLoading by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
+        private set
+
+    // UI-only state that survives across scrolls
+    var isMuted by mutableStateOf(true)
+        private set
+    var savedIds by mutableStateOf(setOf<String>())
+        private set
+    var dismissedIds by mutableStateOf(setOf<String>())
+        private set
+
+    private var rawReels: List<ReelItem> = emptyList()
 
     init {
         loadReels()
@@ -31,7 +44,8 @@ class ReelsViewModel(
             try {
                 val resp = withContext(ioDispatcher) { authApi.getRecommendedReels(page = 1, limit = 15) }
                 if (resp.isSuccessful) {
-                    reels = parseReels(resp.body())
+                    rawReels = parseReels(resp.body())
+                    reels = rankReels(rawReels, dismissedIds)
                 } else {
                     error = "Reels yuklanmadi (${resp.code()})"
                 }
@@ -41,6 +55,41 @@ class ReelsViewModel(
                 isLoading = false
             }
         }
+    }
+
+    fun toggleMute() { isMuted = !isMuted }
+
+    fun toggleSave(id: String) {
+        savedIds = if (id in savedIds) savedIds - id else savedIds + id
+    }
+
+    fun isSaved(id: String): Boolean = id in savedIds
+
+    fun markNotInterested(id: String) {
+        dismissedIds = dismissedIds + id
+        reels = rankReels(rawReels, dismissedIds)
+    }
+
+    /**
+     * Stugram Reels ranking algorithm.
+     * Score = engagement signals + content boosts. Higher score → appears earlier.
+     *
+     * - log-dampened engagement so a viral post doesn't bury everything
+     * - video reels get a strong boost (this IS the reels tab)
+     * - reels with captions are more engaging — small boost
+     * - dismissed reels are filtered out entirely
+     */
+    private fun rankReels(items: List<ReelItem>, dismissed: Set<String>): List<ReelItem> {
+        return items
+            .filter { it.id !in dismissed }
+            .sortedByDescending { reel ->
+                val likeSignal = kotlin.math.ln((reel.likes + 1).toDouble()) * 18.0
+                val commentSignal = kotlin.math.ln((reel.comments + 1).toDouble()) * 32.0
+                val videoBoost = if (reel.isVideo) 40.0 else 0.0
+                val captionBoost = if (reel.caption.isNotBlank()) 12.0 else 0.0
+                val mediaBoost = if (!reel.mediaUrl.isNullOrBlank()) 20.0 else 0.0
+                likeSignal + commentSignal + videoBoost + captionBoost + mediaBoost
+            }
     }
 
     private fun parseReels(body: JsonObject?): List<ReelItem> {

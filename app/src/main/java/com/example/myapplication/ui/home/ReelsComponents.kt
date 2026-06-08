@@ -14,6 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,20 +29,28 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 
+private val ReelPink = Color(0xFFFF3B6B)
+private val ReelBg = Color.Black
+
 @Composable
 fun ReelsScreen(accentBlue: Color, isDarkMode: Boolean, onProfileClick: (String) -> Unit) {
     val vm: ReelsViewModel = viewModel()
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize().background(ReelBg)) {
         when {
             vm.isLoading -> ReelsLoadingState()
             vm.reels.isEmpty() -> ReelsEmptyState(
@@ -47,40 +58,125 @@ fun ReelsScreen(accentBlue: Color, isDarkMode: Boolean, onProfileClick: (String)
                           else "Hali reels yo'q.\nKo'proq odamlarni kuzating!",
                 onRetry = { vm.loadReels() }
             )
-            else -> ReelsPager(reels = vm.reels, onProfileClick = onProfileClick)
+            else -> ReelsPager(
+                reels = vm.reels,
+                isMuted = vm.isMuted,
+                onToggleMute = { vm.toggleMute() },
+                onSave = { vm.toggleSave(it) },
+                isSaved = { vm.isSaved(it) },
+                onNotInterested = { vm.markNotInterested(it) },
+                onProfileClick = onProfileClick
+            )
         }
     }
 }
 
+/**
+ * Public fullscreen reel viewer used from SearchScreen when the user taps a video post.
+ * Reuses the same overlay/interaction stack as the main Reels tab but adds a close button.
+ */
 @Composable
-private fun ReelsPager(reels: List<ReelItem>, onProfileClick: (String) -> Unit) {
+fun ReelFullscreenViewer(
+    reel: ReelItem,
+    onDismiss: () -> Unit,
+    onProfileClick: (String) -> Unit
+) {
+    var isMuted by remember { mutableStateOf(true) }
+    var isSaved by remember(reel.id) { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize().background(ReelBg)) {
+        ReelPage(
+            reel = reel,
+            rank = 0,
+            isMuted = isMuted,
+            isSaved = isSaved,
+            onToggleMute = { isMuted = !isMuted },
+            onToggleSave = { isSaved = !isSaved },
+            onNotInterested = onDismiss,
+            onProfileClick = onProfileClick
+        )
+
+        // Close button overlay (top-left)
+        Box(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 8.dp)
+                .size(40.dp)
+                .background(Color.Black.copy(0.45f), CircleShape)
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Pager — main tab
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ReelsPager(
+    reels: List<ReelItem>,
+    isMuted: Boolean,
+    onToggleMute: () -> Unit,
+    onSave: (String) -> Unit,
+    isSaved: (String) -> Boolean,
+    onNotInterested: (String) -> Unit,
+    onProfileClick: (String) -> Unit
+) {
     val pagerState = rememberPagerState { reels.size }
 
     Box(modifier = Modifier.fillMaxSize()) {
         VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            ReelPage(reel = reels[page], onProfileClick = onProfileClick)
+            val reel = reels[page]
+            ReelPage(
+                reel = reel,
+                rank = page,
+                isMuted = isMuted,
+                isSaved = isSaved(reel.id),
+                onToggleMute = onToggleMute,
+                onToggleSave = { onSave(reel.id) },
+                onNotInterested = { onNotInterested(reel.id) },
+                onProfileClick = onProfileClick
+            )
         }
 
-        // Fixed top bar overlay
+        // Fixed top bar: "For You" / "Following" tabs
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .align(Alignment.TopCenter),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Reels",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.weight(1f))
+            ReelTopTab(label = "Kuzatilayotgan", active = false) {}
+            Spacer(Modifier.width(20.dp))
+            ReelTopTab(label = "Siz uchun", active = true) {}
         }
 
-        // Swipe-up hint on first reel when there's more
+        // Mute toggle — top-right
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(end = 12.dp, top = 8.dp)
+                .size(38.dp)
+                .background(Color.Black.copy(0.45f), CircleShape)
+                .clickable(onClick = onToggleMute),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Swipe-up hint on first reel
         if (pagerState.currentPage == 0 && reels.size > 1) {
             val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
                 initialValue = 0.4f,
@@ -106,12 +202,56 @@ private fun ReelsPager(reels: List<ReelItem>, onProfileClick: (String) -> Unit) 
 }
 
 @Composable
-private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
+private fun ReelTopTab(label: String, active: Boolean, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(
+            indication = null,
+            interactionSource = remember { MutableInteractionSource() },
+            onClick = onClick
+        )
+    ) {
+        Text(
+            label,
+            color = if (active) Color.White else Color.White.copy(0.55f),
+            fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium,
+            fontSize = 15.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .width(28.dp)
+                .height(2.5.dp)
+                .background(if (active) Color.White else Color.Transparent, RoundedCornerShape(2.dp))
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ReelPage — single reel surface (reused for tab + fullscreen viewer)
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ReelPage(
+    reel: ReelItem,
+    rank: Int,
+    isMuted: Boolean,
+    isSaved: Boolean,
+    onToggleMute: () -> Unit,
+    onToggleSave: () -> Unit,
+    onNotInterested: () -> Unit,
+    onProfileClick: (String) -> Unit
+) {
     var isLiked by remember(reel.id) { mutableStateOf(false) }
     var likeCount by remember(reel.id) { mutableStateOf(reel.likes) }
     var heartTrigger by remember { mutableIntStateOf(0) }
     var heartVisible by remember { mutableStateOf(false) }
     var captionExpanded by remember { mutableStateOf(false) }
+    var isPaused by remember(reel.id) { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showComments by remember { mutableStateOf(false) }
+    var showShare by remember { mutableStateOf(false) }
+    var isFollowed by remember(reel.id) { mutableStateOf(false) }
 
     LaunchedEffect(heartTrigger) {
         if (heartTrigger > 0) {
@@ -132,6 +272,7 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
             .fillMaxSize()
             .pointerInput(reel.id) {
                 detectTapGestures(
+                    onTap = { isPaused = !isPaused },
                     onDoubleTap = {
                         if (!isLiked) {
                             isLiked = true
@@ -142,7 +283,7 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
                 )
             }
     ) {
-        // Full-screen background media
+        // Background media
         if (!reel.mediaUrl.isNullOrBlank()) {
             AsyncImage(
                 model = reel.mediaUrl,
@@ -162,39 +303,61 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
             )
         }
 
-        // Top scrim (for status bar readability)
+        // Top + bottom scrims
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(180.dp)
                 .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(listOf(Color.Black.copy(0.55f), Color.Transparent))
-                )
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(0.55f), Color.Transparent)))
         )
-
-        // Bottom scrim (for overlay content readability)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(400.dp)
                 .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f)))
-                )
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f))))
         )
 
-        // Play indicator for video reels
-        if (reel.isVideo) {
+        // "For you" recommended badge (top-ranked picks)
+        if (rank < 3) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 56.dp)
+                    .background(Color.Black.copy(0.55f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.AutoAwesome, null, tint = ReelPink, modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Siz uchun tanlandi", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        // Pause indicator (center)
+        if (isPaused) {
             Box(
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(74.dp)
                     .align(Alignment.Center)
-                    .background(Color.Black.copy(0.3f), CircleShape)
-                    .border(1.5.dp, Color.White.copy(0.4f), CircleShape),
+                    .background(Color.Black.copy(0.45f), CircleShape)
+                    .border(1.5.dp, Color.White.copy(0.5f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(44.dp))
+            }
+        } else if (reel.isVideo) {
+            // Subtle play hint for video reels when playing
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(0.18f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.PlayArrow, null, tint = Color.White.copy(0.5f), modifier = Modifier.size(28.dp))
             }
         }
 
@@ -220,53 +383,54 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Author avatar with follow badge
             ReelAvatarButton(
                 avatarUrl = reel.authorAvatar,
-                onClick = { if (reel.authorUsername.isNotBlank()) onProfileClick(reel.authorUsername) }
+                showFollow = !isFollowed,
+                onClick = { if (reel.authorUsername.isNotBlank()) onProfileClick(reel.authorUsername) },
+                onFollowClick = { isFollowed = true }
             )
 
             Spacer(Modifier.height(10.dp))
 
-            // Like
             ReelCountAction(
                 icon = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 count = likeCount,
-                tint = if (isLiked) Color(0xFFFF4B77) else Color.White,
+                tint = if (isLiked) ReelPink else Color.White,
                 onClick = {
                     isLiked = !isLiked
                     likeCount += if (isLiked) 1 else -1
                 }
             )
 
-            // Comment
             ReelCountAction(
                 icon = Icons.AutoMirrored.Filled.Comment,
                 count = reel.comments,
                 tint = Color.White,
-                onClick = {}
+                onClick = { showComments = true }
             )
 
-            // Bookmark
-            ReelIconAction(Icons.Default.BookmarkBorder, Color.White) {}
+            ReelIconAction(
+                icon = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                tint = if (isSaved) Color(0xFFFFD54F) else Color.White,
+                onClick = onToggleSave
+            )
 
-            // Share
-            ReelIconAction(Icons.Default.Share, Color.White) {}
+            ReelIconAction(Icons.AutoMirrored.Filled.Send, Color.White) { showShare = true }
+
+            ReelIconAction(Icons.Default.MoreVert, Color.White) { showMoreMenu = true }
 
             Spacer(Modifier.height(4.dp))
 
-            // Rotating music disc
-            RotatingDisc()
+            RotatingDisc(avatarUrl = reel.authorAvatar)
         }
 
-        // Bottom-left: username, caption, audio
+        // Bottom-left: username + caption + audio
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
                 .padding(start = 14.dp, end = 88.dp, bottom = 24.dp)
         ) {
-            // Username
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable(
@@ -280,16 +444,26 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
+                if (!isFollowed) {
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .border(1.dp, Color.White, RoundedCornerShape(6.dp))
+                            .clickable { isFollowed = true }
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Text("Kuzatish", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
 
-            // Caption (expandable)
             if (reel.caption.isNotBlank()) {
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    text = reel.caption,
-                    color = Color.White.copy(0.9f),
+                    text = highlightHashtagsAndMentions(reel.caption),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
+                    color = Color.White.copy(0.92f),
                     maxLines = if (captionExpanded) Int.MAX_VALUE else 2,
                     overflow = if (captionExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
                     modifier = Modifier.clickable(
@@ -299,8 +473,9 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
                 )
             }
 
-            // Audio strip
             Spacer(Modifier.height(10.dp))
+
+            // Audio strip — animated marquee feel
             Row(
                 modifier = Modifier
                     .background(Color.White.copy(0.12f), RoundedCornerShape(20.dp))
@@ -319,10 +494,44 @@ private fun ReelPage(reel: ReelItem, onProfileClick: (String) -> Unit) {
             }
         }
     }
+
+    // Sheets
+    if (showMoreMenu) {
+        ReelMoreMenuSheet(
+            isSaved = isSaved,
+            onDismiss = { showMoreMenu = false },
+            onSave = { onToggleSave(); showMoreMenu = false },
+            onNotInterested = { showMoreMenu = false; onNotInterested() },
+            onReport = { showMoreMenu = false }
+        )
+    }
+    if (showComments) {
+        ReelCommentsSheet(
+            authorUsername = reel.authorUsername,
+            commentCount = reel.comments,
+            onDismiss = { showComments = false }
+        )
+    }
+    if (showShare) {
+        ReelShareSheet(
+            reelId = reel.id,
+            authorUsername = reel.authorUsername,
+            onDismiss = { showShare = false }
+        )
+    }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Right-side action buttons
+// ─────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun ReelAvatarButton(avatarUrl: String, onClick: () -> Unit) {
+private fun ReelAvatarButton(
+    avatarUrl: String,
+    showFollow: Boolean,
+    onClick: () -> Unit,
+    onFollowClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .width(46.dp)
@@ -353,34 +562,29 @@ private fun ReelAvatarButton(avatarUrl: String, onClick: () -> Unit) {
                 Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(26.dp))
             }
         }
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .align(Alignment.BottomCenter)
-                .background(Color(0xFFFF3B6B), CircleShape)
-                .border(1.5.dp, Color.Black, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(12.dp))
+        if (showFollow) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(ReelPink, CircleShape)
+                    .border(1.5.dp, Color.Black, CircleShape)
+                    .clickable(onClick = onFollowClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(12.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun ReelCountAction(
-    icon: ImageVector,
-    count: Int,
-    tint: Color,
-    onClick: () -> Unit
-) {
+private fun ReelCountAction(icon: ImageVector, count: Int, tint: Color, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.size(48.dp)
-        ) {
+        IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(30.dp))
         }
         Text(reelFormatCount(count), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -395,7 +599,7 @@ private fun ReelIconAction(icon: ImageVector, tint: Color, onClick: () -> Unit) 
 }
 
 @Composable
-private fun RotatingDisc() {
+private fun RotatingDisc(avatarUrl: String) {
     val rotation by rememberInfiniteTransition(label = "disc").animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -413,20 +617,323 @@ private fun RotatingDisc() {
             .background(Color(0xFF2C2C2C)),
         contentAlignment = Alignment.Center
     ) {
-        // Vinyl rings
         Box(modifier = Modifier.size(36.dp).border(1.dp, Color.White.copy(0.1f), CircleShape))
         Box(modifier = Modifier.size(28.dp).border(1.dp, Color.White.copy(0.1f), CircleShape))
-        // Center hole
-        Box(modifier = Modifier.size(12.dp).background(Color(0xFF111111), CircleShape).border(1.dp, Color.White.copy(0.25f), CircleShape))
+        if (avatarUrl.isNotBlank()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp).clip(CircleShape).border(1.dp, Color.White.copy(0.4f), CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(modifier = Modifier.size(12.dp).background(Color(0xFF111111), CircleShape).border(1.dp, Color.White.copy(0.25f), CircleShape))
+        }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Bottom sheets
+// ─────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReelMoreMenuSheet(
+    isSaved: Boolean,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+    onNotInterested: () -> Unit,
+    onReport: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val clipboard = LocalClipboardManager.current
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF161616),
+        dragHandle = { ReelDragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp)
+        ) {
+            ReelMenuRow(
+                icon = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                label = if (isSaved) "Saqlangan" else "Saqlash",
+                onClick = onSave
+            )
+            ReelMenuRow(
+                icon = Icons.Default.Link,
+                label = "Havolani nusxalash",
+                onClick = {
+                    clipboard.setText(AnnotatedString("https://stugram.app/r/"))
+                    onDismiss()
+                }
+            )
+            ReelMenuRow(
+                icon = Icons.Default.VisibilityOff,
+                label = "Qiziq emas",
+                onClick = onNotInterested
+            )
+            ReelMenuRow(
+                icon = Icons.Default.Flag,
+                label = "Shikoyat qilish",
+                tint = Color(0xFFFF5252),
+                onClick = onReport
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReelCommentsSheet(
+    authorUsername: String,
+    commentCount: Int,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    var draft by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF111111),
+        dragHandle = { ReelDragHandle() }
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
+            Text(
+                "Izohlar  ·  ${reelFormatCount(commentCount)}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+            HorizontalDivider(color = Color.White.copy(0.05f))
+
+            if (commentCount == 0) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.AutoMirrored.Filled.Comment, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text("Hali izohlar yo'q", color = Color.White.copy(0.6f), fontSize = 13.sp)
+                        Text("Birinchi bo'lib izoh qoldiring", color = Color.White.copy(0.4f), fontSize = 11.sp)
+                    }
+                }
+            } else {
+                // Mock comments preview — real backend not wired
+                Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                    listOf(
+                        "Zo'r 🔥" to "ali_2008",
+                        "Qaerda olingan bu?" to "shahnoza_uz",
+                        "Eng yaxshi reel @${authorUsername} ❤️" to "sanjar.k"
+                    ).forEach { (text, user) ->
+                        ReelCommentRow(user = user, text = text)
+                    }
+                }
+            }
+
+            HorizontalDivider(color = Color.White.copy(0.05f))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(ReelPink.copy(0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text("Izoh qoldiring...", color = Color.White.copy(0.4f), fontSize = 13.sp) },
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = ReelPink.copy(0.4f),
+                        unfocusedBorderColor = Color.White.copy(0.1f),
+                        focusedContainerColor = Color.White.copy(0.04f),
+                        unfocusedContainerColor = Color.White.copy(0.04f),
+                        cursorColor = ReelPink
+                    ),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                )
+                Spacer(Modifier.width(6.dp))
+                IconButton(
+                    onClick = { draft = "" },
+                    enabled = draft.isNotBlank(),
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        null,
+                        tint = if (draft.isNotBlank()) ReelPink else Color.White.copy(0.3f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReelCommentRow(user: String, text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Person, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text("@$user", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(text, color = Color.White.copy(0.85f), fontSize = 13.sp, lineHeight = 17.sp)
+        }
+        Icon(Icons.Default.FavoriteBorder, null, tint = Color.White.copy(0.4f), modifier = Modifier.size(16.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReelShareSheet(
+    reelId: String,
+    authorUsername: String,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val clipboard = LocalClipboardManager.current
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF161616),
+        dragHandle = { ReelDragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text(
+                "Reel ulashish",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            ReelShareTile(
+                icon = Icons.Default.Link,
+                label = "Havolani nusxalash",
+                hint = "stugram.app/r/${reelId.take(8)}",
+                onClick = {
+                    clipboard.setText(AnnotatedString("https://stugram.app/r/$reelId"))
+                    onDismiss()
+                }
+            )
+            ReelShareTile(
+                icon = Icons.AutoMirrored.Filled.Send,
+                label = "Xabar orqali yuborish",
+                hint = "Do'stlarga yuboring",
+                onClick = onDismiss
+            )
+            ReelShareTile(
+                icon = Icons.Default.AddCircle,
+                label = "Storyga qo'shish",
+                hint = "Sizning hikoyangizga",
+                onClick = onDismiss
+            )
+            ReelShareTile(
+                icon = Icons.Default.Download,
+                label = "Yuklab olish",
+                hint = "Telefoningizga saqlang",
+                onClick = onDismiss
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun ReelShareTile(icon: ImageVector, label: String, hint: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(Color.White.copy(0.08f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(hint, color = Color.White.copy(0.5f), fontSize = 11.sp)
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = Color.White.copy(0.4f), modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun ReelMenuRow(icon: ImageVector, label: String, tint: Color = Color.White, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(label, color = tint, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ReelDragHandle() {
+    Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.width(38.dp).height(4.dp).background(Color.White.copy(0.25f), RoundedCornerShape(2.dp)))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// States
+// ─────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun ReelsLoadingState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             CircularProgressIndicator(
-                color = Color(0xFFFF3B6B),
+                color = ReelPink,
                 strokeWidth = 3.dp,
                 modifier = Modifier.size(44.dp)
             )
@@ -447,12 +954,12 @@ private fun ReelsEmptyState(message: String, onRetry: () -> Unit) {
                 modifier = Modifier
                     .size(84.dp)
                     .background(
-                        Brush.radialGradient(listOf(Color(0xFFFF3B6B).copy(0.15f), Color.Transparent)),
+                        Brush.radialGradient(listOf(ReelPink.copy(0.15f), Color.Transparent)),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Movie, null, tint = Color(0xFFFF3B6B).copy(0.7f), modifier = Modifier.size(42.dp))
+                Icon(Icons.Default.Movie, null, tint = ReelPink.copy(0.7f), modifier = Modifier.size(42.dp))
             }
             Text(
                 message,
@@ -464,7 +971,7 @@ private fun ReelsEmptyState(message: String, onRetry: () -> Unit) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFFFF3B6B))
+                    .background(ReelPink)
                     .clickable(onClick = onRetry)
                     .padding(horizontal = 32.dp, vertical = 13.dp)
             ) {
@@ -476,6 +983,23 @@ private fun ReelsEmptyState(message: String, onRetry: () -> Unit) {
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────
+
+private fun highlightHashtagsAndMentions(text: String): AnnotatedString = buildAnnotatedString {
+    val regex = Regex("([#@][\\w_]+)")
+    var last = 0
+    for (match in regex.findAll(text)) {
+        if (match.range.first > last) append(text.substring(last, match.range.first))
+        withStyle(SpanStyle(color = Color(0xFF7DD3FC), fontWeight = FontWeight.SemiBold)) {
+            append(match.value)
+        }
+        last = match.range.last + 1
+    }
+    if (last < text.length) append(text.substring(last))
 }
 
 private fun reelFormatCount(count: Int): String = when {

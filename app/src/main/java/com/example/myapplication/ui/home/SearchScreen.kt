@@ -48,6 +48,7 @@ fun SearchScreen(
     val vm: SearchViewModel = viewModel()
     val ui = vm.uiState.collectAsState().value
     var selectedPost by remember { mutableStateOf<PostData?>(null) }
+    var viewingReel by remember { mutableStateOf<ReelItem?>(null) }
 
     selectedPost?.let { post ->
         PostDetailSheet(
@@ -55,6 +56,21 @@ fun SearchScreen(
             onDismiss = { selectedPost = null },
             onOpenProfile = { selectedPost = null; onOpenProfile(it) }
         )
+    }
+
+    // Video post → fullscreen reels viewer (animated expand from grid)
+    AnimatedVisibility(
+        visible = viewingReel != null,
+        enter = fadeIn(tween(220)) + scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = 0.92f),
+        exit = fadeOut(tween(180)) + scaleOut(tween(220), targetScale = 0.94f)
+    ) {
+        viewingReel?.let { reel ->
+            ReelFullscreenViewer(
+                reel = reel,
+                onDismiss = { viewingReel = null },
+                onProfileClick = { viewingReel = null; onOpenProfile(it) }
+            )
+        }
     }
 
     Column(
@@ -182,7 +198,9 @@ fun SearchScreen(
                 posts = ui.trendingPosts,
                 isLoading = ui.isLoadingDiscovery,
                 onOpenProfile = onOpenProfile,
-                onOpenPost = { selectedPost = it }
+                onOpenPost = { post ->
+                    if (post.isVideo) viewingReel = postToReel(post) else selectedPost = post
+                }
             )
             ui.users.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text("Natija topilmadi", color = SSec, fontSize = 14.sp)
@@ -1079,3 +1097,14 @@ private fun formatDiscoveryCount(count: Int): String = when {
     count >= 1_000 -> "${count / 1_000}k"
     else -> count.toString()
 }
+
+private fun postToReel(post: PostData): ReelItem = ReelItem(
+    id = post.id,
+    authorUsername = post.user,
+    authorAvatar = "",
+    mediaUrl = post.image,
+    caption = post.caption,
+    likes = post.likes,
+    comments = post.comments,
+    isVideo = post.isVideo
+)
