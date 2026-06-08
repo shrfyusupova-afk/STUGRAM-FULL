@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Run once from Render Shell to seed a fixed user:
- *   node src/scripts/seedUser.js
+ * Run once from Render Shell to seed fixed users:
+ *   npm run seed:user
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
@@ -13,32 +13,11 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-// Minimal inline schema — avoids loading the full app stack.
-const userSchema = new mongoose.Schema({
-  identity: { type: String, sparse: true, lowercase: true, trim: true },
-  fullName: { type: String, required: true, trim: true },
-  username: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  passwordHash: { type: String, default: null },
-  bio: { type: String, default: "" },
-  avatar: { type: String, default: null },
-  role: { type: String, default: "user" },
-  type: { type: String, default: "student" },
-  isPrivateAccount: { type: Boolean, default: false },
-  isSuspended: { type: Boolean, default: false },
-  followersCount: { type: Number, default: 0 },
-  followingCount: { type: Number, default: 0 },
-  postsCount: { type: Number, default: 0 },
-  lastLoginAt: { type: Date, default: null },
-}, { timestamps: true });
-
-const User = mongoose.models.User || mongoose.model("User", userSchema);
-
 const USERS_TO_SEED = [
   {
     username: "jahongir",
     password: "jokkhaa",
     fullName: "Jahongir",
-    identity: null, // no email needed — login by username
     role: "admin",
   },
 ];
@@ -47,27 +26,52 @@ async function run() {
   await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000 });
   console.log("Connected to MongoDB");
 
+  // Use the native collection to bypass mongoose index management
+  const col = mongoose.connection.db.collection("users");
+
   for (const u of USERS_TO_SEED) {
     const passwordHash = await bcrypt.hash(u.password, 12);
-    const existing = await User.findOne({ username: u.username });
+    const now = new Date();
+
+    const existing = await col.findOne({ username: u.username.toLowerCase() });
 
     if (existing) {
-      existing.passwordHash = passwordHash;
-      existing.isSuspended = false;
-      existing.role = u.role;
-      if (u.fullName) existing.fullName = u.fullName;
-      await existing.save();
+      await col.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            passwordHash,
+            fullName: u.fullName,
+            role: u.role,
+            isSuspended: false,
+            suspendedUntil: null,
+            suspensionReason: null,
+            updatedAt: now,
+          },
+        }
+      );
       console.log(`Updated user: @${u.username}`);
     } else {
-      await User.create({
-        username: u.username,
+      await col.insertOne({
+        username: u.username.toLowerCase(),
         fullName: u.fullName,
-        identity: u.identity || undefined,
         passwordHash,
         role: u.role,
         bio: "",
+        avatar: null,
+        banner: null,
+        type: "student",
         isPrivateAccount: false,
         isSuspended: false,
+        suspendedUntil: null,
+        suspensionReason: null,
+        followersCount: 0,
+        followingCount: 0,
+        postsCount: 0,
+        accountId: null,
+        lastLoginAt: null,
+        createdAt: now,
+        updatedAt: now,
       });
       console.log(`Created user: @${u.username}`);
     }
