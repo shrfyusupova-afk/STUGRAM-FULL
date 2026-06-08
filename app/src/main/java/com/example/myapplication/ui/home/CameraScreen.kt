@@ -20,6 +20,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -318,14 +320,19 @@ fun CameraScreen(
             }
 
             // Shutter / Record button
-            Box(modifier = Modifier.align(Alignment.Center).size(88.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.align(Alignment.Center).size(108.dp), contentAlignment = Alignment.Center) {
                 val ringColor = if (currentMode == CreateMode.REELS) {
                     if (isRecording) Color.Red else Color(0xFFFF3B6B)
                 } else Color.White
-                Box(modifier = Modifier.size(88.dp).border(3.5.dp, ringColor, CircleShape))
+                // Outer ring — grows when holding to record (Instagram-style)
+                val ringSize = if (isRecording) 108.dp else 88.dp
+                Box(modifier = Modifier.size(ringSize).border(4.dp, ringColor, CircleShape))
+
+                // Inner shutter button — shrinks to a red square while recording
+                val innerSize = if (isRecording) 36.dp else 72.dp
                 Box(
                     modifier = Modifier
-                        .size(if (isRecording) 28.dp else 72.dp)
+                        .size(innerSize)
                         .scale(captureScale)
                         .background(
                             when {
@@ -334,35 +341,42 @@ fun CameraScreen(
                                 currentMode == CreateMode.REELS -> Color(0xFFFF3B6B)
                                 else -> Color.White
                             },
-                            if (isRecording) RoundedCornerShape(6.dp) else CircleShape
+                            if (isRecording) RoundedCornerShape(8.dp) else CircleShape
                         )
-                        .clickable(
-                            enabled = hasPermission && !isCapturing,
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            if (currentMode == CreateMode.REELS) {
-                                if (isRecording) {
-                                    activeRecording?.stop()
-                                } else {
-                                    startRecording()
-                                }
-                            } else {
-                                isCapturing = true
-                                val outputFile = File(context.filesDir, "capture_${System.currentTimeMillis()}.jpg")
-                                val opts = ImageCapture.OutputFileOptions.Builder(outputFile).build()
-                                cameraController.takePicture(
-                                    opts,
-                                    ContextCompat.getMainExecutor(context),
-                                    object : ImageCapture.OnImageSavedCallback {
-                                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                            isCapturing = false
-                                            onImageSelected(output.savedUri ?: Uri.fromFile(outputFile))
-                                        }
-                                        override fun onError(e: ImageCaptureException) { isCapturing = false }
+                        .pointerInput(currentMode, hasPermission, isCapturing) {
+                            if (!hasPermission || isCapturing) return@pointerInput
+                            detectTapGestures(
+                                onPress = {
+                                    if (currentMode == CreateMode.REELS) {
+                                        // Instagram-style: hold-to-record
+                                        startRecording()
+                                        tryAwaitRelease()
+                                        // Finger lifted (or gesture cancelled) — stop recording
+                                        activeRecording?.stop()
                                     }
-                                )
-                            }
+                                },
+                                onTap = {
+                                    if (currentMode != CreateMode.REELS) {
+                                        isCapturing = true
+                                        val outputFile = File(
+                                            context.filesDir,
+                                            "capture_${System.currentTimeMillis()}.jpg"
+                                        )
+                                        val opts = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                                        cameraController.takePicture(
+                                            opts,
+                                            ContextCompat.getMainExecutor(context),
+                                            object : ImageCapture.OnImageSavedCallback {
+                                                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                                    isCapturing = false
+                                                    onImageSelected(output.savedUri ?: Uri.fromFile(outputFile))
+                                                }
+                                                override fun onError(e: ImageCaptureException) { isCapturing = false }
+                                            }
+                                        )
+                                    }
+                                }
+                            )
                         },
                     contentAlignment = Alignment.Center
                 ) {
