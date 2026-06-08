@@ -19,6 +19,7 @@ data class AlphaProfileUiState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val saveError: String? = null,
+    val userId: String = "",
     val fullName: String = "",
     val username: String = "",
     val bio: String = "",
@@ -89,6 +90,7 @@ class ProfileViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        userId = data?.get("_id")?.asString.orEmpty(),
                         fullName = data?.get("fullName")?.asString.orEmpty(),
                         username = data?.get("username")?.asString.orEmpty(),
                         bio = data?.get("bio")?.asString.orEmpty(),
@@ -157,35 +159,49 @@ class ProfileViewModel(
 
     fun followOrUnfollow() {
         val state = _uiState.value
-        val target = state.targetUsername ?: return
         if (state.isSelf) return
+        val userId = state.userId.ifBlank { return }
+
+        // Optimistic UI update first, then call API
+        val nowFollowing = state.followStatus != "following"
+        _uiState.update {
+            it.copy(
+                isSaving = true,
+                saveError = null,
+                followStatus = if (nowFollowing) "following" else "not_following",
+                followersCount = if (nowFollowing) it.followersCount + 1 else (it.followersCount - 1).coerceAtLeast(0)
+            )
+        }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, saveError = null) }
             try {
-                val profileResponse = withContext(ioDispatcher) { authApi.getProfileByUsername(target) }
-                if (!profileResponse.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Follow holati aniqlanmadi") }
-                    return@launch
-                }
-                val userId = profileResponse.body()?.getAsJsonObject("data")?.get("_id")?.asString
-                if (userId.isNullOrBlank()) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "User ID topilmadi") }
-                    return@launch
-                }
-
                 val response = withContext(ioDispatcher) {
-                    if (state.followStatus == "following") authApi.unfollowUser(userId)
-                    else authApi.followUser(userId)
+                    if (nowFollowing) authApi.followUser(userId)
+                    else authApi.unfollowUser(userId)
                 }
                 if (!response.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Amal bajarilmadi (${response.code()})") }
+                    // Revert optimistic update on failure
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            saveError = "Amal bajarilmadi (${response.code()})",
+                            followStatus = if (nowFollowing) "not_following" else "following",
+                            followersCount = if (nowFollowing) it.followersCount - 1 else it.followersCount + 1
+                        )
+                    }
                     return@launch
                 }
                 _uiState.update { it.copy(isSaving = false) }
-                refresh()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
+                // Revert on network error
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = "Tarmoq xatosi: ${e.message}",
+                        followStatus = if (nowFollowing) "not_following" else "following",
+                        followersCount = if (nowFollowing) it.followersCount - 1 else it.followersCount + 1
+                    )
+                }
             }
         }
     }
