@@ -47,7 +47,12 @@ private val ReelPink = Color(0xFFFF3B6B)
 private val ReelBg = Color.Black
 
 @Composable
-fun ReelsScreen(accentBlue: Color, isDarkMode: Boolean, onProfileClick: (String) -> Unit) {
+fun ReelsScreen(
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onProfileClick: (String) -> Unit,
+    onHashtagClick: (String) -> Unit = {}
+) {
     val vm: ReelsViewModel = viewModel()
 
     Box(modifier = Modifier.fillMaxSize().background(ReelBg)) {
@@ -65,7 +70,8 @@ fun ReelsScreen(accentBlue: Color, isDarkMode: Boolean, onProfileClick: (String)
                 onSave = { vm.toggleSave(it) },
                 isSaved = { vm.isSaved(it) },
                 onNotInterested = { vm.markNotInterested(it) },
-                onProfileClick = onProfileClick
+                onProfileClick = onProfileClick,
+                onHashtagClick = onHashtagClick
             )
         }
     }
@@ -123,7 +129,8 @@ private fun ReelsPager(
     onSave: (String) -> Unit,
     isSaved: (String) -> Boolean,
     onNotInterested: (String) -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onHashtagClick: (String) -> Unit = {}
 ) {
     val pagerState = rememberPagerState { reels.size }
 
@@ -139,7 +146,8 @@ private fun ReelsPager(
                 onToggleMute = onToggleMute,
                 onToggleSave = { onSave(reel.id) },
                 onNotInterested = { onNotInterested(reel.id) },
-                onProfileClick = onProfileClick
+                onProfileClick = onProfileClick,
+                onHashtagClick = onHashtagClick
             )
         }
 
@@ -242,7 +250,8 @@ private fun ReelPage(
     onToggleMute: () -> Unit,
     onToggleSave: () -> Unit,
     onNotInterested: () -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onHashtagClick: (String) -> Unit = {}
 ) {
     var isLiked by remember(reel.id) { mutableStateOf(false) }
     var likeCount by remember(reel.id) { mutableStateOf(reel.likes) }
@@ -472,17 +481,15 @@ private fun ReelPage(
 
             if (reel.caption.isNotBlank()) {
                 Spacer(Modifier.height(5.dp))
-                Text(
-                    text = highlightHashtagsAndMentions(reel.caption),
+                ClickableHashtagMentionText(
+                    text = reel.caption,
+                    textColor = Color.White.copy(0.92f),
+                    linkColor = Color(0xFF7DD3FC),
                     fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    color = Color.White.copy(0.92f),
                     maxLines = if (captionExpanded) Int.MAX_VALUE else 2,
-                    overflow = if (captionExpanded) TextOverflow.Visible else TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { captionExpanded = !captionExpanded }
+                    onHashtagClick = onHashtagClick,
+                    onMentionClick = onProfileClick,
+                    onTextClick = { captionExpanded = !captionExpanded }
                 )
             }
 

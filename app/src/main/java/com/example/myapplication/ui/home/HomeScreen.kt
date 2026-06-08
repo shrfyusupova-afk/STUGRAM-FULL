@@ -37,6 +37,8 @@ fun HomeScreen(
     onNavigateToCreatePost: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToSaved: () -> Unit = {},
+    onNavigateToHashtag: (String) -> Unit = {},
+    onNavigateToFollowList: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = viewModel()
 ) {
     val backgroundColor = if (isDarkMode) GlobalBackgroundColor else Color(0xFFF2F2F2)
@@ -93,7 +95,12 @@ fun HomeScreen(
                             onProfileClick = onNavigateToProfile,
                             onPostMoreClick = { post -> moreMenuForPost = post },
                             onNotificationsClick = onNavigateToNotifications,
-                            onSavedClick = onNavigateToSaved
+                            onSavedClick = onNavigateToSaved,
+                            onLoadMore = { viewModel.loadMoreIfNeeded() },
+                            isLoadingMore = viewModel.isLoadingMore,
+                            hasMore = viewModel.hasMorePosts,
+                            onHashtagClick = onNavigateToHashtag,
+                            onMentionClick = onNavigateToProfile
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -104,7 +111,8 @@ fun HomeScreen(
                         2 -> ReelsScreen(
                             accentBlue = accentBlue,
                             isDarkMode = isDarkMode,
-                            onProfileClick = onNavigateToProfile
+                            onProfileClick = onNavigateToProfile,
+                            onHashtagClick = onNavigateToHashtag
                         )
                         3 -> MessagesScreen(
                             isDarkMode = isDarkMode,
@@ -120,7 +128,8 @@ fun HomeScreen(
                             isDarkMode = isDarkMode,
                             isRefreshing = viewModel.isProfileRefreshing,
                             onRefresh = { viewModel.refreshProfile() },
-                            onBack = { viewModel.onTabSelected(0) }
+                            onBack = { viewModel.onTabSelected(0) },
+                            onOpenFollowList = onNavigateToFollowList
                         )
                     }
                 }
@@ -203,6 +212,10 @@ fun HomeScreen(
                 },
                 onDelete = {
                     deletingPost = post
+                    moreMenuForPost = null
+                },
+                onBlock = {
+                    viewModel.blockUserOfPost(post)
                     moreMenuForPost = null
                 }
             )

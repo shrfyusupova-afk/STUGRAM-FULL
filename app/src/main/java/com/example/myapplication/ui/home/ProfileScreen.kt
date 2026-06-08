@@ -55,7 +55,8 @@ fun ProfileScreen(
     onRefresh: () -> Unit,
     isMyProfile: Boolean = true,
     targetUsername: String? = null,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    onOpenFollowList: (String, String) -> Unit = { _, _ -> }
 ) {
     val vm: ProfileViewModel = viewModel()
     val ui by vm.uiState.collectAsState()
@@ -272,8 +273,20 @@ fun ProfileScreen(
                                 Spacer(Modifier.height(10.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                                     ProfileStat(ui.postsCount.fmt(), "Posts")
-                                    ProfileStat(ui.followersCount.fmt(), "Followers")
-                                    ProfileStat(ui.followingCount.fmt(), "Following")
+                                    ProfileStat(
+                                        ui.followersCount.fmt(),
+                                        "Followers",
+                                        onClick = {
+                                            if (ui.username.isNotBlank()) onOpenFollowList(ui.username, "followers")
+                                        }
+                                    )
+                                    ProfileStat(
+                                        ui.followingCount.fmt(),
+                                        "Following",
+                                        onClick = {
+                                            if (ui.username.isNotBlank()) onOpenFollowList(ui.username, "following")
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -521,8 +534,11 @@ private fun ProfileTabSwitcher(
 
 // ── Stat item ─────────────────────────────────────────────────────────────
 @Composable
-private fun ProfileStat(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ProfileStat(value: String, label: String, onClick: (() -> Unit)? = null) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    ) {
         Text(
             text = value,
             color = ProfileFg,

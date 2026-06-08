@@ -64,8 +64,25 @@ fun HomeTabScreen(
     onProfileClick: (String) -> Unit = {},
     onPostMoreClick: (PostData) -> Unit = {},
     onNotificationsClick: () -> Unit = {},
-    onSavedClick: () -> Unit = {}
+    onSavedClick: () -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    isLoadingMore: Boolean = false,
+    hasMore: Boolean = false,
+    onHashtagClick: (String) -> Unit = {},
+    onMentionClick: (String) -> Unit = {}
 ) {
+    // Infinite scroll: oxiriga yaqinlashganda yangi postlarni yuklash
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisibleIndex >= totalItems - 3
+        }
+    }
+    LaunchedEffect(shouldLoadMore, hasMore, isLoadingMore) {
+        if (shouldLoadMore && hasMore && !isLoadingMore) onLoadMore()
+    }
     val pullState = rememberPullToRefreshState()
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -134,8 +151,29 @@ fun HomeTabScreen(
                         isDarkMode = isDarkMode,
                         onCommentsClick = { onCommentsClick(post) },
                         onProfileClick = { onProfileClick(post.user) },
-                        onMoreClick = { onPostMoreClick(post) }
+                        onMoreClick = { onPostMoreClick(post) },
+                        onHashtagClick = onHashtagClick,
+                        onMentionClick = onMentionClick
                     )
+                }
+                if (isLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = accentBlue, strokeWidth = 2.5.dp, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                } else if (!hasMore && posts.isNotEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Hammasi shu", color = contentColor.copy(0.4f), fontSize = 11.sp)
+                        }
+                    }
                 }
             }
         }
@@ -483,7 +521,9 @@ fun DashboardPostItem(
     isDarkMode: Boolean,
     onCommentsClick: () -> Unit,
     onProfileClick: () -> Unit,
-    onMoreClick: () -> Unit = {}
+    onMoreClick: () -> Unit = {},
+    onHashtagClick: (String) -> Unit = {},
+    onMentionClick: (String) -> Unit = {}
 ) {
     val glassBaseColor = if (isDarkMode) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.75f)
     val textColor = if (isDarkMode) Color.White else Color.Black
@@ -516,19 +556,71 @@ fun DashboardPostItem(
         colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color.Black else Color.White)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            // Media carousel — bir nechta media bo'lsa swipe qilinadigan pager
+            val mediaItems = post.media.ifEmpty {
+                if (!post.image.isNullOrBlank()) listOf(PostMedia(post.image, post.isVideo))
+                else emptyList()
+            }
+            if (mediaItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(if (isDarkMode) Color(0xFF1D1D1D) else Color(0xFFF0F0F0))
+                )
+            } else if (mediaItems.size == 1) {
                 AsyncImage(
-                    model = post.image,
+                    model = mediaItems[0].url,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                if (post.image.isNullOrBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(if (isDarkMode) Color(0xFF1D1D1D) else Color(0xFFF0F0F0))
+            } else {
+                val mediaPagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { mediaItems.size })
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = mediaPagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    AsyncImage(
+                        model = mediaItems[page].url,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
+                }
+                // Counter badge (1/3)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 56.dp, end = 16.dp),
+                    color = Color.Black.copy(0.55f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "${mediaPagerState.currentPage + 1}/${mediaItems.size}",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                // Page indicator dots (bottom-center, above caption panel)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 110.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    repeat(mediaItems.size) { index ->
+                        val isActive = mediaPagerState.currentPage == index
+                        Box(
+                            modifier = Modifier
+                                .size(if (isActive) 7.dp else 5.dp)
+                                .background(
+                                    if (isActive) Color.White else Color.White.copy(0.5f),
+                                    CircleShape
+                                )
+                        )
+                    }
                 }
             }
 
@@ -633,7 +725,17 @@ fun DashboardPostItem(
                         Icon(Icons.AutoMirrored.Rounded.Send, null, tint = iconColor, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(text = post.caption, color = textColor, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (post.caption.isNotBlank()) {
+                        ClickableHashtagMentionText(
+                            text = post.caption,
+                            textColor = textColor,
+                            linkColor = accentBlue,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            onHashtagClick = onHashtagClick,
+                            onMentionClick = onMentionClick
+                        )
+                    }
                 }
             }
         }

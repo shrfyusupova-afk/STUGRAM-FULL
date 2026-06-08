@@ -9,6 +9,12 @@ val GlobalBackgroundColor = Color(0xFF0F0F0F)
 
 // --- MA'LUMOT MODELLARI ---
 @Immutable
+data class PostMedia(
+    val url: String,
+    val isVideo: Boolean
+)
+
+@Immutable
 data class PostData(
     val id: String,
     val user: String,
@@ -17,7 +23,9 @@ data class PostData(
     val likes: Int = 0,
     val comments: Int = 0,
     val reposts: Int = 0,
-    val isVideo: Boolean = false
+    val isVideo: Boolean = false,
+    val media: List<PostMedia> = emptyList(),
+    val authorAvatar: String = ""
 )
 
 @Immutable

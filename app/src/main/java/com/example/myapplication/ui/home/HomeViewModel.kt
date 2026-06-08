@@ -30,6 +30,10 @@ class HomeViewModel(
     var isProfileRefreshing by mutableStateOf(false)
 
     var posts by mutableStateOf(emptyList<PostData>())
+    var isLoadingMore by mutableStateOf(false)
+    var hasMorePosts by mutableStateOf(true)
+    private var currentPage = 1
+    private var useRecommended = true
     var storyProfiles by mutableStateOf(emptyList<StoryProfile>())
     var myStoryActivities by mutableStateOf(
         Triple(
@@ -104,29 +108,36 @@ class HomeViewModel(
         return data.mapIndexedNotNull { _, element ->
             runCatching {
                 val post = element.asJsonObject
-                val author = post.getAsJsonObject("author")
-                val media = if (post.has("media") && post.get("media").isJsonArray) post.getAsJsonArray("media") else null
-                val firstMedia = media?.firstOrNull()?.asJsonObject
-                val image = when {
-                    firstMedia != null && firstMedia.has("url") -> firstMedia.get("url").asString
-                    firstMedia != null && firstMedia.has("secureUrl") -> firstMedia.get("secureUrl").asString
-                    else -> null
-                }
+                val author = if (post.has("author") && !post.get("author").isJsonNull) post.getAsJsonObject("author") else null
+                val mediaArray = if (post.has("media") && post.get("media").isJsonArray) post.getAsJsonArray("media") else null
+
+                val mediaList = mediaArray?.mapNotNull { el ->
+                    runCatching {
+                        val obj = el.asJsonObject
+                        val url = obj.get("url")?.takeIf { !it.isJsonNull }?.asString
+                            ?: obj.get("secureUrl")?.takeIf { !it.isJsonNull }?.asString
+                        if (url.isNullOrBlank()) null
+                        else PostMedia(
+                            url = url,
+                            isVideo = obj.get("type")?.takeIf { !it.isJsonNull }?.asString == "video"
+                        )
+                    }.getOrNull()
+                } ?: emptyList()
+
                 val postId = stringOr(post, "_id", "")
                 if (postId.isBlank()) return@runCatching null
 
-                val isVideo = firstMedia?.let {
-                    it.has("type") && !it.get("type").isJsonNull && it.get("type").asString == "video"
-                } ?: false
                 PostData(
                     id = postId,
                     user = author?.let { stringOr(it, "username", "user") } ?: "user",
-                    image = image,
+                    image = mediaList.firstOrNull()?.url,
                     caption = stringOr(post, "caption", ""),
                     likes = intOr(post, "likesCount", 0),
                     comments = intOr(post, "commentsCount", 0),
                     reposts = 0,
-                    isVideo = isVideo
+                    isVideo = mediaList.firstOrNull()?.isVideo == true,
+                    media = mediaList,
+                    authorAvatar = author?.let { stringOr(it, "avatar", "") } ?: ""
                 )
             }.getOrNull()
         }
@@ -163,6 +174,8 @@ class HomeViewModel(
     fun loadHomeFeed() {
         viewModelScope.launch {
             isHomeRefreshing = true
+            currentPage = 1
+            hasMorePosts = true
             try {
                 // Try recommended discovery feed first; fall back to regular followed-only feed
                 var postFetched = false
@@ -171,6 +184,8 @@ class HomeViewModel(
                     if (recResp.isSuccessful) {
                         val dataArray = recResp.body()?.getAsJsonArray("data")
                         posts = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                        useRecommended = true
+                        hasMorePosts = (dataArray?.size() ?: 0) >= 10
                         postFetched = true
                     }
                 } catch (_: Exception) { }
@@ -180,6 +195,8 @@ class HomeViewModel(
                     if (postResponse.isSuccessful) {
                         val dataArray = postResponse.body()?.getAsJsonArray("data")
                         posts = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                        useRecommended = false
+                        hasMorePosts = (dataArray?.size() ?: 0) >= 10
                     }
                 }
 
@@ -253,6 +270,54 @@ class HomeViewModel(
             } finally {
                 isCreatingPost = false
             }
+        }
+    }
+
+    fun loadMoreIfNeeded() {
+        if (isLoadingMore || !hasMorePosts || isHomeRefreshing) return
+        viewModelScope.launch {
+            isLoadingMore = true
+            try {
+                val nextPage = currentPage + 1
+                val resp = withContext(ioDispatcher) {
+                    if (useRecommended) authApi.getRecommendedFeed(page = nextPage, limit = 10)
+                    else authApi.getPostFeed(page = nextPage, limit = 10)
+                }
+                if (resp.isSuccessful) {
+                    val dataArray = resp.body()?.getAsJsonArray("data")
+                    val newItems = if (dataArray != null) parsePosts(dataArray) else emptyList()
+                    if (newItems.isEmpty()) {
+                        hasMorePosts = false
+                    } else {
+                        // Dedupe by id
+                        val existingIds = posts.map { it.id }.toHashSet()
+                        posts = posts + newItems.filter { it.id !in existingIds }
+                        currentPage = nextPage
+                        if (newItems.size < 10) hasMorePosts = false
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                isLoadingMore = false
+            }
+        }
+    }
+
+    fun blockUserOfPost(post: PostData) {
+        viewModelScope.launch {
+            // Block requires userId — fetch profile by username first
+            try {
+                val resp = withContext(ioDispatcher) { authApi.getProfileByUsername(post.user) }
+                if (resp.isSuccessful) {
+                    val data = resp.body()?.getAsJsonObject("data")
+                    val userId = data?.get("_id")?.takeIf { !it.isJsonNull }?.asString
+                    if (!userId.isNullOrBlank()) {
+                        withContext(ioDispatcher) { authApi.blockUser(userId) }
+                        // Bloklangan foydalanuvchi postlarini olib tashlash
+                        posts = posts.filterNot { it.user.equals(post.user, ignoreCase = true) }
+                    }
+                }
+            } catch (_: Exception) { }
         }
     }
 

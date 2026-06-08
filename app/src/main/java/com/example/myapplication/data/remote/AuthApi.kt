@@ -62,6 +62,20 @@ interface AuthApi {
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
 
+    @GET("api/v1/search/posts")
+    suspend fun searchPosts(
+        @Query("q") query: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/search/hashtags")
+    suspend fun searchHashtags(
+        @Query("q") query: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<JsonObject>
+
     @GET("api/v1/search/users/advanced")
     suspend fun searchUsersAdvanced(
         @Query("q") query: String? = null,
@@ -79,6 +93,33 @@ interface AuthApi {
 
     @DELETE("api/v1/follows/{userId}")
     suspend fun unfollowUser(@Path("userId") userId: String): Response<JsonObject>
+
+    @GET("api/v1/follows/{username}/followers")
+    suspend fun getFollowers(
+        @Path("username") username: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/follows/{username}/following")
+    suspend fun getFollowing(
+        @Path("username") username: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    // ── Blocks ──
+    @GET("api/v1/blocks/me")
+    suspend fun getBlockedAccounts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @POST("api/v1/blocks/{userId}")
+    suspend fun blockUser(@Path("userId") userId: String): Response<JsonObject>
+
+    @DELETE("api/v1/blocks/{userId}")
+    suspend fun unblockUser(@Path("userId") userId: String): Response<JsonObject>
 
     @POST("api/v1/posts")
     suspend fun createPost(@Body request: CreatePostRequest): Response<JsonObject>
