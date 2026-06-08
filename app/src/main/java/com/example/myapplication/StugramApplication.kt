@@ -1,6 +1,9 @@
 package com.example.myapplication
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import android.util.Log
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -21,6 +24,7 @@ class StugramApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
+        createNotificationChannels()
         try {
             WorkManager.initialize(this, workManagerConfiguration)
         } catch (_: Throwable) {}
@@ -37,6 +41,23 @@ class StugramApplication : Application(), Configuration.Provider {
                 }
             }
         }
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = getSystemService(NotificationManager::class.java) ?: return
+        listOf(
+            NotificationChannel("messages", "Xabarlar", NotificationManager.IMPORTANCE_HIGH)
+                .also { it.description = "Yangi direct xabarlar" },
+            NotificationChannel("likes", "Like'lar", NotificationManager.IMPORTANCE_DEFAULT)
+                .also { it.description = "Post like bildirisnomalar" },
+            NotificationChannel("comments", "Izohlar", NotificationManager.IMPORTANCE_DEFAULT)
+                .also { it.description = "Post izoh bildirisnomalar" },
+            NotificationChannel("follows", "Obunalar", NotificationManager.IMPORTANCE_DEFAULT)
+                .also { it.description = "Yangi obunachi bildirisnomalar" },
+            NotificationChannel("general", "Umumiy", NotificationManager.IMPORTANCE_DEFAULT)
+                .also { it.description = "Boshqa bildirisnomalar" }
+        ).forEach { nm.createNotificationChannel(it) }
     }
 
     private fun installCrashLogger() {

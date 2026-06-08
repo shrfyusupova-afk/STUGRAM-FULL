@@ -86,3 +86,10 @@ data class CommentData(
     val likes: Int = 0,
     val replies: List<CommentData> = emptyList()
 )
+
+@Immutable
+data class StoryHighlight(
+    val id: String,
+    val title: String,
+    val coverUrl: String?
+)

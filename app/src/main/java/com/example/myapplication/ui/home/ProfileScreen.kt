@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -407,6 +409,57 @@ fun ProfileScreen(
                                 modifier = Modifier.weight(1f),
                                 filled = false
                             )
+                        }
+                    }
+
+                    // ── Story Highlights ─────────────────────────────────────
+                    if (ui.highlights.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(ui.highlights, key = { it.id }) { highlight ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(66.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(60.dp)
+                                            .clip(CircleShape)
+                                            .background(ProfileAccent.copy(0.12f))
+                                            .border(2.dp, ProfileAccent, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (!highlight.coverUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = highlight.coverUrl,
+                                                contentDescription = highlight.title,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Default.PlayCircle,
+                                                contentDescription = null,
+                                                tint = ProfileAccent,
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(5.dp))
+                                    Text(
+                                        text = highlight.title,
+                                        color = ProfileFg,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
 

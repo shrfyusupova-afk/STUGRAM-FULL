@@ -243,6 +243,17 @@ interface AuthApi {
 
     @GET("api/v1/posts/{postId}")
     suspend fun getPost(@Path("postId") postId: String): Response<JsonObject>
+
+    // ── Story Highlights ──
+    @GET("api/v1/highlights/{username}")
+    suspend fun getHighlights(@Path("username") username: String): Response<JsonObject>
+
+    // ── Device token (push notifications) ──
+    @POST("api/v1/devices/register")
+    suspend fun registerDeviceToken(@Body request: DeviceTokenRequest): Response<JsonObject>
+
+    @DELETE("api/v1/devices/{token}")
+    suspend fun unregisterDeviceToken(@Path("token") token: String): Response<JsonObject>
 }
 
 data class UpdatePostRequest(
@@ -300,6 +311,11 @@ data class UpdateProfileRequest(
 
 data class CreatePostRequest(
     val caption: String
+)
+
+data class DeviceTokenRequest(
+    val token: String,
+    val platform: String = "android"
 )
 
 data class ForgotPasswordRequest(val identity: String)

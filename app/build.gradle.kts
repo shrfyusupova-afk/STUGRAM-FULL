@@ -195,6 +195,7 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    implementation(libs.camerax.video)
     implementation(libs.accompanist.permissions)
 
     implementation(libs.media3.exoplayer)

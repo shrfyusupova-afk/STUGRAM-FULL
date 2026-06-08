@@ -8,8 +8,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.camera.view.video.AudioConfig
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -37,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import java.io.File
 
 @Composable
@@ -56,10 +61,19 @@ fun CameraScreen(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> hasPermission = granted }
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        hasPermission = results[Manifest.permission.CAMERA] == true
+        hasAudioPermission = results[Manifest.permission.RECORD_AUDIO] == true
+    }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -74,8 +88,35 @@ fun CameraScreen(
     var isCapturing by remember { mutableStateOf(false) }
     var flashEnabled by remember { mutableStateOf(false) }
 
+    // Video recording state
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingSeconds by remember { mutableIntStateOf(0) }
+    var activeRecording by remember { mutableStateOf<Recording?>(null) }
+
+    // Recording timer
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            recordingSeconds = 0
+            while (isRecording) {
+                delay(1000)
+                recordingSeconds++
+                if (recordingSeconds >= 60) {
+                    activeRecording?.stop()
+                }
+            }
+        } else {
+            recordingSeconds = 0
+        }
+    }
+
     LaunchedEffect(Unit) {
-        if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+        val permsToRequest = buildList {
+            if (!hasPermission) add(Manifest.permission.CAMERA)
+            if (!hasAudioPermission) add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (permsToRequest.isNotEmpty()) {
+            permissionLauncher.launch(permsToRequest.toTypedArray())
+        }
         cameraController.bindToLifecycle(lifecycleOwner)
     }
 
@@ -87,6 +128,47 @@ fun CameraScreen(
     LaunchedEffect(flashEnabled) {
         cameraController.imageCaptureFlashMode = if (flashEnabled)
             ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
+    }
+
+    // Switch use cases when mode changes; stop any active recording
+    LaunchedEffect(currentMode) {
+        if (isRecording) {
+            activeRecording?.stop()
+            isRecording = false
+            activeRecording = null
+        }
+        cameraController.setEnabledUseCases(
+            if (currentMode == CreateMode.REELS)
+                LifecycleCameraController.VIDEO_CAPTURE
+            else
+                LifecycleCameraController.IMAGE_CAPTURE
+        )
+    }
+
+    // Helper: start video recording
+    fun startRecording() {
+        val outputFile = File(context.filesDir, "reel_${System.currentTimeMillis()}.mp4")
+        val outputOptions = FileOutputOptions.Builder(outputFile).build()
+        val audioConfig = if (hasAudioPermission) AudioConfig.create(true) else AudioConfig.AUDIO_DISABLED
+        try {
+            val recording = cameraController.startRecording(
+                outputOptions,
+                audioConfig,
+                ContextCompat.getMainExecutor(context)
+            ) { event ->
+                if (event is VideoRecordEvent.Finalize) {
+                    isRecording = false
+                    activeRecording = null
+                    if (!event.hasError()) {
+                        onVideoSelected(event.outputResults.outputUri)
+                    }
+                }
+            }
+            activeRecording = recording
+            isRecording = true
+        } catch (_: Exception) {
+            isRecording = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -101,7 +183,11 @@ fun CameraScreen(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            CameraNoPermission(onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) })
+            CameraNoPermission(onRequest = {
+                permissionLauncher.launch(
+                    arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                )
+            })
         }
 
         // Top bar
@@ -112,42 +198,63 @@ fun CameraScreen(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CameraIconButton(onClick = onClose) {
+            CameraIconButton(onClick = {
+                if (isRecording) { activeRecording?.stop(); isRecording = false }
+                onClose()
+            }) {
                 Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(22.dp))
             }
 
             Spacer(Modifier.weight(1f))
 
-            // Post | Reels | Story tabs
-            Row(
-                modifier = Modifier
-                    .background(Color.Black.copy(0.5f), RoundedCornerShape(24.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                val tabs = listOf(
-                    "Post" to CreateMode.POST,
-                    "Reels" to CreateMode.REELS,
-                    "Story" to CreateMode.STORY
-                )
-                tabs.forEach { (label, mode) ->
-                    val active = mode == currentMode
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (active) Color.White else Color.Transparent)
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) { onModeChange(mode) }
-                            .padding(horizontal = 16.dp, vertical = 7.dp)
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (active) Color.Black else Color.White.copy(0.7f),
-                            fontSize = 13.sp,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
-                        )
+            // Recording timer (shown only when recording)
+            if (isRecording) {
+                val mins = recordingSeconds / 60
+                val secs = recordingSeconds % 60
+                Box(
+                    modifier = Modifier
+                        .background(Color.Red, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "%02d:%02d".format(mins, secs),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                // Post | Reels | Story tabs
+                Row(
+                    modifier = Modifier
+                        .background(Color.Black.copy(0.5f), RoundedCornerShape(24.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    val tabs = listOf(
+                        "Post" to CreateMode.POST,
+                        "Reels" to CreateMode.REELS,
+                        "Story" to CreateMode.STORY
+                    )
+                    tabs.forEach { (label, mode) ->
+                        val active = mode == currentMode
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (active) Color.White else Color.Transparent)
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { onModeChange(mode) }
+                                .padding(horizontal = 16.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (active) Color.Black else Color.White.copy(0.7f),
+                                fontSize = 13.sp,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
                     }
                 }
             }
@@ -158,7 +265,9 @@ fun CameraScreen(
                 targetValue = if (flashEnabled) Color(0xFFFFE082) else Color.White,
                 label = "flash"
             )
-            CameraIconButton(onClick = { flashEnabled = !flashEnabled }) {
+            CameraIconButton(
+                onClick = { if (!isRecording) flashEnabled = !flashEnabled }
+            ) {
                 Icon(
                     if (flashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
                     null,
@@ -170,7 +279,7 @@ fun CameraScreen(
 
         // Bottom controls
         val captureScale by animateFloatAsState(
-            targetValue = if (isCapturing) 0.88f else 1f,
+            targetValue = if (isCapturing || isRecording) 0.88f else 1f,
             animationSpec = tween(100),
             label = "cap_scale"
         )
@@ -182,7 +291,7 @@ fun CameraScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 36.dp, start = 32.dp, end = 32.dp)
         ) {
-            // Gallery button — video picker for Reels, image picker for Post/Story
+            // Gallery button
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
@@ -193,8 +302,10 @@ fun CameraScreen(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        if (currentMode == CreateMode.REELS) videoGalleryLauncher.launch("video/*")
-                        else galleryLauncher.launch("image/*")
+                        if (!isRecording) {
+                            if (currentMode == CreateMode.REELS) videoGalleryLauncher.launch("video/*")
+                            else galleryLauncher.launch("image/*")
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -206,21 +317,24 @@ fun CameraScreen(
                 )
             }
 
-            // Shutter button. Reels mode uses gallery — show ring with video icon
+            // Shutter / Record button
             Box(modifier = Modifier.align(Alignment.Center).size(88.dp), contentAlignment = Alignment.Center) {
-                val shutterRingColor = if (currentMode == CreateMode.REELS) Color(0xFFFF3B6B) else Color.White
-                Box(modifier = Modifier.size(88.dp).border(3.5.dp, shutterRingColor, CircleShape))
+                val ringColor = if (currentMode == CreateMode.REELS) {
+                    if (isRecording) Color.Red else Color(0xFFFF3B6B)
+                } else Color.White
+                Box(modifier = Modifier.size(88.dp).border(3.5.dp, ringColor, CircleShape))
                 Box(
                     modifier = Modifier
-                        .size(72.dp)
+                        .size(if (isRecording) 28.dp else 72.dp)
                         .scale(captureScale)
                         .background(
                             when {
                                 isCapturing -> Color.LightGray
+                                isRecording -> Color.Red
                                 currentMode == CreateMode.REELS -> Color(0xFFFF3B6B)
                                 else -> Color.White
                             },
-                            CircleShape
+                            if (isRecording) RoundedCornerShape(6.dp) else CircleShape
                         )
                         .clickable(
                             enabled = hasPermission && !isCapturing,
@@ -228,8 +342,11 @@ fun CameraScreen(
                             interactionSource = remember { MutableInteractionSource() }
                         ) {
                             if (currentMode == CreateMode.REELS) {
-                                // No in-camera video record yet — open gallery instead
-                                videoGalleryLauncher.launch("video/*")
+                                if (isRecording) {
+                                    activeRecording?.stop()
+                                } else {
+                                    startRecording()
+                                }
                             } else {
                                 isCapturing = true
                                 val outputFile = File(context.filesDir, "capture_${System.currentTimeMillis()}.jpg")
@@ -249,26 +366,23 @@ fun CameraScreen(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (currentMode == CreateMode.REELS && !isCapturing) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            null,
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
+                    if (currentMode == CreateMode.REELS && !isRecording) {
+                        Icon(Icons.Default.Videocam, null, tint = Color.White, modifier = Modifier.size(32.dp))
                     }
                 }
             }
 
-            // Flip camera
-            CameraIconButton(
-                onClick = {
-                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
-                        CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
-                },
-                modifier = Modifier.align(Alignment.CenterEnd).size(58.dp)
-            ) {
-                Icon(Icons.Default.Cameraswitch, null, tint = Color.White, modifier = Modifier.size(28.dp))
+            // Flip camera button (hidden while recording)
+            if (!isRecording) {
+                CameraIconButton(
+                    onClick = {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+                            CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd).size(58.dp)
+                ) {
+                    Icon(Icons.Default.Cameraswitch, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                }
             }
         }
     }

@@ -40,7 +40,8 @@ data class AlphaProfileUiState(
     val targetUsername: String? = null,
     val isSelf: Boolean = true,
     val followStatus: String = "self",
-    val posts: List<ProfilePostItem> = emptyList()
+    val posts: List<ProfilePostItem> = emptyList(),
+    val highlights: List<StoryHighlight> = emptyList()
 )
 
 data class ProfilePostItem(
@@ -116,6 +117,7 @@ class ProfileViewModel(
                     )
                 }
                 loadProfilePosts()
+                loadHighlights()
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}")
@@ -154,6 +156,33 @@ class ProfileViewModel(
         viewModelScope.launch {
             val items = fetchPostsFor(username)
             _uiState.update { it.copy(posts = items) }
+        }
+    }
+
+    private fun loadHighlights() {
+        val username = _uiState.value.username
+        if (username.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val resp = withContext(ioDispatcher) { authApi.getHighlights(username) }
+                if (resp.isSuccessful) {
+                    val data = resp.body()?.getAsJsonArray("data") ?: return@launch
+                    val items = data.mapNotNull { el ->
+                        runCatching {
+                            val obj = el.asJsonObject
+                            val id = obj.get("_id")?.takeIf { !it.isJsonNull }?.asString
+                                ?: return@runCatching null
+                            StoryHighlight(
+                                id = id,
+                                title = obj.get("title")?.takeIf { !it.isJsonNull }?.asString ?: "Highlight",
+                                coverUrl = (obj.get("coverUrl") ?: obj.get("cover"))
+                                    ?.takeIf { !it.isJsonNull }?.asString
+                            )
+                        }.getOrNull()
+                    }
+                    _uiState.update { it.copy(highlights = items) }
+                }
+            } catch (_: Exception) {}
         }
     }
 
