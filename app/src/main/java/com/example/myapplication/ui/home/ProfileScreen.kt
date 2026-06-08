@@ -449,8 +449,8 @@ fun ProfileScreen(
                             .weight(1f)
                     ) { page ->
                         when (page) {
-                            0 -> PostsPage(ui.posts.filter { it.type != "reel" })
-                            1 -> ReelsPage(ui.posts.filter { it.type == "reel" })
+                            0 -> PostsPage(ui.posts.filter { it.type != "reel" }, authorUsername = ui.username)
+                            1 -> ReelsPage(ui.posts.filter { it.type == "reel" }, authorUsername = ui.username)
                             2 -> TaggedPage()
                             3 -> InfoPage(ui)
                         }
@@ -515,7 +515,22 @@ private fun ProfileActionButton(
 
 // ── Posts grid (3 columns, 1:1) ───────────────────────────────────────────
 @Composable
-private fun PostsPage(posts: List<ProfilePostItem>) {
+private fun PostsPage(posts: List<ProfilePostItem>, authorUsername: String) {
+    var selectedPost by remember { mutableStateOf<ProfilePostItem?>(null) }
+
+    selectedPost?.let { item ->
+        PostDetailSheet(
+            post = PostData(
+                id = item.id,
+                user = authorUsername,
+                image = item.mediaUrl,
+                caption = item.caption,
+                isVideo = item.type == "reel"
+            ),
+            onDismiss = { selectedPost = null }
+        )
+    }
+
     if (posts.isEmpty()) {
         EmptyTab(icon = Icons.Default.GridOn, text = "Hali postlar yo'q")
         return
@@ -532,6 +547,7 @@ private fun PostsPage(posts: List<ProfilePostItem>) {
                 modifier = Modifier
                     .aspectRatio(1f)
                     .background(ProfileSurface)
+                    .clickable { selectedPost = post }
             ) {
                 if (!post.mediaUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -560,7 +576,22 @@ private fun PostsPage(posts: List<ProfilePostItem>) {
 
 // ── Reels grid (2 columns, 9:16) ─────────────────────────────────────────
 @Composable
-private fun ReelsPage(reels: List<ProfilePostItem>) {
+private fun ReelsPage(reels: List<ProfilePostItem>, authorUsername: String) {
+    var selectedReel by remember { mutableStateOf<ProfilePostItem?>(null) }
+
+    selectedReel?.let { item ->
+        PostDetailSheet(
+            post = PostData(
+                id = item.id,
+                user = authorUsername,
+                image = item.mediaUrl,
+                caption = item.caption,
+                isVideo = true
+            ),
+            onDismiss = { selectedReel = null }
+        )
+    }
+
     if (reels.isEmpty()) {
         EmptyTab(icon = Icons.Default.PlayCircle, text = "Hali reels yo'q")
         return
@@ -576,7 +607,8 @@ private fun ReelsPage(reels: List<ProfilePostItem>) {
             Box(
                 modifier = Modifier
                     .aspectRatio(9f / 16f)
-                    .background(ProfileSurface),
+                    .background(ProfileSurface)
+                    .clickable { selectedReel = reel },
                 contentAlignment = Alignment.Center
             ) {
                 if (!reel.mediaUrl.isNullOrBlank()) {

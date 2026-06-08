@@ -50,6 +50,7 @@ data class RecommendedProfile(
     val name: String,
     val username: String,
     val avatar: String = "",
+    val banner: String = "",
     val bio: String = "",
     val followersCount: Int = 0,
     val followStatus: String = "not_following"

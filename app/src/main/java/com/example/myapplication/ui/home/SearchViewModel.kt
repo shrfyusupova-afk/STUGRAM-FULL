@@ -87,13 +87,20 @@ class SearchViewModel(
                         else -> null
                     }
                 }
+                val mediaType = firstMedia?.let {
+                    when {
+                        it.has("type") && !it.get("type").isJsonNull -> it.get("type").asString
+                        else -> "image"
+                    }
+                } ?: "image"
                 PostData(
                     id = id,
                     user = author?.let { if (it.has("username") && !it.get("username").isJsonNull) it.get("username").asString else "user" } ?: "user",
                     image = image,
                     caption = if (obj.has("caption") && !obj.get("caption").isJsonNull) obj.get("caption").asString else "",
                     likes = if (obj.has("likesCount") && !obj.get("likesCount").isJsonNull) obj.get("likesCount").asInt else 0,
-                    comments = if (obj.has("commentsCount") && !obj.get("commentsCount").isJsonNull) obj.get("commentsCount").asInt else 0
+                    comments = if (obj.has("commentsCount") && !obj.get("commentsCount").isJsonNull) obj.get("commentsCount").asInt else 0,
+                    isVideo = mediaType == "video"
                 )
             }.getOrNull()
         }
@@ -112,6 +119,7 @@ class SearchViewModel(
                         .ifBlank { if (obj.has("username") && !obj.get("username").isJsonNull) obj.get("username").asString else "User" },
                     username = if (obj.has("username") && !obj.get("username").isJsonNull) obj.get("username").asString else "",
                     avatar = if (obj.has("avatar") && !obj.get("avatar").isJsonNull) obj.get("avatar").asString else "",
+                    banner = if (obj.has("banner") && !obj.get("banner").isJsonNull) obj.get("banner").asString else "",
                     bio = if (obj.has("bio") && !obj.get("bio").isJsonNull) obj.get("bio").asString else "",
                     followersCount = if (obj.has("followersCount") && !obj.get("followersCount").isJsonNull) obj.get("followersCount").asInt else 0,
                     followStatus = if (obj.has("followStatus") && !obj.get("followStatus").isJsonNull) obj.get("followStatus").asString else "not_following"
