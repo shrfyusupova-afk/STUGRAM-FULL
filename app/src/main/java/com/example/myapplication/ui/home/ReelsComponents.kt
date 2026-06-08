@@ -58,14 +58,42 @@ fun ReelsScreen(
     Box(modifier = Modifier.fillMaxSize().background(ReelBg)) {
         when {
             vm.isLoading -> ReelsLoadingState()
-            vm.reels.isEmpty() -> ReelsEmptyState(
-                message = if (vm.error != null) (vm.error ?: "Reels yuklanmadi")
-                          else "Hali reels yo'q.\nKo'proq odamlarni kuzating!",
-                onRetry = { vm.loadReels() }
-            )
+            vm.reels.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ReelsEmptyState(
+                        message = if (vm.error != null) (vm.error ?: "Reels yuklanmadi")
+                                  else "Hali reels yo'q.\nKo'proq odamlarni kuzating!",
+                        onRetry = { vm.loadReels() }
+                    )
+                    // Top tabs always visible so the user can switch back to "For You"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .align(Alignment.TopCenter),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        ReelTopTab(
+                            label = "Kuzatilayotgan",
+                            active = vm.selectedTab == ReelsTab.FOLLOWING,
+                            onClick = { vm.selectTab(ReelsTab.FOLLOWING) }
+                        )
+                        Spacer(Modifier.width(20.dp))
+                        ReelTopTab(
+                            label = "Siz uchun",
+                            active = vm.selectedTab == ReelsTab.FOR_YOU,
+                            onClick = { vm.selectTab(ReelsTab.FOR_YOU) }
+                        )
+                    }
+                }
+            }
             else -> ReelsPager(
                 reels = vm.reels,
                 isMuted = vm.isMuted,
+                selectedTab = vm.selectedTab,
+                onSelectTab = { vm.selectTab(it) },
                 onToggleMute = { vm.toggleMute() },
                 onSave = { vm.toggleSave(it) },
                 isSaved = { vm.isSaved(it) },
@@ -125,6 +153,8 @@ fun ReelFullscreenViewer(
 private fun ReelsPager(
     reels: List<ReelItem>,
     isMuted: Boolean,
+    selectedTab: ReelsTab,
+    onSelectTab: (ReelsTab) -> Unit,
     onToggleMute: () -> Unit,
     onSave: (String) -> Unit,
     isSaved: (String) -> Boolean,
@@ -135,7 +165,11 @@ private fun ReelsPager(
     val pagerState = rememberPagerState { reels.size }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        VerticalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1
+        ) { page ->
             val reel = reels[page]
             ReelPage(
                 reel = reel,
@@ -161,9 +195,17 @@ private fun ReelsPager(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            ReelTopTab(label = "Kuzatilayotgan", active = false) {}
+            ReelTopTab(
+                label = "Kuzatilayotgan",
+                active = selectedTab == ReelsTab.FOLLOWING,
+                onClick = { onSelectTab(ReelsTab.FOLLOWING) }
+            )
             Spacer(Modifier.width(20.dp))
-            ReelTopTab(label = "Siz uchun", active = true) {}
+            ReelTopTab(
+                label = "Siz uchun",
+                active = selectedTab == ReelsTab.FOR_YOU,
+                onClick = { onSelectTab(ReelsTab.FOR_YOU) }
+            )
         }
 
         // Mute toggle — top-right
@@ -347,7 +389,7 @@ private fun ReelPage(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(start = 12.dp, top = 56.dp)
+                    .padding(start = 12.dp, top = 48.dp)
                     .background(Color.Black.copy(0.55f), RoundedCornerShape(20.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically

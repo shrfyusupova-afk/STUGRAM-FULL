@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 /**
  * HomeScreen - Loyihaning asosiy mantiqiy markazi.
@@ -50,21 +51,26 @@ fun HomeScreen(
     var moreMenuForPost by remember { mutableStateOf<PostData?>(null) }
     var editingPost by remember { mutableStateOf<PostData?>(null) }
     var deletingPost by remember { mutableStateOf<PostData?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
         Scaffold(
             containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 // Kamera yoki Story ochiq bo'lsa navigatsiyani yashiramiz
                 if (!viewModel.showCameraView && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
-                    GlassSlidingNavigation(
-                        selectedTab = viewModel.currentTab,
-                        onTabSelected = { viewModel.onTabSelected(it) },
-                        onCreatePost = onNavigateToCreatePost,
-                        isDarkMode = isDarkMode,
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        GlassSlidingNavigation(
+                            selectedTab = viewModel.currentTab,
+                            onTabSelected = { viewModel.onTabSelected(it) },
+                            onCreatePost = onNavigateToCreatePost,
+                            isDarkMode = isDarkMode,
+                            modifier = Modifier.padding(bottom = 24.dp)
+                        )
+                    }
                 }
             }
         ) { paddingValues ->
@@ -73,7 +79,15 @@ fun HomeScreen(
                     .fillMaxSize()
                     .background(if (viewModel.currentTab == 2) Color.Black else backgroundColor)
             ) {
-                Crossfade(targetState = viewModel.currentTab, label = "main_nav") { targetTab ->
+                AnimatedContent(
+                    targetState = viewModel.currentTab,
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        (slideInHorizontally(tween(300)) { dir * 48 } + fadeIn(tween(240)))
+                            .togetherWith(slideOutHorizontally(tween(300)) { -dir * 48 } + fadeOut(tween(200)))
+                    },
+                    label = "main_nav"
+                ) { targetTab ->
                     when (targetTab) {
                         0 -> HomeTabScreen(
                             posts = viewModel.posts,
@@ -100,7 +114,8 @@ fun HomeScreen(
                             isLoadingMore = viewModel.isLoadingMore,
                             hasMore = viewModel.hasMorePosts,
                             onHashtagClick = onNavigateToHashtag,
-                            onMentionClick = onNavigateToProfile
+                            onMentionClick = onNavigateToProfile,
+                            onError = { msg -> coroutineScope.launch { snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short) } }
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -129,20 +144,32 @@ fun HomeScreen(
                             isRefreshing = viewModel.isProfileRefreshing,
                             onRefresh = { viewModel.refreshProfile() },
                             onBack = { viewModel.onTabSelected(0) },
-                            onOpenFollowList = onNavigateToFollowList
+                            onOpenFollowList = onNavigateToFollowList,
+                            onOpenChat = { username -> onNavigateToChat(username, false) }
                         )
                     }
                 }
 
                 // Reels shaffof navigatsiya
                 if (viewModel.currentTab == 2 && !viewModel.showCameraView && viewModel.activeStoryProfileIndex == null) {
-                    Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
+                    val reelsNavAlpha by animateFloatAsState(
+                        targetValue = 0.82f,
+                        animationSpec = tween(300),
+                        label = "reels_nav_alpha"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         GlassSlidingNavigation(
                             selectedTab = viewModel.currentTab,
                             onTabSelected = { viewModel.onTabSelected(it) },
                             onCreatePost = onNavigateToCreatePost,
                             isDarkMode = true,
-                            modifier = Modifier.graphicsLayer(alpha = 0.8f)
+                            modifier = Modifier.graphicsLayer(alpha = reelsNavAlpha)
                         )
                     }
                 }

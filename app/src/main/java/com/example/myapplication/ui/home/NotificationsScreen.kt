@@ -136,7 +136,10 @@ fun NotificationsScreen(
                     }
                 }
 
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 90.dp)
+                ) {
                     items(ui.items, key = { it.id }) { n ->
                         NotificationRow(
                             n = n,

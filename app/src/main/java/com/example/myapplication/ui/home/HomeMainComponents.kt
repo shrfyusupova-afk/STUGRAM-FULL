@@ -69,7 +69,8 @@ fun HomeTabScreen(
     isLoadingMore: Boolean = false,
     hasMore: Boolean = false,
     onHashtagClick: (String) -> Unit = {},
-    onMentionClick: (String) -> Unit = {}
+    onMentionClick: (String) -> Unit = {},
+    onError: (String) -> Unit = {}
 ) {
     // Infinite scroll: oxiriga yaqinlashganda yangi postlarni yuklash
     val shouldLoadMore by remember {
@@ -132,7 +133,7 @@ fun HomeTabScreen(
             }
             if (recommendedProfiles.isNotEmpty()) {
                 item {
-                    RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode)
+                    RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onError = onError)
                 }
             }
             if (posts.isEmpty()) {
@@ -144,7 +145,7 @@ fun HomeTabScreen(
                     )
                 }
             } else {
-                itemsIndexed(posts) { _, post ->
+                itemsIndexed(posts, key = { _, post -> post.id }) { _, post ->
                     DashboardPostItem(
                         post = post,
                         accentBlue = accentBlue,
@@ -153,7 +154,8 @@ fun HomeTabScreen(
                         onProfileClick = { onProfileClick(post.user) },
                         onMoreClick = { onPostMoreClick(post) },
                         onHashtagClick = onHashtagClick,
-                        onMentionClick = onMentionClick
+                        onMentionClick = onMentionClick,
+                        onError = onError
                     )
                 }
                 if (isLoadingMore) {
@@ -522,8 +524,10 @@ fun DashboardPostItem(
     onCommentsClick: () -> Unit,
     onProfileClick: () -> Unit,
     onMoreClick: () -> Unit = {},
+    onShareClick: () -> Unit = {},
     onHashtagClick: (String) -> Unit = {},
-    onMentionClick: (String) -> Unit = {}
+    onMentionClick: (String) -> Unit = {},
+    onError: (String) -> Unit = {}
 ) {
     val glassBaseColor = if (isDarkMode) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.75f)
     val textColor = if (isDarkMode) Color.White else Color.Black
@@ -546,6 +550,7 @@ fun DashboardPostItem(
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .aspectRatio(1f)
             .shadow(14.dp, RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(32.dp))
             .graphicsLayer {
                 alpha = revealProgress
                 translationY = (1f - revealProgress) * 30f
@@ -700,10 +705,19 @@ fun DashboardPostItem(
                                 likeCount += if (!previousLiked) 1 else -1
                                 scope.launch {
                                     try {
-                                        if (!previousLiked) api.likePost(post.id) else api.unlikePost(post.id)
-                                    } catch (_: Exception) {
+                                        val resp = if (!previousLiked) api.likePost(post.id) else api.unlikePost(post.id)
+                                        if (!resp.isSuccessful) {
+                                            isLiked = previousLiked
+                                            likeCount += if (previousLiked) 1 else -1
+                                            onError(
+                                                if (!previousLiked) "Like qo'shilmadi (${resp.code()})"
+                                                else "Like olib tashlanmadi (${resp.code()})"
+                                            )
+                                        }
+                                    } catch (e: Exception) {
                                         isLiked = previousLiked
                                         likeCount += if (previousLiked) 1 else -1
+                                        onError("Tarmoq xatosi: ${e.message ?: "noma'lum"}")
                                     }
                                 }
                             }
@@ -722,7 +736,18 @@ fun DashboardPostItem(
                                 )
                         )
                         Spacer(Modifier.width(12.dp))
-                        Icon(Icons.AutoMirrored.Rounded.Send, null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.AutoMirrored.Rounded.Send,
+                            null,
+                            tint = iconColor,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onShareClick
+                                )
+                        )
                     }
                     Spacer(Modifier.height(4.dp))
                     if (post.caption.isNotBlank()) {
@@ -754,17 +779,27 @@ fun PostStatItem(icon: ImageVector, count: String, isDarkMode: Boolean, tint: Co
 }
 
 @Composable
-fun RecommendedProfilesSlider(profiles: List<RecommendedProfile>, accentBlue: Color, isDarkMode: Boolean) {
+fun RecommendedProfilesSlider(
+    profiles: List<RecommendedProfile>,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onError: (String) -> Unit = {}
+) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Text("Tavsiya etilganlar", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = if (isDarkMode) Color.White else Color.Black, modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(profiles) { profile -> RecommendedProfileCard(profile, accentBlue, isDarkMode) }
+            items(profiles) { profile -> RecommendedProfileCard(profile, accentBlue, isDarkMode, onError) }
         }
     }
 }
 
 @Composable
-fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDarkMode: Boolean) {
+fun RecommendedProfileCard(
+    profile: RecommendedProfile,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onError: (String) -> Unit = {}
+) {
     var isFollowed by remember(profile.id) { mutableStateOf(profile.followStatus == "following") }
     var isBusy by remember(profile.id) { mutableStateOf(false) }
     val cardBg = if (isDarkMode) Color(0xFF1A1A1A) else Color.White
@@ -838,9 +873,17 @@ fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDar
                         isBusy = true
                         scope.launch {
                             try {
-                                if (!previous) api.followUser(profile.id) else api.unfollowUser(profile.id)
-                            } catch (_: Exception) {
+                                val resp = if (!previous) api.followUser(profile.id) else api.unfollowUser(profile.id)
+                                if (!resp.isSuccessful) {
+                                    isFollowed = previous
+                                    onError(
+                                        if (!previous) "Obuna bo'lib bo'lmadi (${resp.code()})"
+                                        else "Obunani bekor qilib bo'lmadi (${resp.code()})"
+                                    )
+                                }
+                            } catch (e: Exception) {
                                 isFollowed = previous
+                                onError("Tarmoq xatosi: ${e.message ?: "noma'lum"}")
                             } finally {
                                 isBusy = false
                             }

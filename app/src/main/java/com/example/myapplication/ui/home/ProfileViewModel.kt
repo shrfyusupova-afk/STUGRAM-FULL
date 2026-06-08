@@ -1,5 +1,7 @@
 package com.example.myapplication.ui.home
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.remote.AuthApi
@@ -13,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 data class AlphaProfileUiState(
     val isLoading: Boolean = true,
@@ -231,6 +236,62 @@ class ProfileViewModel(
                         followersCount = if (nowFollowing) it.followersCount - 1 else it.followersCount + 1
                     )
                 }
+            }
+        }
+    }
+
+    fun uploadAvatar(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, saveError = null) }
+            try {
+                val bytes = withContext(ioDispatcher) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                } ?: run {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Rasm o'qib bo'lmadi") }
+                    return@launch
+                }
+                val body = bytes.toRequestBody("image/jpeg".toMediaType())
+                val part = MultipartBody.Part.createFormData("avatar", "avatar_${System.currentTimeMillis()}.jpg", body)
+                val resp = withContext(ioDispatcher) { authApi.updateMyAvatar(part) }
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Avatar saqlanmadi (${resp.code()})") }
+                    return@launch
+                }
+                val newUrl = resp.body()?.getAsJsonObject("data")
+                    ?.get("avatar")?.takeIf { !it.isJsonNull }?.asString
+                _uiState.update {
+                    it.copy(isSaving = false, saveError = null, avatar = newUrl ?: it.avatar)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
+    }
+
+    fun uploadBanner(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, saveError = null) }
+            try {
+                val bytes = withContext(ioDispatcher) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                } ?: run {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Rasm o'qib bo'lmadi") }
+                    return@launch
+                }
+                val body = bytes.toRequestBody("image/jpeg".toMediaType())
+                val part = MultipartBody.Part.createFormData("banner", "banner_${System.currentTimeMillis()}.jpg", body)
+                val resp = withContext(ioDispatcher) { authApi.updateMyBanner(part) }
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Banner saqlanmadi (${resp.code()})") }
+                    return@launch
+                }
+                val newUrl = resp.body()?.getAsJsonObject("data")
+                    ?.get("banner")?.takeIf { !it.isJsonNull }?.asString
+                _uiState.update {
+                    it.copy(isSaving = false, saveError = null, banner = newUrl ?: it.banner)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
             }
         }
     }

@@ -261,6 +261,9 @@ fun AuthNavGraph(
                 onBack = { navController.popBackStack() },
                 onOpenFollowList = { name, mode ->
                     navController.navigate(Screen.Followers.createRoute(name, mode))
+                },
+                onOpenChat = { name ->
+                    navController.navigate(Screen.ChatDetail.createRoute(name, false))
                 }
             )
         }

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +29,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.myapplication.data.remote.RetrofitClient
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun PostPublishScreen(
@@ -135,7 +139,7 @@ fun PostPublishScreen(
                 HorizontalDivider(color = Color.White.copy(0.07f))
 
                 // Suggested audio chips
-                if (state.selectedAudio != null || true) {
+                if (true) {
                     Spacer(Modifier.height(8.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -348,74 +352,198 @@ fun PostPublishScreen(
         )
     }
 
-    // Tag people dialog
+    // Tag people dialog with real backend user search
     if (showTagPeople) {
-        AlertDialog(
-            onDismissRequest = { showTagPeople = false },
-            containerColor = Color(0xFF1E1E1E),
-            title = { Text("Odam belgilash", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = tagSearchText,
-                        onValueChange = { tagSearchText = it },
-                        placeholder = { Text("@username", color = Color.White.copy(0.4f)) },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF4FC3F7),
-                            unfocusedBorderColor = Color.White.copy(0.2f)
-                        ),
+        TagPeopleDialog(
+            query = tagSearchText,
+            onQueryChange = { tagSearchText = it },
+            taggedUsers = state.taggedUsers,
+            onToggleTag = { username -> viewModel.toggleTagUser(username) },
+            onDismiss = {
+                showTagPeople = false
+                tagSearchText = ""
+            }
+        )
+    }
+}
+
+@Composable
+private fun TagPeopleDialog(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    taggedUsers: List<String>,
+    onToggleTag: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val accent = Color(0xFF4FC3F7)
+    var results by remember { mutableStateOf<List<TagPeopleResult>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val api = remember { RetrofitClient.instance }
+
+    // Debounced search
+    LaunchedEffect(query) {
+        val q = query.trim().trimStart('@')
+        if (q.length < 2) {
+            results = emptyList()
+            isLoading = false
+            return@LaunchedEffect
+        }
+        delay(300)
+        isLoading = true
+        try {
+            val resp = api.searchUsers(query = q, page = 1, limit = 15)
+            if (resp.isSuccessful) {
+                val data = resp.body()?.getAsJsonArray("data")
+                results = data?.mapNotNull { el ->
+                    runCatching {
+                        val obj = el.asJsonObject
+                        val username = obj.get("username")?.takeIf { !it.isJsonNull }?.asString
+                            ?: return@runCatching null
+                        TagPeopleResult(
+                            username = username,
+                            fullName = obj.get("fullName")?.takeIf { !it.isJsonNull }?.asString ?: "",
+                            avatar = obj.get("avatar")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                        )
+                    }.getOrNull()
+                } ?: emptyList()
+            } else {
+                results = emptyList()
+            }
+        } catch (_: Exception) {
+            results = emptyList()
+        } finally {
+            isLoading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1E1E1E),
+        title = { Text("Odam belgilash", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.heightIn(min = 240.dp, max = 480.dp)
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = { Text("@username qidirish", color = Color.White.copy(0.4f)) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Color.White.copy(0.6f)) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = accent,
+                        unfocusedBorderColor = Color.White.copy(0.2f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (taggedUsers.isNotEmpty()) {
+                    Text("Belgilangan", color = Color.White.copy(0.6f), fontSize = 12.sp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
-                    )
-                    if (state.taggedUsers.isNotEmpty()) {
-                        Text("Belgilangan:", color = Color.White.copy(0.6f), fontSize = 12.sp)
-                        state.taggedUsers.forEach { username ->
+                    ) {
+                        items(taggedUsers) { username ->
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(0.08f))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(accent.copy(0.18f))
+                                    .padding(start = 10.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("@$username", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                Text("@$username", color = Color.White, fontSize = 13.sp)
                                 IconButton(
-                                    onClick = { viewModel.toggleTagUser(username) },
-                                    modifier = Modifier.size(24.dp)
+                                    onClick = { onToggleTag(username) },
+                                    modifier = Modifier.size(22.dp)
                                 ) {
-                                    Icon(Icons.Default.Close, null, tint = Color.White.copy(0.6f), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Close, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(14.dp))
                                 }
                             }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (tagSearchText.isNotBlank()) {
-                        viewModel.toggleTagUser(tagSearchText.trimStart('@'))
-                        tagSearchText = ""
-                    } else {
-                        showTagPeople = false
+
+                Box(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                    when {
+                        isLoading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                        }
+                        query.trim().length < 2 -> Text(
+                            "Kamida 2 ta belgi yozing",
+                            color = Color.White.copy(0.5f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                        results.isEmpty() -> Text(
+                            "Hech kim topilmadi",
+                            color = Color.White.copy(0.5f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                        else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            items(results) { user ->
+                                val isTagged = user.username in taggedUsers
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isTagged) accent.copy(0.12f) else Color.White.copy(0.04f))
+                                        .clickable { onToggleTag(user.username) }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(Color.White.copy(0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (user.avatar.isNotBlank()) {
+                                            AsyncImage(
+                                                model = user.avatar,
+                                                contentDescription = null,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Person, null, tint = Color.White.copy(0.6f), modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("@${user.username}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        if (user.fullName.isNotBlank()) {
+                                            Text(user.fullName, color = Color.White.copy(0.5f), fontSize = 12.sp)
+                                        }
+                                    }
+                                    if (isTagged) {
+                                        Icon(Icons.Default.Check, null, tint = accent, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            }
+                        }
                     }
-                }) {
-                    Text(
-                        if (tagSearchText.isNotBlank()) "Qo'shish" else "Tayyor",
-                        color = Color(0xFF4FC3F7),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTagPeople = false }) {
-                    Text("Yopish", color = Color.White.copy(0.6f))
                 }
             }
-        )
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Tayyor", color = accent, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }
+
+private data class TagPeopleResult(
+    val username: String,
+    val fullName: String,
+    val avatar: String
+)
 
 @Composable
 private fun PublishRow(

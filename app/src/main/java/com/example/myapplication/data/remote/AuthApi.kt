@@ -52,6 +52,18 @@ interface AuthApi {
     @PATCH("api/v1/profiles/me")
     suspend fun updateMyProfile(@Body request: UpdateProfileRequest): Response<JsonObject>
 
+    @Multipart
+    @PATCH("api/v1/profiles/me/avatar")
+    suspend fun updateMyAvatar(
+        @Part avatar: MultipartBody.Part
+    ): Response<JsonObject>
+
+    @Multipart
+    @PATCH("api/v1/profiles/me/banner")
+    suspend fun updateMyBanner(
+        @Part banner: MultipartBody.Part
+    ): Response<JsonObject>
+
     @GET("api/v1/profiles/{username}")
     suspend fun getProfileByUsername(@Path("username") username: String): Response<JsonObject>
 

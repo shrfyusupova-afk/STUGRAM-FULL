@@ -1,5 +1,7 @@
 package com.example.myapplication.ui.home
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -42,6 +44,17 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private fun shareProfile(context: Context, username: String, fullName: String) {
+    val url = "https://stugram.app/u/$username"
+    val title = if (fullName.isNotBlank()) "$fullName (@$username) Stugram'da" else "@$username Stugram'da"
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        putExtra(Intent.EXTRA_TEXT, "$title\n$url")
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Profil havolasini ulashish"))
+}
+
 private val ProfileBg       = Color(0xFF0F0F0F)
 private val ProfileSurface  = Color(0xFF1A1A1A)
 private val ProfileFg       = Color.White
@@ -58,8 +71,10 @@ fun ProfileScreen(
     isMyProfile: Boolean = true,
     targetUsername: String? = null,
     onBack: (() -> Unit)? = null,
-    onOpenFollowList: (String, String) -> Unit = { _, _ -> }
+    onOpenFollowList: (String, String) -> Unit = { _, _ -> },
+    onOpenChat: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val vm: ProfileViewModel = viewModel()
     val ui by vm.uiState.collectAsState()
     var isEditMode by remember { mutableStateOf(false) }
@@ -81,6 +96,10 @@ fun ProfileScreen(
             onBack = { isEditMode = false },
             isSaving = ui.isSaving,
             errorMessage = ui.saveError,
+            currentAvatarUrl = ui.avatar,
+            currentBannerUrl = ui.banner,
+            onAvatarPicked = { uri -> vm.uploadAvatar(context, uri) },
+            onBannerPicked = { uri -> vm.uploadBanner(context, uri) },
             onSave = { name, username, bio, _, location, school ->
                 vm.updateProfile(
                     fullName = name,
@@ -390,7 +409,11 @@ fun ProfileScreen(
                             )
                             ProfileActionButton(
                                 text = "Share",
-                                onClick = { },
+                                onClick = {
+                                    if (ui.username.isNotBlank()) {
+                                        shareProfile(context, ui.username, ui.fullName)
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 filled = false
                             )
@@ -405,7 +428,9 @@ fun ProfileScreen(
                             )
                             ProfileActionButton(
                                 text = "Message",
-                                onClick = { },
+                                onClick = {
+                                    if (ui.username.isNotBlank()) onOpenChat(ui.username)
+                                },
                                 modifier = Modifier.weight(1f),
                                 filled = false
                             )

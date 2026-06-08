@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class ReelsTab { FOR_YOU, FOLLOWING }
+
 class ReelsViewModel(
     private val authApi: AuthApi = RetrofitClient.instance,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -31,9 +33,18 @@ class ReelsViewModel(
     var dismissedIds by mutableStateOf(setOf<String>())
         private set
 
+    var selectedTab by mutableStateOf(ReelsTab.FOR_YOU)
+        private set
+
     private var rawReels: List<ReelItem> = emptyList()
 
     init {
+        loadReels()
+    }
+
+    fun selectTab(tab: ReelsTab) {
+        if (tab == selectedTab) return
+        selectedTab = tab
         loadReels()
     }
 
@@ -42,15 +53,31 @@ class ReelsViewModel(
             isLoading = true
             error = null
             try {
-                val resp = withContext(ioDispatcher) { authApi.getRecommendedReels(page = 1, limit = 15) }
+                val resp = withContext(ioDispatcher) {
+                    when (selectedTab) {
+                        ReelsTab.FOR_YOU -> authApi.getRecommendedReels(page = 1, limit = 15)
+                        ReelsTab.FOLLOWING -> authApi.getPostFeed(page = 1, limit = 15)
+                    }
+                }
                 if (resp.isSuccessful) {
-                    rawReels = parseReels(resp.body())
+                    val parsed = parseReels(resp.body())
+                    rawReels = if (selectedTab == ReelsTab.FOLLOWING) {
+                        // Following tab: only show video posts
+                        parsed.filter { it.isVideo }
+                    } else parsed
                     reels = rankReels(rawReels, dismissedIds)
+                    if (reels.isEmpty()) {
+                        error = if (selectedTab == ReelsTab.FOLLOWING)
+                            "Kuzatayotgan odamlarda hozircha reels yo'q"
+                        else "Hech qanday reel topilmadi"
+                    }
                 } else {
                     error = "Reels yuklanmadi (${resp.code()})"
+                    reels = emptyList()
                 }
             } catch (e: Exception) {
                 error = "Tarmoq xatosi: ${e.message}"
+                reels = emptyList()
             } finally {
                 isLoading = false
             }

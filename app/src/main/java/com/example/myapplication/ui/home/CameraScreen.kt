@@ -15,6 +15,7 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.camera.view.video.AudioConfig
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -240,10 +241,20 @@ fun CameraScreen(
                     )
                     tabs.forEach { (label, mode) ->
                         val active = mode == currentMode
+                        val bgColor by animateColorAsState(
+                            targetValue = if (active) Color.White else Color.Transparent,
+                            animationSpec = tween(180),
+                            label = "tab_bg"
+                        )
+                        val textColor by animateColorAsState(
+                            targetValue = if (active) Color.Black else Color.White.copy(0.7f),
+                            animationSpec = tween(180),
+                            label = "tab_text"
+                        )
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(if (active) Color.White else Color.Transparent)
+                                .background(bgColor)
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
@@ -252,7 +263,7 @@ fun CameraScreen(
                         ) {
                             Text(
                                 text = label,
-                                color = if (active) Color.Black else Color.White.copy(0.7f),
+                                color = textColor,
                                 fontSize = 13.sp,
                                 fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
                             )
@@ -321,15 +332,27 @@ fun CameraScreen(
 
             // Shutter / Record button
             Box(modifier = Modifier.align(Alignment.Center).size(108.dp), contentAlignment = Alignment.Center) {
-                val ringColor = if (currentMode == CreateMode.REELS) {
-                    if (isRecording) Color.Red else Color(0xFFFF3B6B)
-                } else Color.White
+                val ringColor by animateColorAsState(
+                    targetValue = if (currentMode == CreateMode.REELS) {
+                        if (isRecording) Color.Red else Color(0xFFFF3B6B)
+                    } else Color.White,
+                    animationSpec = tween(200),
+                    label = "ring_color"
+                )
                 // Outer ring — grows when holding to record (Instagram-style)
-                val ringSize = if (isRecording) 108.dp else 88.dp
+                val ringSize by animateDpAsState(
+                    targetValue = if (isRecording) 108.dp else 88.dp,
+                    animationSpec = tween(200),
+                    label = "ring_size"
+                )
                 Box(modifier = Modifier.size(ringSize).border(4.dp, ringColor, CircleShape))
 
                 // Inner shutter button — shrinks to a red square while recording
-                val innerSize = if (isRecording) 36.dp else 72.dp
+                val innerSize by animateDpAsState(
+                    targetValue = if (isRecording) 36.dp else 72.dp,
+                    animationSpec = tween(200),
+                    label = "inner_size"
+                )
                 Box(
                     modifier = Modifier
                         .size(innerSize)

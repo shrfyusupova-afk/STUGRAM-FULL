@@ -66,7 +66,7 @@ fun GroupChatDetailScreen(
 
     var messageText by remember { mutableStateOf("") }
     var showGroupInfo by remember { mutableStateOf(false) }
-    val groupChatBackendReady = false // TODO: wire group chat endpoints before enabling send.
+    var nextMessageId by remember { mutableIntStateOf(5) }
 
     val messages = remember {
         mutableStateListOf(
@@ -76,8 +76,17 @@ fun GroupChatDetailScreen(
             GroupMessageData(1, "Salom hamma! Qandaysizlar?", "Ali", false)
         )
     }
-
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    val sendMessage: () -> Unit = send@{
+        val trimmed = messageText.trim()
+        if (trimmed.isEmpty()) return@send
+        messages.add(0, GroupMessageData(nextMessageId, trimmed, "Siz", true))
+        nextMessageId++
+        messageText = ""
+        scope.launch { listState.animateScrollToItem(0) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Image(
@@ -193,19 +202,24 @@ fun GroupChatDetailScreen(
                         onValueChange = { messageText = it },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = TextStyle(color = contentColor, fontSize = 15.sp),
+                        cursorBrush = SolidColor(accentBlue),
                         decorationBox = { innerTextField ->
                             if (messageText.isEmpty()) Text("Xabar yozing...", color = contentColor.copy(0.5f), fontSize = 15.sp)
                             innerTextField()
                         }
                     )
                 }
-                
+
+                val canSend = messageText.trim().isNotEmpty()
                 IconButton(
-                    onClick = { /* TODO: enable after backend group endpoint integration */ },
-                    enabled = groupChatBackendReady,
+                    onClick = sendMessage,
+                    enabled = canSend,
                     modifier = Modifier
                         .size(48.dp)
-                        .background(accentBlue, CircleShape)
+                        .background(
+                            if (canSend) accentBlue else accentBlue.copy(0.4f),
+                            CircleShape
+                        )
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White)
                 }
