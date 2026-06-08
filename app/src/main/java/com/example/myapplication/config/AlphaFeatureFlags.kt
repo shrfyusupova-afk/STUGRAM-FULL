@@ -3,7 +3,7 @@ package com.example.myapplication.config
 object AlphaFeatureFlags {
     const val ALPHA_MODE: Boolean = true
 
-    const val FEED_INTERACTIONS_ENABLED: Boolean = false
+    const val FEED_INTERACTIONS_ENABLED: Boolean = true
     const val STORIES_ENABLED: Boolean = false
     const val REELS_ENABLED: Boolean = true
     const val SEARCH_DISCOVERY_ENABLED: Boolean = false

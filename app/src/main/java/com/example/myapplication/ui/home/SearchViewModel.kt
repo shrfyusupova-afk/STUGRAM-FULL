@@ -55,7 +55,7 @@ class SearchViewModel(
         loadDiscovery()
     }
 
-    private fun loadDiscovery() {
+    fun loadDiscovery() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDiscovery = true) }
             try {

@@ -505,13 +505,13 @@ private fun ReelPage(
             onReport = { showMoreMenu = false }
         )
     }
-    if (showComments) {
-        ReelCommentsSheet(
-            authorUsername = reel.authorUsername,
-            commentCount = reel.comments,
-            onDismiss = { showComments = false }
-        )
-    }
+    CommentsBottomSheet(
+        postId = reel.id,
+        initialCount = reel.comments,
+        visible = showComments,
+        accent = ReelPink,
+        onDismiss = { showComments = false }
+    )
     if (showShare) {
         ReelShareSheet(
             reelId = reel.id,
@@ -685,132 +685,6 @@ private fun ReelMoreMenuSheet(
                 onClick = onReport
             )
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ReelCommentsSheet(
-    authorUsername: String,
-    commentCount: Int,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-    var draft by remember { mutableStateOf("") }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color(0xFF111111),
-        dragHandle = { ReelDragHandle() }
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
-            Text(
-                "Izohlar  ·  ${reelFormatCount(commentCount)}",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-            HorizontalDivider(color = Color.White.copy(0.05f))
-
-            if (commentCount == 0) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(180.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.AutoMirrored.Filled.Comment, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(36.dp))
-                        Spacer(Modifier.height(8.dp))
-                        Text("Hali izohlar yo'q", color = Color.White.copy(0.6f), fontSize = 13.sp)
-                        Text("Birinchi bo'lib izoh qoldiring", color = Color.White.copy(0.4f), fontSize = 11.sp)
-                    }
-                }
-            } else {
-                // Mock comments preview — real backend not wired
-                Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                    listOf(
-                        "Zo'r 🔥" to "ali_2008",
-                        "Qaerda olingan bu?" to "shahnoza_uz",
-                        "Eng yaxshi reel @${authorUsername} ❤️" to "sanjar.k"
-                    ).forEach { (text, user) ->
-                        ReelCommentRow(user = user, text = text)
-                    }
-                }
-            }
-
-            HorizontalDivider(color = Color.White.copy(0.05f))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(ReelPink.copy(0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    placeholder = { Text("Izoh qoldiring...", color = Color.White.copy(0.4f), fontSize = 13.sp) },
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = ReelPink.copy(0.4f),
-                        unfocusedBorderColor = Color.White.copy(0.1f),
-                        focusedContainerColor = Color.White.copy(0.04f),
-                        unfocusedContainerColor = Color.White.copy(0.04f),
-                        cursorColor = ReelPink
-                    ),
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
-                )
-                Spacer(Modifier.width(6.dp))
-                IconButton(
-                    onClick = { draft = "" },
-                    enabled = draft.isNotBlank(),
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        null,
-                        tint = if (draft.isNotBlank()) ReelPink else Color.White.copy(0.3f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReelCommentRow(user: String, text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Person, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(20.dp))
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text("@$user", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text(text, color = Color.White.copy(0.85f), fontSize = 13.sp, lineHeight = 17.sp)
-        }
-        Icon(Icons.Default.FavoriteBorder, null, tint = Color.White.copy(0.4f), modifier = Modifier.size(16.dp))
     }
 }
 

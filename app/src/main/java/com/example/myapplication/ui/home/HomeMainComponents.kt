@@ -55,20 +55,23 @@ fun HomeTabScreen(
     onThemeChange: (Boolean) -> Unit,
     onStoryClick: (Int) -> Unit,
     onCreateClick: () -> Unit,
-    onCommentsClick: () -> Unit,
+    onCommentsClick: (PostData) -> Unit,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     listState: LazyListState,
     myAvatar: String = "",
-    onAddStoryClick: () -> Unit = {}
+    onAddStoryClick: () -> Unit = {},
+    onProfileClick: (String) -> Unit = {}
 ) {
+    val pullState = rememberPullToRefreshState()
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
+        state = pullState,
         modifier = Modifier.fillMaxSize(),
         indicator = {
             PullToRefreshDefaults.Indicator(
-                state = rememberPullToRefreshState(),
+                state = pullState,
                 isRefreshing = isRefreshing,
                 color = accentBlue,
                 containerColor = if (isDarkMode) Color(0xFF1A1A1A) else Color.White,
@@ -114,10 +117,14 @@ fun HomeTabScreen(
                     )
                 }
             } else {
-                itemsIndexed(posts) { index, post ->
-                    DashboardPostItem(post, accentBlue, isDarkMode, onCommentsClick) {
-                        // Profile click logic
-                    }
+                itemsIndexed(posts) { _, post ->
+                    DashboardPostItem(
+                        post = post,
+                        accentBlue = accentBlue,
+                        isDarkMode = isDarkMode,
+                        onCommentsClick = { onCommentsClick(post) },
+                        onProfileClick = { onProfileClick(post.user) }
+                    )
                 }
             }
         }
@@ -468,6 +475,11 @@ fun DashboardPostItem(
     val textColor = if (isDarkMode) Color.White else Color.Black
     val iconColor = if (isDarkMode) Color.White else Color.Black
 
+    var isLiked by remember(post.id) { mutableStateOf(false) }
+    var likeCount by remember(post.id) { mutableIntStateOf(post.likes) }
+    val scope = rememberCoroutineScope()
+    val api = remember { com.example.myapplication.data.remote.RetrofitClient.instance }
+
     val revealProgress by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(durationMillis = 500, easing = EaseOutCubic),
@@ -571,13 +583,37 @@ fun DashboardPostItem(
                 Column(modifier = Modifier.padding(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         PostStatItem(
-                            icon = Icons.Default.FavoriteBorder,
-                            count = post.likes.toString(),
+                            icon = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            count = likeCount.toString(),
                             isDarkMode = isDarkMode,
-                            tint = iconColor
+                            tint = if (isLiked) Color(0xFFFF3B6B) else iconColor,
+                            onClick = {
+                                val previousLiked = isLiked
+                                isLiked = !previousLiked
+                                likeCount += if (!previousLiked) 1 else -1
+                                scope.launch {
+                                    try {
+                                        if (!previousLiked) api.likePost(post.id) else api.unlikePost(post.id)
+                                    } catch (_: Exception) {
+                                        isLiked = previousLiked
+                                        likeCount += if (previousLiked) 1 else -1
+                                    }
+                                }
+                            }
                         )
                         Spacer(Modifier.width(12.dp))
-                        Icon(Icons.Outlined.ChatBubbleOutline, null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.Outlined.ChatBubbleOutline,
+                            null,
+                            tint = iconColor,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onCommentsClick
+                                )
+                        )
                         Spacer(Modifier.width(12.dp))
                         Icon(Icons.AutoMirrored.Rounded.Send, null, tint = iconColor, modifier = Modifier.size(20.dp))
                     }
@@ -613,8 +649,11 @@ fun RecommendedProfilesSlider(profiles: List<RecommendedProfile>, accentBlue: Co
 @Composable
 fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDarkMode: Boolean) {
     var isFollowed by remember(profile.id) { mutableStateOf(profile.followStatus == "following") }
+    var isBusy by remember(profile.id) { mutableStateOf(false) }
     val cardBg = if (isDarkMode) Color(0xFF1A1A1A) else Color.White
     val textColor = if (isDarkMode) Color.White else Color.Black
+    val scope = rememberCoroutineScope()
+    val api = remember { com.example.myapplication.data.remote.RetrofitClient.instance }
 
     Card(
         modifier = Modifier
@@ -675,7 +714,21 @@ fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDar
                 )
                 
                 Surface(
-                    onClick = { isFollowed = !isFollowed },
+                    onClick = {
+                        if (isBusy) return@Surface
+                        val previous = isFollowed
+                        isFollowed = !previous
+                        isBusy = true
+                        scope.launch {
+                            try {
+                                if (!previous) api.followUser(profile.id) else api.unfollowUser(profile.id)
+                            } catch (_: Exception) {
+                                isFollowed = previous
+                            } finally {
+                                isBusy = false
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp),

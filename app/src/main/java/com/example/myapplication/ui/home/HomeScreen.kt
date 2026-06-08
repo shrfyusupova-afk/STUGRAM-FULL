@@ -42,6 +42,7 @@ fun HomeScreen(
     val contentColor = if (isDarkMode) Color.White else Color.Black
 
     val listState = rememberLazyListState()
+    var commentsForPost by remember { mutableStateOf<PostData?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
@@ -78,12 +79,13 @@ fun HomeScreen(
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
                             onCreateClick = onNavigateToCreatePost,
-                            onCommentsClick = { viewModel.toggleComments(true) },
+                            onCommentsClick = { post -> commentsForPost = post },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
                             listState = listState,
                             myAvatar = viewModel.myAvatar,
-                            onAddStoryClick = onNavigateToCreatePost
+                            onAddStoryClick = onNavigateToCreatePost,
+                            onProfileClick = onNavigateToProfile
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -168,7 +170,16 @@ fun HomeScreen(
             }
         }
 
-        // Comments bottom sheet is hidden in alpha until backend-backed comments flow is wired.
+        // Comments sheet — pasdan tepaga sirpanib chiqadi
+        commentsForPost?.let { post ->
+            CommentsBottomSheet(
+                postId = post.id,
+                initialCount = post.comments,
+                visible = true,
+                accent = accentBlue,
+                onDismiss = { commentsForPost = null }
+            )
+        }
     }
 }
 

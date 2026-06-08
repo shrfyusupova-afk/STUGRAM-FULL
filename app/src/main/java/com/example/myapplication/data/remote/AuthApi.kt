@@ -134,7 +134,38 @@ interface AuthApi {
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 10
     ): Response<JsonObject>
+
+    // ── Comments ──
+    @GET("api/v1/comments/posts/{postId}")
+    suspend fun getPostComments(
+        @Path("postId") postId: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @POST("api/v1/comments/posts/{postId}")
+    suspend fun addPostComment(
+        @Path("postId") postId: String,
+        @Body request: AddCommentRequest
+    ): Response<JsonObject>
+
+    @DELETE("api/v1/comments/{commentId}")
+    suspend fun deletePostComment(
+        @Path("commentId") commentId: String
+    ): Response<JsonObject>
+
+    // ── Likes ──
+    @POST("api/v1/likes/posts/{postId}")
+    suspend fun likePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @DELETE("api/v1/likes/posts/{postId}")
+    suspend fun unlikePost(@Path("postId") postId: String): Response<JsonObject>
 }
+
+data class AddCommentRequest(
+    val content: String,
+    val parentCommentId: String? = null
+)
 
 data class RefreshTokenRequest(val refreshToken: String)
 
