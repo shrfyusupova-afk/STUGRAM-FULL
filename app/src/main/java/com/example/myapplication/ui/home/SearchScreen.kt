@@ -61,8 +61,8 @@ fun SearchScreen(
     // Video post → fullscreen reels viewer (animated expand from grid)
     AnimatedVisibility(
         visible = viewingReel != null,
-        enter = fadeIn(tween(220)) + scaleIn(tween(280, easing = FastOutSlowInEasing), initialScale = 0.92f),
-        exit = fadeOut(tween(180)) + scaleOut(tween(220), targetScale = 0.94f)
+        enter = fadeIn(tween(200, easing = FastOutSlowInEasing)) + scaleIn(tween(260, easing = FastOutSlowInEasing), initialScale = 0.92f),
+        exit = fadeOut(tween(180, easing = FastOutSlowInEasing)) + scaleOut(tween(240, easing = FastOutSlowInEasing), targetScale = 0.94f)
     ) {
         viewingReel?.let { reel ->
             ReelFullscreenViewer(
@@ -300,8 +300,8 @@ private fun DiscoverySection(
 private fun AnimSection(visible: Boolean, delayMs: Int, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(420, delayMillis = delayMs)) +
-                slideInVertically(tween(420, delayMillis = delayMs, easing = FastOutSlowInEasing)) { it / 3 }
+        enter = fadeIn(tween(320, delayMillis = delayMs, easing = FastOutSlowInEasing)) +
+                slideInVertically(tween(320, delayMillis = delayMs, easing = FastOutSlowInEasing)) { it / 3 }
     ) {
         content()
     }
@@ -362,7 +362,7 @@ private fun CreatorsCarousel(
             .coerceIn(-1f, 1f)
         val scale by animateFloatAsState(
             targetValue = if (pageOffset == 0f) 1f else 0.92f,
-            animationSpec = spring(stiffness = Spring.StiffnessLow),
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 400f),
             label = "card_scale"
         )
         CreatorLoopCard(
@@ -554,7 +554,7 @@ private fun TrendingCell(
 
     // Press scale animation
     var pressed by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(stiffness = Spring.StiffnessMedium), label = "press")
+    val pressScale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.75f, stiffness = 650f), label = "press")
 
     Column(modifier = modifier) {
         Box(

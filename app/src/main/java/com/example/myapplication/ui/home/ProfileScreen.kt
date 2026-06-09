@@ -3,6 +3,7 @@ package com.example.myapplication.ui.home
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -584,7 +585,7 @@ private fun ProfileTabSwitcher(
                     val selected = pagerState.currentPage == index
                     val tint by animateColorAsState(
                         targetValue = if (selected) Color.White else ProfileSecondary,
-                        animationSpec = tween(180),
+                        animationSpec = tween(160, easing = FastOutSlowInEasing),
                         label = "tab_tint"
                     )
                     Box(

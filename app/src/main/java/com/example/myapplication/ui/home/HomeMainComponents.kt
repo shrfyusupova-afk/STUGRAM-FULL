@@ -540,7 +540,7 @@ fun DashboardPostItem(
 
     val revealProgress by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(durationMillis = 500, easing = EaseOutCubic),
+        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
         label = "post_reveal"
     )
 
@@ -861,7 +861,7 @@ fun RecommendedProfileCard(
             ) {
                 val buttonColor by animateColorAsState(
                     if (isFollowed) Color.White.copy(alpha = 0.1f) else accentBlue,
-                    animationSpec = tween(300),
+                    animationSpec = tween(150, easing = FastOutSlowInEasing),
                     label = "buttonColor"
                 )
                 
@@ -942,12 +942,12 @@ fun GlassSlidingNavigation(
     val borderTint   = if (isDarkMode) Color.White.copy(0.10f) else Color.Black.copy(0.06f)
     val density = LocalDensity.current
 
-    // Spring-animated index → smooth follow even on rapid taps
+    // Spring-animated index — snappy, barely-bouncy Telegram-style pill
     val animatedIndex by animateFloatAsState(
         targetValue = selectedTab.toFloat(),
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.82f,
+            stiffness = 500f
         ),
         label = "nav_index"
     )
@@ -1050,14 +1050,14 @@ fun GlassSlidingNavigation(
                     val isSelected = selectedTab == index
                     val tint by animateColorAsState(
                         targetValue = if (isSelected) Color.White else contentColor.copy(0.6f),
-                        animationSpec = tween(220),
+                        animationSpec = tween(150, easing = FastOutSlowInEasing),
                         label = "icon_tint_$index"
                     )
                     val scale by animateFloatAsState(
                         targetValue = if (isSelected) 1.12f else 1f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium
+                            dampingRatio = 0.82f,
+                            stiffness = 500f
                         ),
                         label = "icon_scale_$index"
                     )

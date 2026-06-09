@@ -226,7 +226,11 @@ fun GroupChatDetailScreen(
             }
         }
 
-        AnimatedVisibility(visible = showGroupInfo, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()) {
+        AnimatedVisibility(
+            visible = showGroupInfo,
+            enter = slideInVertically(tween(300, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(240, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(200, easing = FastOutSlowInEasing))
+        ) {
             GroupInfoScreen(groupName = groupName, isDarkMode = isDarkMode, onBack = { showGroupInfo = false })
         }
     }

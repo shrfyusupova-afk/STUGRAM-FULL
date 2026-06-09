@@ -15,8 +15,10 @@ import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.camera.view.video.AudioConfig
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -243,12 +245,12 @@ fun CameraScreen(
                         val active = mode == currentMode
                         val bgColor by animateColorAsState(
                             targetValue = if (active) Color.White else Color.Transparent,
-                            animationSpec = tween(180),
+                            animationSpec = tween(160, easing = FastOutSlowInEasing),
                             label = "tab_bg"
                         )
                         val textColor by animateColorAsState(
                             targetValue = if (active) Color.Black else Color.White.copy(0.7f),
-                            animationSpec = tween(180),
+                            animationSpec = tween(160, easing = FastOutSlowInEasing),
                             label = "tab_text"
                         )
                         Box(
@@ -276,6 +278,7 @@ fun CameraScreen(
 
             val flashTint by animateColorAsState(
                 targetValue = if (flashEnabled) Color(0xFFFFE082) else Color.White,
+                animationSpec = tween(140, easing = FastOutSlowInEasing),
                 label = "flash"
             )
             CameraIconButton(
@@ -293,7 +296,7 @@ fun CameraScreen(
         // Bottom controls
         val captureScale by animateFloatAsState(
             targetValue = if (isCapturing || isRecording) 0.88f else 1f,
-            animationSpec = tween(100),
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 700f),
             label = "cap_scale"
         )
 
@@ -342,7 +345,7 @@ fun CameraScreen(
                 // Outer ring — grows when holding to record (Instagram-style)
                 val ringSize by animateDpAsState(
                     targetValue = if (isRecording) 108.dp else 88.dp,
-                    animationSpec = tween(200),
+                    animationSpec = tween(220, easing = FastOutSlowInEasing),
                     label = "ring_size"
                 )
                 Box(modifier = Modifier.size(ringSize).border(4.dp, ringColor, CircleShape))
@@ -350,7 +353,7 @@ fun CameraScreen(
                 // Inner shutter button — shrinks to a red square while recording
                 val innerSize by animateDpAsState(
                     targetValue = if (isRecording) 36.dp else 72.dp,
-                    animationSpec = tween(200),
+                    animationSpec = tween(220, easing = FastOutSlowInEasing),
                     label = "inner_size"
                 )
                 Box(

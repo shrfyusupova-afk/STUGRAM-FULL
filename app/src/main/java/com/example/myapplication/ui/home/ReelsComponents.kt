@@ -316,7 +316,7 @@ private fun ReelPage(
 
     val heartScale by animateFloatAsState(
         targetValue = if (heartVisible) 1f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = 600f),
         label = "heart_scale"
     )
 

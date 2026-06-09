@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -83,8 +84,10 @@ fun HomeScreen(
                     targetState = viewModel.currentTab,
                     transitionSpec = {
                         val dir = if (targetState > initialState) 1 else -1
-                        (slideInHorizontally(tween(300)) { dir * 48 } + fadeIn(tween(240)))
-                            .togetherWith(slideOutHorizontally(tween(300)) { -dir * 48 } + fadeOut(tween(200)))
+                        val spec = tween<IntOffset>(260, easing = FastOutSlowInEasing)
+                        val fadeSpec = tween<Float>(200, easing = FastOutSlowInEasing)
+                        (slideInHorizontally(spec) { dir * 52 } + fadeIn(fadeSpec))
+                            .togetherWith(slideOutHorizontally(spec) { -dir * 52 } + fadeOut(fadeSpec))
                     },
                     label = "main_nav"
                 ) { targetTab ->
@@ -191,11 +194,15 @@ fun HomeScreen(
             targetState = viewModel.activeStoryProfileIndex,
             transitionSpec = {
                 if (targetState != null) {
-                    (slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(400)) + scaleIn(initialScale = 0.85f, transformOrigin = TransformOrigin.Center))
-                        .togetherWith(fadeOut(tween(200)))
+                    val enterSpec = tween<Float>(320, easing = FastOutSlowInEasing)
+                    val enterOffset = tween<IntOffset>(320, easing = FastOutSlowInEasing)
+                    (slideInVertically(enterOffset) { it / 2 } + fadeIn(enterSpec) + scaleIn(enterSpec, initialScale = 0.88f, transformOrigin = TransformOrigin.Center))
+                        .togetherWith(fadeOut(tween(180, easing = FastOutSlowInEasing)))
                 } else {
-                    fadeIn(tween(200))
-                        .togetherWith(slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(tween(400)) + scaleOut(targetScale = 0.85f, transformOrigin = TransformOrigin.Center))
+                    val exitSpec = tween<Float>(260, easing = FastOutSlowInEasing)
+                    val exitOffset = tween<IntOffset>(260, easing = FastOutSlowInEasing)
+                    fadeIn(tween(180, easing = FastOutSlowInEasing))
+                        .togetherWith(slideOutVertically(exitOffset) { it / 2 } + fadeOut(exitSpec) + scaleOut(exitSpec, targetScale = 0.88f, transformOrigin = TransformOrigin.Center))
                 }
             },
             label = "story_modal"
