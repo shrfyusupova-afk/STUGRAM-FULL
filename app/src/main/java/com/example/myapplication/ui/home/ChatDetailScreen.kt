@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -100,6 +101,7 @@ fun ChatDetailScreen(
     var lastSeenSyncAtMillis by remember { mutableLongStateOf(0L) }
     var syncInFlight by remember { mutableStateOf(false) }
     var lastReconnectSyncAtMillis by remember { mutableLongStateOf(0L) }
+    val newMessageIds = remember { mutableStateOf(emptySet<String>()) }
 
     val context = LocalContext.current
     val chatDatabase = remember { ChatDatabase.getInstance(context) }
@@ -298,18 +300,45 @@ fun ChatDetailScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
                 ) {
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        // reverseLayout=true: index 0 = newest (bottom), index n-1 = oldest (top)
                         val prevMsg = if (index > 0) messages[index - 1] else null
                         val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
                         val isLastInGroup = prevMsg == null || prevMsg.isMe != message.isMe
                         val isFirstInGroup = nextMsg == null || nextMsg.isMe != message.isMe
                         val showDateHeader = nextMsg == null || !isSameDay(message.timestamp, nextMsg.timestamp)
 
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            if (showDateHeader) {
-                                DateHeader(message.timestamp, isDarkMode)
+                        val isNewMessage = message.isMe && message.clientId != null && newMessageIds.value.contains(message.clientId)
+                        var bubbleVisible by remember(message.id) { mutableStateOf(!isNewMessage) }
+
+                        LaunchedEffect(message.id) {
+                            if (isNewMessage) {
+                                bubbleVisible = true
+                                delay(700)
+                                newMessageIds.value = newMessageIds.value - message.clientId!!
                             }
-                            MessageBubble(message, isDarkMode, isFirstInGroup, isLastInGroup)
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem(
+                                    fadeInSpec = null,
+                                    placementSpec = spring(dampingRatio = 0.82f, stiffness = 480f)
+                                )
+                        ) {
+                            AnimatedVisibility(
+                                visible = bubbleVisible,
+                                enter = slideInVertically(
+                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f),
+                                    initialOffsetY = { it }
+                                ) + fadeIn(tween(180, easing = FastOutSlowInEasing))
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    if (showDateHeader) {
+                                        DateHeader(message.timestamp, isDarkMode)
+                                    }
+                                    MessageBubble(message, isDarkMode, isFirstInGroup, isLastInGroup)
+                                }
+                            }
                         }
                     }
                 }
@@ -322,8 +351,9 @@ fun ChatDetailScreen(
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    glassBg,
-                                    glassBg.copy(alpha = 0.8f),
+                                    glassBg.copy(alpha = 0.97f),
+                                    glassBg.copy(alpha = 0.88f),
+                                    glassBg.copy(alpha = 0.52f),
                                     Color.Transparent
                                 )
                             )
@@ -470,7 +500,12 @@ fun ChatDetailScreen(
                         }
                     }
                     
-                                        val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
+                    val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
+                    val sendScale by animateFloatAsState(
+                        targetValue = if (messageText.isNotBlank()) 1f else 0.85f,
+                        animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
+                        label = "send_scale"
+                    )
                     IconButton(
                         onClick = {
                             val targetConversationId = conversationId
@@ -486,6 +521,7 @@ fun ChatDetailScreen(
                             }
 
                             val clientId = "android:${UUID.randomUUID()}"
+                            newMessageIds.value = newMessageIds.value + clientId
                             messageText = ""
                             isMenuOpen = false
                             scope.launch { scrollToStart() }
@@ -544,7 +580,11 @@ fun ChatDetailScreen(
                             }
                         },
                         enabled = canSendNow,
-                        modifier = Modifier.size(44.dp).clip(CircleShape).background(accentBlue)
+                        modifier = Modifier
+                            .size(44.dp)
+                            .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
+                            .clip(CircleShape)
+                            .background(accentBlue.copy(alpha = if (messageText.isNotBlank()) 1f else 0.55f))
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
@@ -554,8 +594,8 @@ fun ChatDetailScreen(
         // --- OVERLAYS ---
         AnimatedVisibility(
             visible = showChatInfo,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            enter = slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(280, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(240, easing = FastOutSlowInEasing))
         ) {
             ChatInfoScreen(
                 userName = userName,
@@ -568,8 +608,8 @@ fun ChatDetailScreen(
 
         AnimatedVisibility(
             visible = showMemberProfile,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            enter = slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(280, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(240, easing = FastOutSlowInEasing))
         ) {
             ProfileScreen(
                 isDarkMode = isDarkMode,
