@@ -444,37 +444,41 @@ fun ChatDetailScreen(
             } else {
                 Row(
                     modifier = Modifier
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                         .fillMaxWidth()
                         .navigationBarsPadding()
                         .imePadding(),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .animateContentSize()
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.85f))
-                            .border(0.5.dp, glassBorder, RoundedCornerShape(24.dp))
-                            .padding(4.dp)
+                            .animateContentSize(animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f))
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.92f))
+                            .border(0.5.dp, glassBorder, RoundedCornerShape(22.dp))
                     ) {
-                        Row(verticalAlignment = Alignment.Bottom) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
-                                onClick = { 
-                                    isMenuOpen = !isMenuOpen 
+                                onClick = {
+                                    isMenuOpen = !isMenuOpen
                                     if (isMenuOpen) scope.launch { scrollToStart() }
                                 },
                                 modifier = Modifier.size(40.dp)
                             ) {
-                                Icon(if (isMenuOpen) Icons.Default.Close else Icons.Default.Add, null, tint = contentColor.copy(0.7f), modifier = Modifier.size(24.dp))
+                                Icon(
+                                    if (isMenuOpen) Icons.Default.Close else Icons.Default.AttachFile,
+                                    null,
+                                    tint = contentColor.copy(0.55f),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
 
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 4.dp, vertical = 10.dp),
+                                    .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 if (isMenuOpen) {
@@ -482,12 +486,12 @@ fun ChatDetailScreen(
                                 } else {
                                     val inputTextStyle = TextStyle(color = contentColor, fontSize = 15.sp, lineHeight = 20.sp, fontFamily = IosEmojiFont)
                                     if (messageText.isEmpty()) {
-                                        Text(text = "Xabar...", style = inputTextStyle.copy(color = contentColor.copy(0.5f)))
+                                        Text(text = "Xabar...", style = inputTextStyle.copy(color = contentColor.copy(0.45f)))
                                     }
                                     BasicTextField(
                                         value = messageText,
-                                        onValueChange = { 
-                                            messageText = it 
+                                        onValueChange = {
+                                            messageText = it
                                             scope.launch { scrollToStart() }
                                         },
                                         modifier = Modifier.fillMaxWidth(),
@@ -497,9 +501,21 @@ fun ChatDetailScreen(
                                     )
                                 }
                             }
+
+                            IconButton(
+                                onClick = { /* emoji picker hook */ },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.SentimentSatisfiedAlt,
+                                    null,
+                                    tint = contentColor.copy(0.55f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
-                    
+
                     val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
                     val sendScale by animateFloatAsState(
                         targetValue = if (messageText.isNotBlank()) 1f else 0.85f,
@@ -581,12 +597,12 @@ fun ChatDetailScreen(
                         },
                         enabled = canSendNow,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(42.dp)
                             .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
                             .clip(CircleShape)
                             .background(accentBlue.copy(alpha = if (messageText.isNotBlank()) 1f else 0.55f))
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.ArrowUpward, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
             }
         }
