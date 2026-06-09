@@ -104,6 +104,7 @@ fun ChatDetailScreen(
     var isMemberProfileRefreshing by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var conversationId by remember { mutableStateOf<String?>(null) }
+    var isConversationLoading by remember { mutableStateOf(false) }
     var sendBlockedUntilMillis by remember { mutableLongStateOf(0L) }
     var lastSeenSyncAtMillis by remember { mutableLongStateOf(0L) }
     var syncInFlight by remember { mutableStateOf(false) }
@@ -216,14 +217,22 @@ fun ChatDetailScreen(
     if (!isRequest) {
         LaunchedEffect(userName) {
             errorText = null
-            when (val conversationResult = chatRepository.findOrCreateConversationWithUserName(userName)) {
-                is ChatResult.Error -> {
-                    errorText = conversationResult.message
-                }
-                is ChatResult.Success -> {
-                    conversationId = conversationResult.value._id
+            isConversationLoading = true
+            var attempt = 0
+            while (conversationId == null && attempt < 5) {
+                when (val result = chatRepository.findOrCreateConversationWithUserName(userName)) {
+                    is ChatResult.Success -> {
+                        conversationId = result.value._id
+                        errorText = null
+                    }
+                    is ChatResult.Error -> {
+                        attempt++
+                        errorText = result.message
+                        if (attempt < 5) delay(minOf(2000L * attempt, 10_000L))
+                    }
                 }
             }
+            isConversationLoading = false
         }
 
         LaunchedEffect(conversationId) {
@@ -441,14 +450,28 @@ fun ChatDetailScreen(
                             Text(text = userName, color = contentColor, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 16.sp)
                             if (!isRequest) {
                                 AnimatedContent(
-                                    targetState = isTyping,
-                                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                    targetState = when {
+                                        isConversationLoading -> "loading"
+                                        isTyping -> "typing"
+                                        else -> "online"
+                                    },
+                                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
                                     label = "status"
-                                ) { typing ->
-                                    if (typing) {
-                                        Text(text = "yozmoqda...", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    } else {
-                                        Text(text = "online", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                ) { state ->
+                                    when (state) {
+                                        "loading" -> Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(9.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = contentColor.copy(0.5f)
+                                            )
+                                            Text(text = "ulanmoqda...", color = contentColor.copy(0.5f), fontSize = 11.sp)
+                                        }
+                                        "typing" -> Text(text = "yozmoqda...", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        else -> Text(text = "online", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                     }
                                 }
                             }
@@ -487,18 +510,24 @@ fun ChatDetailScreen(
             if (isRequest) {
                 RequestActionButtons(isDarkMode, onBack)
             } else {
-                val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
+                val canSendNow = !isConversationLoading &&
+                    conversationId != null &&
+                    System.currentTimeMillis() >= sendBlockedUntilMillis
 
                 val sendTextMessage: () -> Unit = sendBlock@{
                     val targetConversationId = conversationId
                     val trimmedText = messageText.trim()
                     if (trimmedText.isBlank()) return@sendBlock
-                    if (targetConversationId.isNullOrBlank()) {
-                        errorText = "Conversation not ready yet."
+                    if (isConversationLoading) {
+                        errorText = "Ulanmoqda, biroz kutib turing..."
                         return@sendBlock
                     }
-                    if (!canSendNow) {
-                        errorText = "Please wait before retrying."
+                    if (targetConversationId.isNullOrBlank()) {
+                        errorText = "Chat hali tayyor emas. Sahifani yoping va qayta oching."
+                        return@sendBlock
+                    }
+                    if (System.currentTimeMillis() < sendBlockedUntilMillis) {
+                        errorText = "Iltimos, biroz kutib turing."
                         return@sendBlock
                     }
 
