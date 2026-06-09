@@ -3,6 +3,9 @@ package com.example.myapplication.ui.home
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,9 +30,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -102,6 +109,44 @@ fun ChatDetailScreen(
     var syncInFlight by remember { mutableStateOf(false) }
     var lastReconnectSyncAtMillis by remember { mutableLongStateOf(0L) }
     val newMessageIds = remember { mutableStateOf(emptySet<String>()) }
+
+    var recordMode by remember { mutableStateOf(RecordMode.VOICE) }
+    var isRecording by remember { mutableStateOf(false) }
+    var isLocked by remember { mutableStateOf(false) }
+    var recordSeconds by remember { mutableIntStateOf(0) }
+    var recordDragY by remember { mutableFloatStateOf(0f) }
+    var flashOn by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            recordSeconds = 0
+            while (true) {
+                delay(1000)
+                recordSeconds++
+            }
+        }
+    }
+
+    val recPulse = rememberInfiniteTransition(label = "rec_pulse")
+    val recDotAlpha by recPulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rec_dot"
+    )
+    val recordingWaveScale by recPulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rec_wave"
+    )
 
     val context = LocalContext.current
     val chatDatabase = remember { ChatDatabase.getInstance(context) }
@@ -442,168 +487,313 @@ fun ChatDetailScreen(
             if (isRequest) {
                 RequestActionButtons(isDarkMode, onBack)
             } else {
-                Row(
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .animateContentSize(animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f))
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.92f))
-                            .border(0.5.dp, glassBorder, RoundedCornerShape(22.dp))
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    isMenuOpen = !isMenuOpen
-                                    if (isMenuOpen) scope.launch { scrollToStart() }
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    if (isMenuOpen) Icons.Default.Close else Icons.Default.AttachFile,
-                                    null,
-                                    tint = contentColor.copy(0.55f),
-                                    modifier = Modifier.size(20.dp)
+                val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
+
+                val sendTextMessage: () -> Unit = sendBlock@{
+                    val targetConversationId = conversationId
+                    val trimmedText = messageText.trim()
+                    if (trimmedText.isBlank()) return@sendBlock
+                    if (targetConversationId.isNullOrBlank()) {
+                        errorText = "Conversation not ready yet."
+                        return@sendBlock
+                    }
+                    if (!canSendNow) {
+                        errorText = "Please wait before retrying."
+                        return@sendBlock
+                    }
+
+                    val clientId = "android:${UUID.randomUUID()}"
+                    newMessageIds.value = newMessageIds.value + clientId
+                    messageText = ""
+                    isMenuOpen = false
+                    scope.launch { scrollToStart() }
+
+                    scope.launch {
+                        val now = System.currentTimeMillis()
+                        chatLocalStore.saveOptimisticMessage(
+                            conversationId = targetConversationId,
+                            clientId = clientId,
+                            senderId = "me",
+                            text = trimmedText,
+                            nowMillis = now
+                        )
+
+                        when (val sendResult = chatRepository.sendTextMessage(targetConversationId, trimmedText, clientId)) {
+                            is ChatResult.Success -> {
+                                chatLocalStore.replaceOptimisticWithServer(
+                                    conversationId = targetConversationId,
+                                    clientId = clientId,
+                                    serverMessage = sendResult.value,
+                                    senderId = "me"
                                 )
+                                errorText = null
                             }
 
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                if (isMenuOpen) {
-                                    AttachmentMenu(contentColor)
-                                } else {
-                                    val inputTextStyle = TextStyle(color = contentColor, fontSize = 15.sp, lineHeight = 20.sp, fontFamily = IosEmojiFont)
-                                    if (messageText.isEmpty()) {
-                                        Text(text = "Xabar...", style = inputTextStyle.copy(color = contentColor.copy(0.45f)))
+                            is ChatResult.Error -> {
+                                chatLocalStore.markFailed(targetConversationId, clientId)
+                                when (ChatFailureClassifier.classify(sendResult)) {
+                                    ChatFailureType.RETRYABLE -> {
+                                        val nowMs = System.currentTimeMillis()
+                                        val retryAfterSec = max(1L, sendResult.retryAfterSeconds ?: 10L)
+                                        sendBlockedUntilMillis = nowMs + retryAfterSec * 1000L
+                                        pendingDao.insertOrReplace(
+                                            ChatPendingMessageEntity(
+                                                localId = "pending:$clientId",
+                                                conversationId = targetConversationId,
+                                                clientId = clientId,
+                                                text = trimmedText,
+                                                status = ChatPendingStatus.PENDING,
+                                                retryCount = 0,
+                                                nextAttemptAt = nowMs + retryAfterSec * 1000L,
+                                                lastError = sendResult.message,
+                                                createdAt = nowMs,
+                                                updatedAt = nowMs
+                                            )
+                                        )
+                                        ChatOutboxScheduler.schedule(context)
+                                        errorText = "Queued for retry: ${sendResult.message}"
                                     }
-                                    BasicTextField(
-                                        value = messageText,
-                                        onValueChange = {
-                                            messageText = it
-                                            scope.launch { scrollToStart() }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textStyle = inputTextStyle,
-                                        cursorBrush = SolidColor(accentBlue),
-                                        maxLines = 4
-                                    )
+                                    ChatFailureType.TERMINAL -> {
+                                        errorText = sendResult.message
+                                    }
                                 }
-                            }
-
-                            IconButton(
-                                onClick = { /* emoji picker hook */ },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.SentimentSatisfiedAlt,
-                                    null,
-                                    tint = contentColor.copy(0.55f),
-                                    modifier = Modifier.size(20.dp)
-                                )
                             }
                         }
                     }
+                }
 
-                    val canSendNow = System.currentTimeMillis() >= sendBlockedUntilMillis
-                    val sendScale by animateFloatAsState(
-                        targetValue = if (messageText.isNotBlank()) 1f else 0.85f,
-                        animationSpec = spring(dampingRatio = 0.72f, stiffness = 650f),
-                        label = "send_scale"
-                    )
-                    IconButton(
-                        onClick = {
-                            val targetConversationId = conversationId
-                            val trimmedText = messageText.trim()
-                            if (trimmedText.isBlank()) return@IconButton
-                            if (targetConversationId.isNullOrBlank()) {
-                                errorText = "Conversation not ready yet."
-                                return@IconButton
-                            }
-                            if (!canSendNow) {
-                                errorText = "Please wait before retrying."
-                                return@IconButton
-                            }
+                val finishRecording: (Boolean) -> Unit = { send ->
+                    isRecording = false
+                    isLocked = false
+                    recordDragY = 0f
+                    flashOn = false
+                    if (send && recordSeconds > 0) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                }
 
-                            val clientId = "android:${UUID.randomUUID()}"
-                            newMessageIds.value = newMessageIds.value + clientId
-                            messageText = ""
-                            isMenuOpen = false
-                            scope.launch { scrollToStart() }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding()
+                ) {
+                    val lockProgress = ((-recordDragY) / 140f).coerceIn(0f, 1f)
+                    AnimatedVisibility(
+                        visible = isRecording && !isLocked,
+                        enter = fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 2 },
+                        exit = fadeOut(tween(160, easing = FastOutSlowInEasing)) +
+                            slideOutVertically(tween(180, easing = FastOutSlowInEasing)) { it / 2 }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 18.dp, bottom = 6.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            LockHintChip(
+                                progress = lockProgress,
+                                isDarkMode = isDarkMode,
+                                accentBlue = accentBlue
+                            )
+                        }
+                    }
 
-                            scope.launch {
-                                val now = System.currentTimeMillis()
-                                chatLocalStore.saveOptimisticMessage(
-                                    conversationId = targetConversationId,
-                                    clientId = clientId,
-                                    senderId = "me",
-                                    text = trimmedText,
-                                    nowMillis = now
-                                )
-
-                                when (val sendResult = chatRepository.sendTextMessage(targetConversationId, trimmedText, clientId)) {
-                                    is ChatResult.Success -> {
-                                        chatLocalStore.replaceOptimisticWithServer(
-                                            conversationId = targetConversationId,
-                                            clientId = clientId,
-                                            serverMessage = sendResult.value,
-                                            senderId = "me"
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .animateContentSize(animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f))
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.92f))
+                                .border(0.5.dp, glassBorder, RoundedCornerShape(22.dp))
+                        ) {
+                            AnimatedContent(
+                                targetState = when {
+                                    isLocked -> InputBarState.LOCKED
+                                    isRecording -> InputBarState.RECORDING
+                                    else -> InputBarState.IDLE
+                                },
+                                transitionSpec = {
+                                    (fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                                        slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { -it / 6 })
+                                        .togetherWith(
+                                            fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                                                slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 6 }
                                         )
-                                        errorText = null
-                                    }
-
-                                    is ChatResult.Error -> {
-                                        chatLocalStore.markFailed(targetConversationId, clientId)
-                                        when (ChatFailureClassifier.classify(sendResult)) {
-                                            ChatFailureType.RETRYABLE -> {
-                                                val nowMs = System.currentTimeMillis()
-                                                val retryAfterSec = max(1L, sendResult.retryAfterSeconds ?: 10L)
-                                                sendBlockedUntilMillis = nowMs + retryAfterSec * 1000L
-                                                pendingDao.insertOrReplace(
-                                                    ChatPendingMessageEntity(
-                                                        localId = "pending:$clientId",
-                                                        conversationId = targetConversationId,
-                                                        clientId = clientId,
-                                                        text = trimmedText,
-                                                        status = ChatPendingStatus.PENDING,
-                                                        retryCount = 0,
-                                                        nextAttemptAt = nowMs + retryAfterSec * 1000L,
-                                                        lastError = sendResult.message,
-                                                        createdAt = nowMs,
-                                                        updatedAt = nowMs
-                                                    )
+                                },
+                                label = "input_bar_state"
+                            ) { state ->
+                                when (state) {
+                                    InputBarState.IDLE -> {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    isMenuOpen = !isMenuOpen
+                                                    if (isMenuOpen) scope.launch { scrollToStart() }
+                                                },
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Icon(
+                                                    if (isMenuOpen) Icons.Default.Close else Icons.Default.AttachFile,
+                                                    null,
+                                                    tint = contentColor.copy(0.55f),
+                                                    modifier = Modifier.size(20.dp)
                                                 )
-                                                ChatOutboxScheduler.schedule(context)
-                                                errorText = "Queued for retry: ${sendResult.message}"
                                             }
-                                            ChatFailureType.TERMINAL -> {
-                                                errorText = sendResult.message
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(vertical = 10.dp),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                if (isMenuOpen) {
+                                                    AttachmentMenu(contentColor)
+                                                } else {
+                                                    val inputTextStyle = TextStyle(color = contentColor, fontSize = 15.sp, lineHeight = 20.sp, fontFamily = IosEmojiFont)
+                                                    if (messageText.isEmpty()) {
+                                                        Text(text = "Xabar...", style = inputTextStyle.copy(color = contentColor.copy(0.45f)))
+                                                    }
+                                                    BasicTextField(
+                                                        value = messageText,
+                                                        onValueChange = {
+                                                            messageText = it
+                                                            scope.launch { scrollToStart() }
+                                                        },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        textStyle = inputTextStyle,
+                                                        cursorBrush = SolidColor(accentBlue),
+                                                        maxLines = 4
+                                                    )
+                                                }
+                                            }
+
+                                            IconButton(
+                                                onClick = { /* emoji picker hook */ },
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.SentimentSatisfiedAlt,
+                                                    null,
+                                                    tint = contentColor.copy(0.55f),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
                                             }
                                         }
                                     }
+                                    InputBarState.RECORDING -> {
+                                        RecordingProgressBar(
+                                            seconds = recordSeconds,
+                                            dotAlpha = recDotAlpha,
+                                            slideProgress = (-recordDragY / 120f).coerceIn(0f, 1f),
+                                            contentColor = contentColor
+                                        )
+                                    }
+                                    InputBarState.LOCKED -> {
+                                        LockedRecordBar(
+                                            seconds = recordSeconds,
+                                            dotAlpha = recDotAlpha,
+                                            mode = recordMode,
+                                            flashOn = flashOn,
+                                            onFlashToggle = { flashOn = !flashOn },
+                                            onCancel = { finishRecording(false) },
+                                            contentColor = contentColor
+                                        )
+                                    }
                                 }
                             }
-                        },
-                        enabled = canSendNow,
-                        modifier = Modifier
-                            .size(42.dp)
-                            .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
-                            .clip(CircleShape)
-                            .background(accentBlue.copy(alpha = if (messageText.isNotBlank()) 1f else 0.55f))
-                    ) {
-                        Icon(Icons.Default.ArrowUpward, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+
+                        val hasText = messageText.isNotBlank()
+                        val rightBtnTarget = when {
+                            isRecording -> RightButtonState.RECORDING
+                            hasText -> RightButtonState.SEND_TEXT
+                            else -> RightButtonState.RECORD_IDLE
+                        }
+
+                        AnimatedContent(
+                            targetState = rightBtnTarget,
+                            transitionSpec = {
+                                (scaleIn(spring(dampingRatio = 0.7f, stiffness = 600f), initialScale = 0.6f) + fadeIn(tween(180)))
+                                    .togetherWith(scaleOut(tween(160, easing = FastOutSlowInEasing), targetScale = 0.6f) + fadeOut(tween(140)))
+                            },
+                            label = "right_btn_state"
+                        ) { btnState ->
+                            when (btnState) {
+                                RightButtonState.SEND_TEXT -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(accentBlue)
+                                            .clickable(onClick = sendTextMessage),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.ArrowUpward, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                RightButtonState.RECORD_IDLE,
+                                RightButtonState.RECORDING -> {
+                                    RecordButton(
+                                        mode = recordMode,
+                                        isRecording = isRecording,
+                                        waveScale = recordingWaveScale,
+                                        accentBlue = accentBlue,
+                                        onTap = {
+                                            recordMode = if (recordMode == RecordMode.VOICE) RecordMode.VIDEO else RecordMode.VOICE
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        },
+                                        onLongPress = {
+                                            isRecording = true
+                                            recordDragY = 0f
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        },
+                                        onDrag = { dy ->
+                                            if (isRecording && !isLocked) {
+                                                recordDragY += dy
+                                                if (recordDragY < -140f) {
+                                                    isLocked = true
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                }
+                                            }
+                                        },
+                                        onRelease = {
+                                            if (isRecording && !isLocked) {
+                                                val keep = recordSeconds >= 1
+                                                finishRecording(keep)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible = isLocked,
+                            enter = scaleIn(spring(dampingRatio = 0.7f, stiffness = 600f), initialScale = 0.6f) + fadeIn(tween(180)),
+                            exit = scaleOut(tween(140, easing = FastOutSlowInEasing), targetScale = 0.6f) + fadeOut(tween(120))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(accentBlue)
+                                    .clickable { finishRecording(true) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.ArrowUpward, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
+                }
             }
         }
 
@@ -650,7 +840,6 @@ fun ChatDetailScreen(
             VideoCallScreen(userName = userName, onHangUp = { showVideoCall = false })
         }
     }
-}
 }
 
 @Composable
@@ -1109,6 +1298,10 @@ private fun isSameDay(t1: Long, t2: Long): Boolean {
 
 enum class MessageStatus { SENT, READ, FAILED, SENDING }
 
+enum class RecordMode { VOICE, VIDEO }
+enum class InputBarState { IDLE, RECORDING, LOCKED }
+enum class RightButtonState { SEND_TEXT, RECORD_IDLE, RECORDING }
+
 data class MessageData(
     val id: String,
     val text: String,
@@ -1118,6 +1311,244 @@ data class MessageData(
     val status: MessageStatus = MessageStatus.SENT,
     val clientId: String? = null
 )
+
+@Composable
+private fun RecordingProgressBar(
+    seconds: Int,
+    dotAlpha: Float,
+    slideProgress: Float,
+    contentColor: Color
+) {
+    val arrowAlpha = (1f - slideProgress * 1.4f).coerceIn(0f, 1f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFF3B30).copy(alpha = dotAlpha))
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = formatRecordTime(seconds),
+            color = contentColor,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = IosEmojiFont
+        )
+        Spacer(Modifier.weight(1f))
+        Row(
+            modifier = Modifier.graphicsLayer { alpha = arrowAlpha },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.ChevronLeft,
+                null,
+                tint = contentColor.copy(0.5f),
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = "Bekor qilish uchun suring",
+                color = contentColor.copy(0.55f),
+                fontSize = 13.sp,
+                fontFamily = IosEmojiFont
+            )
+        }
+    }
+}
+
+@Composable
+private fun LockedRecordBar(
+    seconds: Int,
+    dotAlpha: Float,
+    mode: RecordMode,
+    flashOn: Boolean,
+    onFlashToggle: () -> Unit,
+    onCancel: () -> Unit,
+    contentColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onCancel, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.Default.Delete,
+                null,
+                tint = Color(0xFFFF3B30),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(2.dp))
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFF3B30).copy(alpha = dotAlpha))
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = formatRecordTime(seconds),
+            color = contentColor,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = IosEmojiFont
+        )
+        Spacer(Modifier.weight(1f))
+        if (mode == RecordMode.VIDEO) {
+            IconButton(onClick = onFlashToggle, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    if (flashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                    null,
+                    tint = if (flashOn) Color(0xFFFFC107) else contentColor.copy(0.55f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Icon(
+            Icons.Default.Lock,
+            null,
+            tint = contentColor.copy(0.6f),
+            modifier = Modifier
+                .padding(end = 8.dp)
+                .size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun RecordButton(
+    mode: RecordMode,
+    isRecording: Boolean,
+    waveScale: Float,
+    accentBlue: Color,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onRelease: () -> Unit
+) {
+    val bgColor by animateColorAsState(
+        targetValue = if (isRecording) Color(0xFFFF3B30) else accentBlue,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "rec_btn_bg"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isRecording) 1.35f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 480f),
+        label = "rec_btn_scale"
+    )
+
+    Box(
+        modifier = Modifier.size(64.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isRecording) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .graphicsLayer {
+                        scaleX = waveScale
+                        scaleY = waveScale
+                        alpha = (2f - waveScale).coerceIn(0f, 1f) * 0.55f
+                    }
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF3B30))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(CircleShape)
+                .background(bgColor)
+                .pointerInput(mode) {
+                    detectTapGestures(
+                        onTap = { onTap() },
+                        onLongPress = { onLongPress() },
+                        onPress = {
+                            val released = tryAwaitRelease()
+                            if (released) onRelease()
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                onDrag(change.positionChange().y)
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (mode == RecordMode.VOICE) Icons.Default.Mic else Icons.Default.Videocam,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(if (isRecording) 22.dp else 20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LockHintChip(progress: Float, isDarkMode: Boolean, accentBlue: Color) {
+    val bg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.85f)
+    val border = if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f)
+    val activeColor = accentBlue.copy(alpha = (0.25f + progress * 0.75f).coerceIn(0f, 1f))
+    val lockColor = lerpColor(if (isDarkMode) Color.White.copy(0.6f) else Color.Black.copy(0.5f), accentBlue, progress)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier
+            .width(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .border(0.5.dp, border, RoundedCornerShape(20.dp))
+            .padding(vertical = 8.dp)
+    ) {
+        Icon(
+            Icons.Default.Lock,
+            null,
+            tint = lockColor,
+            modifier = Modifier.size(18.dp)
+        )
+        Icon(
+            Icons.Default.KeyboardArrowUp,
+            null,
+            tint = activeColor,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+private fun formatRecordTime(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return "%d:%02d".format(m, s)
+}
+
+private fun lerpColor(start: Color, end: Color, t: Float): Color {
+    val c = t.coerceIn(0f, 1f)
+    return Color(
+        red = start.red + (end.red - start.red) * c,
+        green = start.green + (end.green - start.green) * c,
+        blue = start.blue + (end.blue - start.blue) * c,
+        alpha = start.alpha + (end.alpha - start.alpha) * c
+    )
+}
 
 
 
