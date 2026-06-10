@@ -23,9 +23,6 @@ class ChatOutboxWorker(
     override suspend fun doWork(): Result {
         val now = System.currentTimeMillis()
         val due = pendingDao.getDuePending(now)
-        if (due.isEmpty()) return Result.success()
-
-        var hasFuturePending = false
 
         for (pending in due) {
             if (localStore.hasConfirmedMessage(pending.clientId)) {
@@ -63,7 +60,6 @@ class ChatOutboxWorker(
                                 nextAttemptAt = nextAttemptAt,
                                 lastError = result.message
                             )
-                            hasFuturePending = true
                         }
 
                         ChatFailureType.TERMINAL -> {
@@ -75,8 +71,13 @@ class ChatOutboxWorker(
             }
         }
 
-        if (hasFuturePending || pendingDao.hasPending()) {
-            ChatOutboxScheduler.schedule(applicationContext)
+        // Always reschedule for the next due pending message, if any. Without this, a
+        // message whose retry is delayed (nextAttemptAt in the future) would never be
+        // retried again once this run completes with no due items.
+        val nextAttemptAt = pendingDao.getNextPendingAttemptAt()
+        if (nextAttemptAt != null) {
+            val delay = (nextAttemptAt - System.currentTimeMillis()).coerceAtLeast(0L)
+            ChatOutboxScheduler.schedule(applicationContext, delay)
         }
 
         return Result.success()

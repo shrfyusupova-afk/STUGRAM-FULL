@@ -180,8 +180,11 @@ fun ChatDetailScreen(
     }
 
     fun mapUiToMessageData(message: UiChatMessage): MessageData {
-        val isMe = message.senderName.equals("me", ignoreCase = true) ||
-            !message.senderName.equals(userName, ignoreCase = true)
+        val isMe = when {
+            message.senderName.equals("me", ignoreCase = true) -> true
+            message.senderName.isNullOrBlank() -> false
+            else -> !message.senderName.equals(userName, ignoreCase = true)
+        }
         return MessageData(
             id = message.id,
             text = message.text,
@@ -354,17 +357,18 @@ fun ChatDetailScreen(
                     reverseLayout = true,
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
                 ) {
-                    itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
+                    itemsIndexed(messages, key = { _, msg -> msg.clientId ?: msg.id }) { index, message ->
                         val prevMsg = if (index > 0) messages[index - 1] else null
                         val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
                         val isLastInGroup = prevMsg == null || prevMsg.isMe != message.isMe
                         val isFirstInGroup = nextMsg == null || nextMsg.isMe != message.isMe
                         val showDateHeader = nextMsg == null || !isSameDay(message.timestamp, nextMsg.timestamp)
 
+                        val stableKey = message.clientId ?: message.id
                         val isNewMessage = message.isMe && message.clientId != null && newMessageIds.value.contains(message.clientId)
-                        var bubbleVisible by remember(message.id) { mutableStateOf(!isNewMessage) }
+                        var bubbleVisible by remember(stableKey) { mutableStateOf(!isNewMessage) }
 
-                        LaunchedEffect(message.id) {
+                        LaunchedEffect(stableKey) {
                             if (isNewMessage) {
                                 bubbleVisible = true
                                 delay(700)

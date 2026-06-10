@@ -48,4 +48,7 @@ interface ChatPendingMessageDao {
         pending: String = ChatPendingStatus.PENDING,
         sending: String = ChatPendingStatus.SENDING
     ): Boolean
+
+    @Query("SELECT MIN(nextAttemptAt) FROM chat_pending_messages WHERE status = :statusPending")
+    suspend fun getNextPendingAttemptAt(statusPending: String = ChatPendingStatus.PENDING): Long?
 }

@@ -57,17 +57,29 @@ object ChatSocketManager {
     fun joinConversation(conversationId: String) {
         if (conversationId.isBlank()) return
         ensureConnected()
-        activeRooms.add(conversationId)
-        socket?.emit("join_conversation", conversationId)
-        socket?.emit("join_room", conversationId)
+        val isNewRoom = activeRooms.add(conversationId)
+        val current = socket
+        if (current?.connected() == true) {
+            // If this room is already active and the socket is connected, it has already
+            // been joined (either here or via the EVENT_CONNECT rejoin loop) - skip the
+            // duplicate emit. If the socket isn't connected yet, EVENT_CONNECT will join
+            // every room in activeRooms once it comes up, so no emit is needed here either.
+            if (isNewRoom) {
+                current.emit("join_conversation", conversationId)
+                current.emit("join_room", conversationId)
+            }
+        }
     }
 
     @Synchronized
     fun leaveConversation(conversationId: String) {
         if (conversationId.isBlank()) return
-        activeRooms.remove(conversationId)
-        socket?.emit("leave_conversation", conversationId)
-        socket?.emit("leave_room", conversationId)
+        if (!activeRooms.remove(conversationId)) return
+        val current = socket
+        if (current?.connected() == true) {
+            current.emit("leave_conversation", conversationId)
+            current.emit("leave_room", conversationId)
+        }
     }
 
     @Synchronized
