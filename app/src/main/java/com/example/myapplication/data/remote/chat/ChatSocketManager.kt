@@ -165,14 +165,34 @@ object ChatSocketManager {
         }
         target.on("message_seen", seenHandler)
 
-        val typingHandler = Emitter.Listener { args ->
+        val typingStartHandler = Emitter.Listener { args ->
             val payload = args.firstOrNull() ?: return@Listener
             val obj = payloadToObject(payload) ?: return@Listener
             val conversationId = obj.optString("conversationId")
             if (conversationId.isBlank()) return@Listener
-            _events.tryEmit(ChatSocketEvent.Typing(conversationId = conversationId, userId = obj.optString("userId").ifBlank { null }))
+            val userId = obj.optJSONObject("user")?.optString("_id")?.ifBlank { null }
+                ?: obj.optString("userId").ifBlank { null }
+            _events.tryEmit(ChatSocketEvent.Typing(conversationId = conversationId, userId = userId, isTyping = true))
         }
-        target.on("typing", typingHandler)
+        target.on("typing_start", typingStartHandler)
+
+        val typingStopHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val conversationId = obj.optString("conversationId")
+            if (conversationId.isBlank()) return@Listener
+            val userId = obj.optString("userId").ifBlank { null }
+            _events.tryEmit(ChatSocketEvent.Typing(conversationId = conversationId, userId = userId, isTyping = false))
+        }
+        target.on("typing_stop", typingStopHandler)
+    }
+
+    @Synchronized
+    fun setTyping(conversationId: String, isTyping: Boolean) {
+        if (conversationId.isBlank()) return
+        val current = socket?.takeIf { it.connected() } ?: return
+        val payload = JSONObject().put("conversationId", conversationId)
+        current.emit(if (isTyping) "typing_start" else "typing_stop", payload)
     }
 
     private fun payloadToObject(payload: Any): JSONObject? {

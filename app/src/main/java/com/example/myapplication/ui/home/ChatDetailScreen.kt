@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -110,6 +111,13 @@ fun ChatDetailScreen(
     var syncInFlight by remember { mutableStateOf(false) }
     var lastReconnectSyncAtMillis by remember { mutableLongStateOf(0L) }
     val newMessageIds = remember { mutableStateOf(emptySet<String>()) }
+    val knownMessageKeys = remember { mutableStateOf<Set<String>?>(null) }
+    var initialLoadComplete by remember { mutableStateOf(false) }
+    var unreadCount by remember { mutableIntStateOf(0) }
+
+    var typingActive by remember { mutableStateOf(false) }
+    var lastTypingEmitAtMillis by remember { mutableLongStateOf(0L) }
+    var lastTypingEventAtMillis by remember { mutableLongStateOf(0L) }
 
     var recordMode by remember { mutableStateOf(RecordMode.VOICE) }
     var isRecording by remember { mutableStateOf(false) }
@@ -168,13 +176,37 @@ fun ChatDetailScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val isAtBottom by remember {
+        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 120 }
+    }
+
+    LaunchedEffect(isAtBottom) {
+        if (isAtBottom) unreadCount = 0
+    }
+
     if (!isRequest) {
-        LaunchedEffect(Unit) {
-            while (true) {
-                delay(5000)
-                isTyping = true
+        // Auto-clears the "typing..." indicator if the expected typing_stop event
+        // never arrives (e.g. the other client disconnects mid-type).
+        LaunchedEffect(isTyping, lastTypingEventAtMillis) {
+            if (isTyping) {
+                delay(6000)
+                if (System.currentTimeMillis() - lastTypingEventAtMillis >= 6000) {
+                    isTyping = false
+                }
+            }
+        }
+
+        // Sends typing_stop once the local user pauses typing for a while.
+        LaunchedEffect(messageText) {
+            if (messageText.isNotBlank() && typingActive) {
                 delay(3000)
-                isTyping = false
+                val targetConversationId = conversationId
+                if (!targetConversationId.isNullOrBlank() && typingActive) {
+                    ChatSocketManager.setTyping(targetConversationId, false)
+                    typingActive = false
+                }
             }
         }
     }
@@ -242,9 +274,34 @@ fun ChatDetailScreen(
         LaunchedEffect(conversationId) {
             val targetConversationId = conversationId ?: return@LaunchedEffect
             chatLocalStore.observeMessages(targetConversationId).collect { cached ->
+                val mapped = cached.map { mapUiToMessageData(it) }
+                val currentKeys = mapped.map { it.clientId ?: it.id }.toSet()
+                val previousKeys = knownMessageKeys.value
+                if (initialLoadComplete && previousKeys != null) {
+                    val newKeys = currentKeys - previousKeys
+                    if (newKeys.isNotEmpty()) {
+                        mapped.forEach { msg ->
+                            val key = msg.clientId ?: msg.id
+                            if (key in newKeys && !msg.isMe) {
+                                newMessageIds.value = newMessageIds.value + key
+                                if (!isAtBottom) unreadCount++
+                            }
+                        }
+                    }
+                }
+                knownMessageKeys.value = currentKeys
                 messages.clear()
-                messages.addAll(cached.map { mapUiToMessageData(it) })
+                messages.addAll(mapped)
             }
+        }
+
+        // Give the initial cache emission + backend sync time to settle before
+        // treating any new arrivals as live (animatable) messages.
+        LaunchedEffect(conversationId) {
+            conversationId ?: return@LaunchedEffect
+            initialLoadComplete = false
+            delay(1500)
+            initialLoadComplete = true
         }
 
         LaunchedEffect(conversationId, userName) {
@@ -298,8 +355,15 @@ fun ChatDetailScreen(
                             }
                         }
 
+                        is ChatSocketEvent.Typing -> {
+                            if (event.conversationId == targetConversationId) {
+                                lastTypingEventAtMillis = System.currentTimeMillis()
+                                isTyping = event.isTyping
+                            }
+                        }
+
                         else -> {
-                            // no-op for typing/unknown in this phase
+                            // no-op for unknown events in this phase
                         }
                     }
                 }
@@ -325,9 +389,6 @@ fun ChatDetailScreen(
             }
         }
     }
-
-    val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
 
     val scrollToStart = suspend {
         if (messages.isNotEmpty()) {
@@ -365,14 +426,14 @@ fun ChatDetailScreen(
                         val showDateHeader = nextMsg == null || !isSameDay(message.timestamp, nextMsg.timestamp)
 
                         val stableKey = message.clientId ?: message.id
-                        val isNewMessage = message.isMe && message.clientId != null && newMessageIds.value.contains(message.clientId)
+                        val isNewMessage = newMessageIds.value.contains(stableKey)
                         var bubbleVisible by remember(stableKey) { mutableStateOf(!isNewMessage) }
 
                         LaunchedEffect(stableKey) {
                             if (isNewMessage) {
                                 bubbleVisible = true
                                 delay(700)
-                                newMessageIds.value = newMessageIds.value - message.clientId!!
+                                newMessageIds.value = newMessageIds.value - stableKey
                             }
                         }
 
@@ -389,6 +450,10 @@ fun ChatDetailScreen(
                                 enter = slideInVertically(
                                     animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f),
                                     initialOffsetY = { it }
+                                ) + scaleIn(
+                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f),
+                                    initialScale = 0.85f,
+                                    transformOrigin = TransformOrigin(if (message.isMe) 1f else 0f, 1f)
                                 ) + fadeIn(tween(180, easing = FastOutSlowInEasing))
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -475,7 +540,13 @@ fun ChatDetailScreen(
                                             )
                                             Text(text = "ulanmoqda...", color = contentColor.copy(0.5f), fontSize = 11.sp)
                                         }
-                                        "typing" -> Text(text = "yozmoqda...", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        "typing" -> Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(text = "yozmoqda", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            TypingIndicatorDots(color = Color(0xFF3478F6))
+                                        }
                                         else -> Text(text = "online", color = Color(0xFF3478F6), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                     }
                                 }
@@ -499,6 +570,45 @@ fun ChatDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Person, null, tint = contentColor.copy(0.4f), modifier = Modifier.size(24.dp))
+                    }
+                }
+
+                // --- SCROLL TO BOTTOM FAB ---
+                if (!isRequest) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = !isAtBottom && messages.isNotEmpty(),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 12.dp),
+                        enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)) + fadeIn(tween(150)),
+                        exit = scaleOut(tween(120, easing = FastOutSlowInEasing)) + fadeOut(tween(120))
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                if (unreadCount > 0) {
+                                    Badge(containerColor = accentBlue, contentColor = Color.White) {
+                                        Text(text = if (unreadCount > 9) "9+" else unreadCount.toString())
+                                    }
+                                }
+                            }
+                        ) {
+                            FloatingActionButton(
+                                onClick = {
+                                    scope.launch {
+                                        listState.animateScrollToItem(0)
+                                        unreadCount = 0
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .border(0.5.dp, glassBorder, CircleShape),
+                                containerColor = pillBg,
+                                contentColor = contentColor,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp)
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(22.dp))
+                            }
+                        }
                     }
                 }
             }
@@ -541,6 +651,11 @@ fun ChatDetailScreen(
                     messageText = ""
                     isMenuOpen = false
                     scope.launch { scrollToStart() }
+
+                    if (typingActive) {
+                        ChatSocketManager.setTyping(targetConversationId, false)
+                        typingActive = false
+                    }
 
                     scope.launch {
                         val now = System.currentTimeMillis()
@@ -701,6 +816,20 @@ fun ChatDetailScreen(
                                                         onValueChange = {
                                                             messageText = it
                                                             scope.launch { scrollToStart() }
+                                                            val targetConversationId = conversationId
+                                                            if (!targetConversationId.isNullOrBlank()) {
+                                                                if (it.isNotBlank()) {
+                                                                    val now = System.currentTimeMillis()
+                                                                    if (!typingActive || now - lastTypingEmitAtMillis > 2500L) {
+                                                                        ChatSocketManager.setTyping(targetConversationId, true)
+                                                                        typingActive = true
+                                                                        lastTypingEmitAtMillis = now
+                                                                    }
+                                                                } else if (typingActive) {
+                                                                    ChatSocketManager.setTyping(targetConversationId, false)
+                                                                    typingActive = false
+                                                                }
+                                                            }
                                                         },
                                                         modifier = Modifier.fillMaxWidth(),
                                                         textStyle = inputTextStyle,
@@ -763,12 +892,31 @@ fun ChatDetailScreen(
                         ) { btnState ->
                             when (btnState) {
                                 RightButtonState.SEND_TEXT -> {
+                                    val sendScale = remember { Animatable(1f) }
                                     Box(
                                         modifier = Modifier
                                             .size(42.dp)
+                                            .graphicsLayer {
+                                                scaleX = sendScale.value
+                                                scaleY = sendScale.value
+                                            }
                                             .clip(CircleShape)
                                             .background(accentBlue)
-                                            .clickable(onClick = sendTextMessage),
+                                            .pointerInput(sendTextMessage) {
+                                                detectTapGestures(
+                                                    onPress = {
+                                                        scope.launch { sendScale.animateTo(0.85f, tween(80, easing = FastOutSlowInEasing)) }
+                                                        tryAwaitRelease()
+                                                        scope.launch {
+                                                            sendScale.animateTo(
+                                                                1f,
+                                                                spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium)
+                                                            )
+                                                        }
+                                                    },
+                                                    onTap = { sendTextMessage() }
+                                                )
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(Icons.Default.ArrowUpward, null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -934,30 +1082,44 @@ fun MessageBubble(
                 ) {
                     Text(text = timeString, color = textColor.copy(alpha = 0.5f), fontSize = 10.sp)
                     if (message.isMe) {
-                        when (message.status) {
-                            MessageStatus.FAILED -> Icon(
-                                imageVector = Icons.Default.ErrorOutline,
-                                contentDescription = null,
-                                tint = Color(0xFFEF5350),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            MessageStatus.SENDING -> CircularProgressIndicator(
-                                modifier = Modifier.size(11.dp),
-                                strokeWidth = 1.dp,
-                                color = textColor.copy(alpha = 0.6f)
-                            )
-                            MessageStatus.READ -> Icon(
-                                imageVector = Icons.Default.DoneAll,
-                                contentDescription = null,
-                                tint = Color(0xFF4FC3F7),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            MessageStatus.SENT -> Icon(
-                                imageVector = Icons.Default.Done,
-                                contentDescription = null,
-                                tint = textColor.copy(alpha = 0.5f),
-                                modifier = Modifier.size(13.dp)
-                            )
+                        AnimatedContent(
+                            targetState = message.status,
+                            transitionSpec = {
+                                (fadeIn(tween(150, easing = FastOutSlowInEasing)) +
+                                    scaleIn(tween(150, easing = FastOutSlowInEasing), initialScale = 0.6f))
+                                    .togetherWith(
+                                        fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.6f)
+                                    )
+                            },
+                            label = "msg_status"
+                        ) { status ->
+                            Box(modifier = Modifier.size(13.dp), contentAlignment = Alignment.Center) {
+                                when (status) {
+                                    MessageStatus.FAILED -> Icon(
+                                        imageVector = Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = Color(0xFFEF5350),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    MessageStatus.SENDING -> CircularProgressIndicator(
+                                        modifier = Modifier.size(11.dp),
+                                        strokeWidth = 1.dp,
+                                        color = textColor.copy(alpha = 0.6f)
+                                    )
+                                    MessageStatus.READ -> Icon(
+                                        imageVector = Icons.Default.DoneAll,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4FC3F7),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    MessageStatus.SENT -> Icon(
+                                        imageVector = Icons.Default.Done,
+                                        contentDescription = null,
+                                        tint = textColor.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1328,6 +1490,37 @@ private fun DateHeader(timestamp: Long, isDarkMode: Boolean) {
 private fun isSameDay(t1: Long, t2: Long): Boolean {
     val f = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
     return f.format(Date(t1)) == f.format(Date(t2))
+}
+
+@Composable
+private fun TypingIndicatorDots(color: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "typing_dots")
+    val dotOffsets = List(3) { index ->
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+                initialStartOffset = StartOffset(index * 150)
+            ),
+            label = "typing_dot_$index"
+        )
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        dotOffsets.forEach { offset ->
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .offset(y = (-3).dp * offset.value)
+                    .background(color, CircleShape)
+            )
+        }
+    }
 }
 
 enum class MessageStatus { SENT, READ, FAILED, SENDING }

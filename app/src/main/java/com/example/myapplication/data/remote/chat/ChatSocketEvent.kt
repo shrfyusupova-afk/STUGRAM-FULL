@@ -20,7 +20,8 @@ sealed class ChatSocketEvent {
 
     data class Typing(
         val conversationId: String,
-        val userId: String?
+        val userId: String?,
+        val isTyping: Boolean
     ) : ChatSocketEvent()
 
     data class Unknown(val event: String) : ChatSocketEvent()
