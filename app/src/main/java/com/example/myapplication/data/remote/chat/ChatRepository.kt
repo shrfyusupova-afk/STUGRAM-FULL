@@ -1,6 +1,7 @@
 package com.example.myapplication.data.remote.chat
 
 import com.example.myapplication.data.remote.AuthApi
+import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.RetrofitClient
 import com.google.gson.JsonParser
 import retrofit2.Response
@@ -17,6 +18,29 @@ sealed class ChatResult<out T> {
     ) : ChatResult<Nothing>()
 }
 
+data class UiReaction(
+    val emoji: String,
+    val count: Int,
+    val mine: Boolean
+)
+
+data class UiReplyPreview(
+    val id: String,
+    val text: String,
+    val senderName: String?,
+    val mine: Boolean
+)
+
+data class UiPinnedMessage(
+    val id: String,
+    val text: String,
+    val senderName: String?
+)
+
+data class UiConversationInfo(
+    val pinnedMessage: UiPinnedMessage? = null
+)
+
 data class UiChatMessage(
     val id: String,
     val text: String,
@@ -25,7 +49,9 @@ data class UiChatMessage(
     val status: UiMessageStatus,
     val clientId: String? = null,
     val serverSequence: Long = 0L,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val reactions: List<UiReaction> = emptyList(),
+    val replyTo: UiReplyPreview? = null
 )
 
 enum class UiMessageStatus {
@@ -117,11 +143,28 @@ class ChatRepository(
         }
     }
 
-    suspend fun sendTextMessage(conversationId: String, text: String, clientId: String): ChatResult<UiChatMessage> {
+    suspend fun getMessagesPage(conversationId: String, page: Int): ChatResult<List<UiChatMessage>> {
+        return try {
+            val response = api.getMessages(conversationId = conversationId, page = page)
+            val messages = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(messages.map { it.toUiMessage() })
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Xabarlarni yuklashda timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Tarmoq xatosi.")
+        }
+    }
+
+    suspend fun sendTextMessage(
+        conversationId: String,
+        text: String,
+        clientId: String,
+        replyToMessageId: String? = null
+    ): ChatResult<UiChatMessage> {
         return try {
             val response = api.sendMessage(
                 conversationId = conversationId,
-                body = SendMessageRequest(text = text, clientId = clientId)
+                body = SendMessageRequest(text = text, clientId = clientId, replyToMessageId = replyToMessageId)
             )
             val message = unwrap(response) ?: return mapError(response)
             ChatResult.Success(message.toUiMessage())
@@ -129,6 +172,76 @@ class ChatRepository(
             ChatResult.Error(code = null, message = "Network timeout. Will retry.")
         } catch (ex: IOException) {
             ChatResult.Error(code = null, message = "Network error. Will retry.")
+        }
+    }
+
+    suspend fun deleteMessage(messageId: String, scope: String = "self"): ChatResult<Unit> {
+        if (messageId.isBlank()) return ChatResult.Error(code = 400, message = "Invalid message id")
+        return try {
+            val response = api.deleteMessage(messageId, DeleteMessageRequest(scope))
+            if (response.isSuccessful) ChatResult.Success(Unit) else mapError(response)
+        } catch (_: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun setReaction(messageId: String, emoji: String): ChatResult<UiChatMessage> {
+        return try {
+            val response = api.setReaction(messageId, ReactionRequest(emoji))
+            val message = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(message.toUiMessage())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun removeReaction(messageId: String): ChatResult<UiChatMessage> {
+        return try {
+            val response = api.removeReaction(messageId)
+            val message = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(message.toUiMessage())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun getConversation(conversationId: String): ChatResult<UiConversationInfo> {
+        return try {
+            val response = api.getConversationById(conversationId)
+            val dto = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(dto.toUiConversationInfo())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun pinMessage(conversationId: String, messageId: String): ChatResult<UiConversationInfo> {
+        return try {
+            val response = api.pinMessage(conversationId, messageId)
+            val dto = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(dto.toUiConversationInfo())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun unpinMessage(conversationId: String): ChatResult<UiConversationInfo> {
+        return try {
+            val response = api.unpinMessage(conversationId)
+            val dto = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(dto.toUiConversationInfo())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
         }
     }
 
@@ -206,6 +319,21 @@ private fun MessageDto.toUiMessage(): UiChatMessage {
     val time = createdAt?.let { value ->
         runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
     } ?: System.currentTimeMillis()
+    val myId = AuthSession.currentUserId
+    val uiReactions = reactions
+        .mapNotNull { it.emoji?.takeIf { emoji -> emoji.isNotBlank() }?.let { emoji -> emoji to it.user?._id } }
+        .groupBy({ it.first }, { it.second })
+        .map { (emoji, userIds) ->
+            UiReaction(emoji = emoji, count = userIds.size, mine = myId != null && userIds.contains(myId))
+        }
+    val replyTo = replyToMessage?.let { reply ->
+        UiReplyPreview(
+            id = reply._id.orEmpty(),
+            text = reply.text?.takeIf { it.isNotBlank() } ?: "Xabar",
+            senderName = reply.sender?.fullName ?: reply.sender?.username,
+            mine = myId != null && reply.sender?._id == myId
+        )
+    }
     return UiChatMessage(
         id = _id,
         text = if (isDeletedForEveryone == true) "Bu xabar o'chirilgan" else text.orEmpty(),
@@ -214,6 +342,19 @@ private fun MessageDto.toUiMessage(): UiChatMessage {
         status = if (readAt.isNullOrBlank()) UiMessageStatus.SENT else UiMessageStatus.READ,
         clientId = clientId,
         serverSequence = serverSequence ?: 0L,
-        isDeleted = isDeletedForEveryone == true
+        isDeleted = isDeletedForEveryone == true,
+        reactions = uiReactions,
+        replyTo = replyTo
     )
+}
+
+private fun ConversationDto.toUiConversationInfo(): UiConversationInfo {
+    val pinned = pinnedMessage?.let { message ->
+        UiPinnedMessage(
+            id = message._id,
+            text = if (message.isDeletedForEveryone == true) "Bu xabar o'chirilgan" else message.text.orEmpty(),
+            senderName = message.sender?.fullName ?: message.sender?.username
+        )
+    }
+    return UiConversationInfo(pinnedMessage = pinned)
 }

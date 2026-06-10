@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ChatMessageEntity::class, ChatPendingMessageEntity::class, ChatEventCursorEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {
@@ -74,6 +74,18 @@ abstract class ChatDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 3 → 4: adds reaction and reply-preview columns to chat_messages
+        // for message reactions and reply-to-message support.
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `reactionsJson` TEXT")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `replyToId` TEXT")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `replyToText` TEXT")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `replyToSenderName` TEXT")
+                db.execSQL("ALTER TABLE `chat_messages` ADD COLUMN `replyToMine` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): ChatDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -81,7 +93,7 @@ abstract class ChatDatabase : RoomDatabase() {
                     ChatDatabase::class.java,
                     "stugram-chat.db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { INSTANCE = it }
             }

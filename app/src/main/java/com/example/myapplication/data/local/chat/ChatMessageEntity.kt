@@ -25,5 +25,10 @@ data class ChatMessageEntity(
     val serverSequence: Long = 0L,
     val createdAt: Long,
     val updatedAt: Long,
-    val rawJson: String? = null
+    val rawJson: String? = null,
+    val reactionsJson: String? = null,
+    val replyToId: String? = null,
+    val replyToText: String? = null,
+    val replyToSenderName: String? = null,
+    val replyToMine: Boolean = false
 )

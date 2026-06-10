@@ -1,12 +1,17 @@
 package com.example.myapplication.data.local.chat
 
 import android.util.Log
+import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.chat.ChatEventDto
 import com.example.myapplication.data.remote.chat.ChatEventsDataDto
 import com.example.myapplication.data.remote.chat.UiChatMessage
 import com.example.myapplication.data.remote.chat.UiMessageStatus
+import com.example.myapplication.data.remote.chat.UiReaction
+import com.example.myapplication.data.remote.chat.UiReplyPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 import java.time.Instant
 
 class ChatLocalStore(
@@ -48,7 +53,8 @@ class ChatLocalStore(
         clientId: String,
         senderId: String,
         text: String,
-        nowMillis: Long
+        nowMillis: Long,
+        replyTo: UiReplyPreview? = null
     ): UiChatMessage {
         val stableId = "client:$clientId"
         val entity = ChatMessageEntity(
@@ -63,7 +69,11 @@ class ChatLocalStore(
             serverSequence = 0L,
             createdAt = nowMillis,
             updatedAt = nowMillis,
-            rawJson = null
+            rawJson = null,
+            replyToId = replyTo?.id,
+            replyToText = replyTo?.text,
+            replyToSenderName = replyTo?.senderName,
+            replyToMine = replyTo?.mine ?: false
         )
         dao.upsertMessage(entity)
         return entity.toUi()
@@ -77,6 +87,11 @@ class ChatLocalStore(
     ) {
         val existing = dao.findByClientId(conversationId, clientId)
         val stableId = existing?.stableId ?: buildStableId(serverMessage, clientId)
+        val replyTo = serverMessage.replyTo ?: existing?.let {
+            it.replyToId?.let { id ->
+                UiReplyPreview(id = id, text = it.replyToText.orEmpty(), senderName = it.replyToSenderName, mine = it.replyToMine)
+            }
+        }
         dao.upsertMessage(
             ChatMessageEntity(
                 stableId = stableId,
@@ -90,7 +105,12 @@ class ChatLocalStore(
                 serverSequence = maxOf(existing?.serverSequence ?: 0L, serverMessage.serverSequence),
                 createdAt = serverMessage.timestamp,
                 updatedAt = System.currentTimeMillis(),
-                rawJson = null
+                rawJson = null,
+                reactionsJson = serializeReactions(serverMessage.reactions),
+                replyToId = replyTo?.id,
+                replyToText = replyTo?.text,
+                replyToSenderName = replyTo?.senderName,
+                replyToMine = replyTo?.mine ?: false
             )
         )
     }
@@ -113,7 +133,8 @@ class ChatLocalStore(
         text: String,
         createdAtMillis: Long,
         read: Boolean,
-        serverSequence: Long = 0L
+        serverSequence: Long = 0L,
+        replyTo: UiReplyPreview? = null
     ) {
         val existingByClientId = clientId?.let { dao.findByClientId(conversationId, it) }
         val existingByBackendId = dao.findByBackendId(conversationId, backendId)
@@ -128,6 +149,9 @@ class ChatLocalStore(
             !clientId.isNullOrBlank() -> "client:$clientId"
             else -> "backend:$backendId"
         }
+        val effectiveReplyTo = replyTo ?: base?.replyToId?.let { id ->
+            UiReplyPreview(id = id, text = base.replyToText.orEmpty(), senderName = base.replyToSenderName, mine = base.replyToMine)
+        }
         dao.upsertMessage(
             ChatMessageEntity(
                 stableId = base?.stableId ?: stableId,
@@ -141,13 +165,48 @@ class ChatLocalStore(
                 serverSequence = maxOf(base?.serverSequence ?: 0L, serverSequence),
                 createdAt = createdAtMillis,
                 updatedAt = System.currentTimeMillis(),
-                rawJson = null
+                rawJson = null,
+                reactionsJson = base?.reactionsJson,
+                replyToId = effectiveReplyTo?.id,
+                replyToText = effectiveReplyTo?.text,
+                replyToSenderName = effectiveReplyTo?.senderName,
+                replyToMine = effectiveReplyTo?.mine ?: false
             )
         )
     }
 
     suspend fun markMessageReadByBackendId(backendId: String) {
         dao.updateStatusByBackendId(backendId, UiMessageStatus.READ.name, System.currentTimeMillis())
+    }
+
+    /** Deletes a message for the local user only ("delete for me"). */
+    suspend fun deleteMessageForMe(conversationId: String, messageId: String, clientId: String?) {
+        val existing = dao.findByBackendId(conversationId, messageId)
+            ?: clientId?.let { dao.findByClientId(conversationId, it) }
+        if (existing != null) dao.deleteByStableId(existing.stableId)
+    }
+
+    /** Marks a message as deleted-for-everyone, mirroring the live socket/event behavior. */
+    suspend fun markDeletedForEveryone(conversationId: String, messageId: String) {
+        val existing = dao.findByBackendId(conversationId, messageId) ?: return
+        dao.upsertMessage(
+            existing.copy(
+                text = "Bu xabar o'chirilgan",
+                isDeleted = true,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    /** Applies an updated reaction list (from API response or live socket event) to a cached message. */
+    suspend fun updateReactions(conversationId: String, messageId: String, reactions: List<UiReaction>) {
+        val existing = dao.findByBackendId(conversationId, messageId) ?: return
+        dao.upsertMessage(
+            existing.copy(
+                reactionsJson = serializeReactions(reactions),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun getCandidateMessageIdsForSeen(conversationId: String, limit: Int = 10): List<String> {
@@ -206,6 +265,17 @@ class ChatLocalStore(
                     ?: event.messageId
                     ?: return false
                 val sender = messagePayload["sender"] as? Map<*, *>
+                val replyToMessage = messagePayload["replyToMessage"] as? Map<*, *>
+                val replyTo = replyToMessage?.let { reply ->
+                    val replySender = reply["sender"] as? Map<*, *>
+                    val myId = AuthSession.currentUserId
+                    UiReplyPreview(
+                        id = mapString(reply, "_id").orEmpty(),
+                        text = mapString(reply, "text")?.takeIf { it.isNotBlank() } ?: "Xabar",
+                        senderName = mapString(replySender, "fullName") ?: mapString(replySender, "username"),
+                        mine = myId != null && mapString(replySender, "_id") == myId
+                    )
+                }
                 upsertIncomingSocketMessage(
                     conversationId = conversationId,
                     backendId = backendId,
@@ -215,7 +285,8 @@ class ChatLocalStore(
                     text = mapString(messagePayload, "text").orEmpty(),
                     createdAtMillis = parseIsoMillis(mapString(messagePayload, "createdAt")),
                     read = mapString(messagePayload, "readAt").isNullOrBlank().not(),
-                    serverSequence = seq
+                    serverSequence = seq,
+                    replyTo = replyTo
                 )
                 true
             }
@@ -252,14 +323,29 @@ class ChatLocalStore(
                 true
             }
 
-            "reaction_updated", "seen_updated" -> {
+            "reaction_updated" -> {
                 val backendId = event.messageId ?: (payload?.get("messageId") as? String) ?: return false
                 val existing = dao.findByBackendId(conversationId, backendId) ?: return false
                 if (existing.serverSequence > seq) return true
-                val nextStatus = if (normalizedType == "seen_updated") UiMessageStatus.READ.name else existing.status
+                val rawReactions = payload?.get("reactions")
+                    ?: (payload?.get("message") as? Map<*, *>)?.get("reactions")
                 dao.upsertMessage(
                     existing.copy(
-                        status = nextStatus,
+                        reactionsJson = serializeReactions(parseReactionsFromRaw(rawReactions)),
+                        serverSequence = seq,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+                true
+            }
+
+            "seen_updated" -> {
+                val backendId = event.messageId ?: (payload?.get("messageId") as? String) ?: return false
+                val existing = dao.findByBackendId(conversationId, backendId) ?: return false
+                if (existing.serverSequence > seq) return true
+                dao.upsertMessage(
+                    existing.copy(
+                        status = UiMessageStatus.READ.name,
                         serverSequence = seq,
                         updatedAt = System.currentTimeMillis()
                     )
@@ -285,7 +371,12 @@ class ChatLocalStore(
             serverSequence = serverSequence,
             createdAt = timestamp,
             updatedAt = System.currentTimeMillis(),
-            rawJson = null
+            rawJson = null,
+            reactionsJson = serializeReactions(reactions),
+            replyToId = replyTo?.id,
+            replyToText = replyTo?.text,
+            replyToSenderName = replyTo?.senderName,
+            replyToMine = replyTo?.mine ?: false
         )
     }
 
@@ -298,7 +389,11 @@ class ChatLocalStore(
             status = runCatching { UiMessageStatus.valueOf(status) }.getOrDefault(UiMessageStatus.SENT),
             clientId = clientId,
             serverSequence = serverSequence,
-            isDeleted = isDeleted
+            isDeleted = isDeleted,
+            reactions = deserializeReactions(reactionsJson),
+            replyTo = replyToId?.let { id ->
+                UiReplyPreview(id = id, text = replyToText.orEmpty(), senderName = replyToSenderName, mine = replyToMine)
+            }
         )
     }
 
@@ -319,6 +414,49 @@ class ChatLocalStore(
         return map?.get(key) as? String
     }
 
+    private fun serializeReactions(reactions: List<UiReaction>): String? {
+        if (reactions.isEmpty()) return null
+        val array = JSONArray()
+        for (reaction in reactions) {
+            val obj = JSONObject()
+            obj.put("emoji", reaction.emoji)
+            obj.put("count", reaction.count)
+            obj.put("mine", reaction.mine)
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    private fun deserializeReactions(json: String?): List<UiReaction> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(json)
+            (0 until array.length()).map { index ->
+                val obj = array.getJSONObject(index)
+                UiReaction(
+                    emoji = obj.getString("emoji"),
+                    count = obj.optInt("count", 1),
+                    mine = obj.optBoolean("mine", false)
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun parseReactionsFromRaw(raw: Any?): List<UiReaction> {
+        val list = raw as? List<*> ?: return emptyList()
+        val myId = AuthSession.currentUserId
+        return list.mapNotNull { entry ->
+            val map = entry as? Map<*, *> ?: return@mapNotNull null
+            val emoji = mapString(map, "emoji")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val user = map["user"] as? Map<*, *>
+            emoji to mapString(user, "_id")
+        }
+            .groupBy({ it.first }, { it.second })
+            .map { (emoji, userIds) ->
+                UiReaction(emoji = emoji, count = userIds.size, mine = myId != null && userIds.contains(myId))
+            }
+    }
+
     companion object {
         internal fun normalizeEventTypeForSync(type: String?): String {
             val raw = type.orEmpty().trim().lowercase()
@@ -326,6 +464,7 @@ class ChatLocalStore(
                 "message.created", "message_created" -> "message_created"
                 "message.edited", "message_edited" -> "message_edited"
                 "message.deleted", "message_deleted" -> "message_deleted"
+                "message.deleted_for_everyone", "message_deleted_for_everyone" -> "message_deleted"
                 "message.reactions", "reaction_updated", "reactions_updated" -> "reaction_updated"
                 "message.seen", "seen_updated" -> "seen_updated"
                 else -> raw

@@ -1,8 +1,11 @@
 package com.example.myapplication.data.remote.chat
 
+import com.google.gson.JsonObject
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -19,6 +22,11 @@ interface ChatApi {
     suspend fun createConversation(
         @Body body: CreateConversationRequest
     ): Response<ApiEnvelope<ConversationDto>>
+
+    @GET("api/v1/chats/conversations/{conversationId}")
+    suspend fun getConversationById(
+        @Path("conversationId") conversationId: String
+    ): Response<ConversationResponse>
 
     @GET("api/v1/chats/conversations/{conversationId}/messages")
     suspend fun getMessages(
@@ -37,6 +45,34 @@ interface ChatApi {
     suspend fun markSeen(
         @Path("messageId") messageId: String
     ): Response<ApiEnvelope<MessageDto>>
+
+    @HTTP(method = "DELETE", path = "api/v1/chats/messages/{messageId}", hasBody = true)
+    suspend fun deleteMessage(
+        @Path("messageId") messageId: String,
+        @Body body: DeleteMessageRequest
+    ): Response<ApiEnvelope<JsonObject>>
+
+    @PATCH("api/v1/chats/messages/{messageId}/reaction")
+    suspend fun setReaction(
+        @Path("messageId") messageId: String,
+        @Body body: ReactionRequest
+    ): Response<MessageResponse>
+
+    @DELETE("api/v1/chats/messages/{messageId}/reaction")
+    suspend fun removeReaction(
+        @Path("messageId") messageId: String
+    ): Response<MessageResponse>
+
+    @POST("api/v1/chats/conversations/{conversationId}/pin/{messageId}")
+    suspend fun pinMessage(
+        @Path("conversationId") conversationId: String,
+        @Path("messageId") messageId: String
+    ): Response<ConversationResponse>
+
+    @DELETE("api/v1/chats/conversations/{conversationId}/pin")
+    suspend fun unpinMessage(
+        @Path("conversationId") conversationId: String
+    ): Response<ConversationResponse>
 
     @GET("api/v1/chats/conversations/{conversationId}/events")
     suspend fun getConversationEvents(

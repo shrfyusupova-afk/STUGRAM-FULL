@@ -185,6 +185,66 @@ object ChatSocketManager {
             _events.tryEmit(ChatSocketEvent.Typing(conversationId = conversationId, userId = userId, isTyping = false))
         }
         target.on("typing_stop", typingStopHandler)
+
+        val deletedHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val messageId = obj.optString("messageId").ifBlank { null } ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null }
+            val deletedForUserId = obj.optString("deletedForUserId").ifBlank { null }
+            val myId = AuthSession.currentUserId
+            if (deletedForUserId == null || myId == null || deletedForUserId == myId) {
+                _events.tryEmit(ChatSocketEvent.MessageDeleted(conversationId = conversationId, messageId = messageId))
+            }
+        }
+        target.on("message_deleted", deletedHandler)
+
+        val deletedForEveryoneHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val messageId = obj.optString("messageId").ifBlank { null } ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null }
+            _events.tryEmit(ChatSocketEvent.MessageDeletedForEveryone(conversationId = conversationId, messageId = messageId))
+        }
+        target.on("message_deleted_for_everyone", deletedForEveryoneHandler)
+
+        val reactionUpdatedHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val message = obj.optJSONObject("message")
+            val messageId = message?.optString("_id")?.ifBlank { null } ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null }
+            _events.tryEmit(
+                ChatSocketEvent.ReactionUpdated(
+                    conversationId = conversationId,
+                    messageId = messageId,
+                    reactions = parseReactionsFromJson(message)
+                )
+            )
+        }
+        target.on("message_reaction_updated", reactionUpdatedHandler)
+
+        val pinnedHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null } ?: return@Listener
+            val conversation = obj.optJSONObject("conversation")
+            _events.tryEmit(
+                ChatSocketEvent.ConversationPinned(
+                    conversationId = conversationId,
+                    pinnedMessage = parsePinnedMessage(conversation)
+                )
+            )
+        }
+        target.on("message_pinned", pinnedHandler)
+
+        val unpinnedHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null } ?: return@Listener
+            _events.tryEmit(ChatSocketEvent.ConversationUnpinned(conversationId = conversationId))
+        }
+        target.on("message_unpinned", unpinnedHandler)
     }
 
     @Synchronized
@@ -235,7 +295,50 @@ object ChatSocketManager {
             createdAtMillis = createdAtMillis,
             read = !rootMessage.optString("readAt").isNullOrBlank(),
             serverSequence = rootMessage.optLong("serverSequence", 0L).takeIf { it > 0L }
-                ?: obj.optLong("serverSequence", 0L)
+                ?: obj.optLong("serverSequence", 0L),
+            replyTo = parseReplyPreview(rootMessage.optJSONObject("replyToMessage"))
+        )
+    }
+
+    private fun parseReplyPreview(reply: JSONObject?): UiReplyPreview? {
+        reply ?: return null
+        val replySender = reply.optJSONObject("sender")
+        val myId = AuthSession.currentUserId
+        val replySenderId = replySender?.optString("_id")?.ifBlank { null }
+        return UiReplyPreview(
+            id = reply.optString("_id"),
+            text = reply.optString("text").ifBlank { "Xabar" },
+            senderName = replySender?.optString("fullName")?.ifBlank { null }
+                ?: replySender?.optString("username")?.ifBlank { null },
+            mine = myId != null && replySenderId == myId
+        )
+    }
+
+    private fun parseReactionsFromJson(message: JSONObject?): List<UiReaction> {
+        val reactionsArray = message?.optJSONArray("reactions") ?: return emptyList()
+        val myId = AuthSession.currentUserId
+        val pairs = mutableListOf<Pair<String, String?>>()
+        for (i in 0 until reactionsArray.length()) {
+            val obj = reactionsArray.optJSONObject(i) ?: continue
+            val emoji = obj.optString("emoji").takeIf { it.isNotBlank() } ?: continue
+            val userId = obj.optJSONObject("user")?.optString("_id")?.ifBlank { null }
+            pairs.add(emoji to userId)
+        }
+        return pairs.groupBy({ it.first }, { it.second })
+            .map { (emoji, userIds) ->
+                UiReaction(emoji = emoji, count = userIds.size, mine = myId != null && userIds.contains(myId))
+            }
+    }
+
+    private fun parsePinnedMessage(conversation: JSONObject?): UiPinnedMessage? {
+        val pinned = conversation?.optJSONObject("pinnedMessage") ?: return null
+        val sender = pinned.optJSONObject("sender")
+        val isDeleted = pinned.optBoolean("isDeletedForEveryone", false)
+        return UiPinnedMessage(
+            id = pinned.optString("_id"),
+            text = if (isDeleted) "Bu xabar o'chirilgan" else pinned.optString("text"),
+            senderName = sender?.optString("fullName")?.ifBlank { null }
+                ?: sender?.optString("username")?.ifBlank { null }
         )
     }
 

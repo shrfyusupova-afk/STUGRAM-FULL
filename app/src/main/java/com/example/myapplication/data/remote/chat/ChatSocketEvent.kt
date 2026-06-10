@@ -10,7 +10,8 @@ sealed class ChatSocketEvent {
         val text: String,
         val createdAtMillis: Long,
         val read: Boolean,
-        val serverSequence: Long = 0L
+        val serverSequence: Long = 0L,
+        val replyTo: UiReplyPreview? = null
     ) : ChatSocketEvent()
 
     data class MessageSeen(
@@ -22,6 +23,31 @@ sealed class ChatSocketEvent {
         val conversationId: String,
         val userId: String?,
         val isTyping: Boolean
+    ) : ChatSocketEvent()
+
+    data class MessageDeleted(
+        val conversationId: String?,
+        val messageId: String
+    ) : ChatSocketEvent()
+
+    data class MessageDeletedForEveryone(
+        val conversationId: String?,
+        val messageId: String
+    ) : ChatSocketEvent()
+
+    data class ReactionUpdated(
+        val conversationId: String?,
+        val messageId: String,
+        val reactions: List<UiReaction>
+    ) : ChatSocketEvent()
+
+    data class ConversationPinned(
+        val conversationId: String,
+        val pinnedMessage: UiPinnedMessage?
+    ) : ChatSocketEvent()
+
+    data class ConversationUnpinned(
+        val conversationId: String
     ) : ChatSocketEvent()
 
     data class Unknown(val event: String) : ChatSocketEvent()

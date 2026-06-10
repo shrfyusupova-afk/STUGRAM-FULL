@@ -19,13 +19,28 @@ data class ConversationDto(
     val participants: List<ChatUserDto> = emptyList(),
     val otherParticipant: ChatUserDto? = null,
     val lastMessage: String? = null,
-    val lastMessageAt: String? = null
+    val lastMessageAt: String? = null,
+    val pinnedMessage: MessageDto? = null,
+    val pinnedAt: String? = null
 )
 
 data class ChatUserDto(
     val _id: String,
     val username: String? = null,
     val fullName: String? = null
+)
+
+data class ReactionDto(
+    val user: ChatUserDto? = null,
+    val emoji: String? = null
+)
+
+data class ReplyPreviewDto(
+    val _id: String? = null,
+    val text: String? = null,
+    val messageType: String? = null,
+    val sender: ChatUserDto? = null,
+    val createdAt: String? = null
 )
 
 data class MessageDto(
@@ -37,7 +52,9 @@ data class MessageDto(
     val readAt: String? = null,
     val clientId: String? = null,
     val serverSequence: Long? = null,
-    val isDeletedForEveryone: Boolean? = null
+    val isDeletedForEveryone: Boolean? = null,
+    val replyToMessage: ReplyPreviewDto? = null,
+    val reactions: List<ReactionDto> = emptyList()
 )
 
 data class ChatEventDto(
@@ -67,9 +84,20 @@ data class CreateConversationRequest(
 data class SendMessageRequest(
     val text: String,
     val messageType: String = "text",
-    val clientId: String
+    val clientId: String,
+    val replyToMessageId: String? = null
+)
+
+data class ReactionRequest(
+    val emoji: String
+)
+
+data class DeleteMessageRequest(
+    val scope: String = "self"
 )
 
 typealias SendMessageResponse = ApiEnvelope<MessageDto>
 typealias PaginatedMessagesResponse = ApiEnvelope<List<MessageDto>>
 typealias ChatEventsResponse = ApiEnvelope<ChatEventsDataDto>
+typealias ConversationResponse = ApiEnvelope<ConversationDto>
+typealias MessageResponse = ApiEnvelope<MessageDto>
