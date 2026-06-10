@@ -34,6 +34,7 @@ class ChatLocalStore(
             merged.add(
                 incoming.copy(
                     stableId = existing?.stableId ?: incoming.stableId,
+                    senderId = if (existing?.senderId == "me") "me" else incoming.senderId,
                     isDeleted = existing?.isDeleted == true && incoming.serverSequence <= existing.serverSequence,
                     serverSequence = maxOf(existing?.serverSequence ?: 0L, incoming.serverSequence)
                 )
@@ -133,7 +134,7 @@ class ChatLocalStore(
                 conversationId = conversationId,
                 backendId = backendId,
                 clientId = clientId ?: base?.clientId,
-                senderId = senderName ?: senderId,
+                senderId = if (base?.senderId == "me") "me" else (senderName ?: senderId),
                 text = text,
                 status = if (read) UiMessageStatus.READ.name else UiMessageStatus.SENT.name,
                 isDeleted = false,

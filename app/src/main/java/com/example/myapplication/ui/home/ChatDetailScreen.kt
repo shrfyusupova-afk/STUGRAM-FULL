@@ -180,7 +180,8 @@ fun ChatDetailScreen(
     }
 
     fun mapUiToMessageData(message: UiChatMessage): MessageData {
-        val isMe = !message.senderName.equals(userName, ignoreCase = true)
+        val isMe = message.senderName.equals("me", ignoreCase = true) ||
+            !message.senderName.equals(userName, ignoreCase = true)
         return MessageData(
             id = message.id,
             text = message.text,
