@@ -260,12 +260,14 @@ fun EditField(
 ) {
     val contentColor = if (isDarkMode) Color.White else Color.Black
     val fieldColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
+    val labelColor = if (isDarkMode) Color.White.copy(alpha = 0.6f) else Color(0xFF7A7A7A)
+    val iconColor = if (isDarkMode) Color.White.copy(alpha = 0.55f) else Color(0xFF7A7A7A)
 
     Column {
         Text(
             text = label,
             fontSize = 13.sp,
-            color = Color.Gray,
+            color = labelColor,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
@@ -273,7 +275,7 @@ fun EditField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            leadingIcon = icon?.let { { Icon(it, null, tint = Color.Gray, modifier = Modifier.size(20.dp)) } },
+            leadingIcon = icon?.let { { Icon(it, null, tint = iconColor, modifier = Modifier.size(20.dp)) } },
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = fieldColor,
                 unfocusedContainerColor = fieldColor,

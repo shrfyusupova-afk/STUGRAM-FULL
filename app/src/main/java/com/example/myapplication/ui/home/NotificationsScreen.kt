@@ -61,7 +61,7 @@ fun NotificationsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
@@ -245,7 +245,7 @@ private fun NotificationRow(
         }
     }
     HorizontalDivider(
-        modifier = Modifier.padding(start = 70.dp),
+        modifier = Modifier.padding(start = 72.dp),
         color = fg.copy(0.04f)
     )
 }

@@ -105,6 +105,7 @@ fun CommentsBottomSheet(isDarkMode: Boolean, accentBlue: Color, onDismiss: () ->
 fun CommentItem(comment: CommentData, isDarkMode: Boolean, accentBlue: Color) {
     var isRepliesVisible by remember { mutableStateOf(false) }
     val textColor = if (isDarkMode) Color.White else Color.Black
+    val secondaryColor = textColor.copy(alpha = 0.55f)
 
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
@@ -118,7 +119,7 @@ fun CommentItem(comment: CommentData, isDarkMode: Boolean, accentBlue: Color) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(comment.user, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
                     Spacer(Modifier.width(8.dp))
-                    Text(comment.time, color = Color.Gray, fontSize = 12.sp)
+                    Text(comment.time, color = secondaryColor, fontSize = 12.sp)
                 }
                 Text(comment.text, fontSize = 14.sp, color = textColor, modifier = Modifier.padding(vertical = 4.dp))
 
@@ -152,8 +153,8 @@ fun CommentItem(comment: CommentData, isDarkMode: Boolean, accentBlue: Color) {
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.FavoriteBorder, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                Text(comment.likes.toString(), color = Color.Gray, fontSize = 10.sp)
+                Icon(Icons.Default.FavoriteBorder, null, tint = secondaryColor, modifier = Modifier.size(16.dp))
+                Text(comment.likes.toString(), color = secondaryColor, fontSize = 10.sp)
             }
         }
     }
@@ -162,6 +163,7 @@ fun CommentItem(comment: CommentData, isDarkMode: Boolean, accentBlue: Color) {
 @Composable
 fun CommentInputSection(isDarkMode: Boolean, accentBlue: Color) {
     val emojis = listOf("❤️", "🙌", "🔥", "👏", "😢", "😍", "😮")
+    val placeholderColor = if (isDarkMode) Color.White.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.45f)
     Surface(color = if (isDarkMode) Color(0xFF1A1A1A) else Color.White, shadowElevation = 8.dp) {
         Column(modifier = Modifier.padding(12.dp).navigationBarsPadding()) {
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceAround) {
@@ -175,7 +177,7 @@ fun CommentInputSection(isDarkMode: Boolean, accentBlue: Color) {
             ) {
                 AsyncImage(model = "https://picsum.photos/seed/me/100/100", contentDescription = null, modifier = Modifier.size(32.dp).clip(CircleShape))
                 Spacer(Modifier.width(12.dp))
-                Text("Add a comment...", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("Add a comment...", color = placeholderColor, fontSize = 14.sp, modifier = Modifier.weight(1f))
                 Text("Post", color = accentBlue, fontWeight = FontWeight.Bold)
             }
         }

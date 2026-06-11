@@ -508,7 +508,11 @@ fun CreatePostButton(onClick: () -> Unit, accentBlue: Color, isDarkMode: Boolean
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.AddPhotoAlternate, null, tint = accentBlue, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(12.dp))
-                    Text("Nima yangiliklar?", color = if (isDarkMode) Color.Gray else Color.DarkGray, fontSize = 14.sp)
+                    Text(
+                        "Nima yangiliklar?",
+                        color = if (isDarkMode) Color.White.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
                 }
                 Icon(Icons.Default.AutoAwesome, null, tint = accentBlue.copy(0.5f), modifier = Modifier.size(20.dp))
             }
