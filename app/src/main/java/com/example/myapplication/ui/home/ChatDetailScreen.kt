@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -43,9 +44,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -185,9 +188,12 @@ fun ChatDetailScreen(
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
 
+    val recordingAmplitudes = remember { mutableStateListOf<Float>() }
+
     LaunchedEffect(isRecording) {
         if (isRecording) {
             recordSeconds = 0
+            recordingAmplitudes.clear()
             while (true) {
                 delay(1000)
                 recordSeconds++
@@ -239,6 +245,19 @@ fun ChatDetailScreen(
                 recorder.release()
             }
             recordingFile?.delete()
+        }
+    }
+
+    LaunchedEffect(isRecording, mediaRecorder) {
+        val recorder = mediaRecorder
+        if (isRecording && recorder != null) {
+            while (true) {
+                delay(80)
+                val raw = runCatching { recorder.maxAmplitude }.getOrDefault(0)
+                val normalized = (raw.coerceAtLeast(0).toFloat() / 30000f).coerceIn(0.05f, 1f)
+                recordingAmplitudes.add(normalized)
+                if (recordingAmplitudes.size > 64) recordingAmplitudes.removeAt(0)
+            }
         }
     }
 
@@ -1574,7 +1593,9 @@ fun ChatDetailScreen(
                                             seconds = recordSeconds,
                                             dotAlpha = recDotAlpha,
                                             slideProgress = (-recordDragY / 120f).coerceIn(0f, 1f),
-                                            contentColor = contentColor
+                                            contentColor = contentColor,
+                                            amplitudes = recordingAmplitudes,
+                                            accentBlue = accentBlue
                                         )
                                     }
                                     InputBarState.LOCKED -> {
@@ -1585,7 +1606,9 @@ fun ChatDetailScreen(
                                             flashOn = flashOn,
                                             onFlashToggle = { flashOn = !flashOn },
                                             onCancel = { finishRecording(false) },
-                                            contentColor = contentColor
+                                            contentColor = contentColor,
+                                            amplitudes = recordingAmplitudes,
+                                            accentBlue = accentBlue
                                         )
                                     }
                                 }
@@ -2215,14 +2238,14 @@ private fun MediaVoiceContent(media: UiMedia, textColor: Color) {
                 tint = textColor
             )
         }
-        LinearProgressIndicator(
-            progress = { progress },
+        PlaybackWaveform(
+            seed = media.url,
+            progress = progress,
+            playedColor = textColor,
+            unplayedColor = textColor.copy(alpha = 0.3f),
             modifier = Modifier
                 .weight(1f)
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp)),
-            color = textColor,
-            trackColor = textColor.copy(alpha = 0.25f)
+                .height(22.dp)
         )
         Text(
             text = formatRecordTime(media.durationSeconds ?: 0),
@@ -2764,7 +2787,9 @@ private fun RecordingProgressBar(
     seconds: Int,
     dotAlpha: Float,
     slideProgress: Float,
-    contentColor: Color
+    contentColor: Color,
+    amplitudes: List<Float>,
+    accentBlue: Color
 ) {
     val arrowAlpha = (1f - slideProgress * 1.4f).coerceIn(0f, 1f)
     Row(
@@ -2787,7 +2812,19 @@ private fun RecordingProgressBar(
             fontWeight = FontWeight.Medium,
             fontFamily = IosEmojiFont
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(10.dp))
+        if (amplitudes.isNotEmpty()) {
+            LiveWaveform(
+                amplitudes = amplitudes,
+                color = accentBlue,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(22.dp)
+                    .padding(end = 8.dp)
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
         Row(
             modifier = Modifier.graphicsLayer { alpha = arrowAlpha },
             verticalAlignment = Alignment.CenterVertically
@@ -2816,7 +2853,9 @@ private fun LockedRecordBar(
     flashOn: Boolean,
     onFlashToggle: () -> Unit,
     onCancel: () -> Unit,
-    contentColor: Color
+    contentColor: Color,
+    amplitudes: List<Float>,
+    accentBlue: Color
 ) {
     Row(
         modifier = Modifier
@@ -2847,7 +2886,19 @@ private fun LockedRecordBar(
             fontWeight = FontWeight.Medium,
             fontFamily = IosEmojiFont
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(10.dp))
+        if (mode == RecordMode.VOICE && amplitudes.isNotEmpty()) {
+            LiveWaveform(
+                amplitudes = amplitudes,
+                color = accentBlue,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(22.dp)
+                    .padding(end = 8.dp)
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
         if (mode == RecordMode.VIDEO) {
             IconButton(onClick = onFlashToggle, modifier = Modifier.size(40.dp)) {
                 Icon(
@@ -2985,6 +3036,71 @@ private fun formatRecordTime(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
     return "%d:%02d".format(m, s)
+}
+
+@Composable
+private fun LiveWaveform(
+    amplitudes: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val snapshot = amplitudes.toList()
+    Canvas(modifier = modifier) {
+        if (snapshot.isEmpty()) return@Canvas
+        val barWidth = 2.dp.toPx()
+        val gap = 2.dp.toPx()
+        val stride = barWidth + gap
+        val totalBars = ((size.width + gap) / stride).toInt().coerceAtLeast(1)
+        val start = (snapshot.size - totalBars).coerceAtLeast(0)
+        val visible = snapshot.drop(start)
+        visible.forEachIndexed { index, amp ->
+            val barHeight = (amp * size.height).coerceAtLeast(barWidth)
+            val x = index * stride + barWidth / 2f
+            val centerY = size.height / 2f
+            drawLine(
+                color = color,
+                start = Offset(x, centerY - barHeight / 2f),
+                end = Offset(x, centerY + barHeight / 2f),
+                strokeWidth = barWidth,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+private fun pseudoWaveform(seed: String, bars: Int): List<Float> {
+    val rng = java.util.Random(seed.hashCode().toLong())
+    return List(bars) { 0.25f + rng.nextFloat() * 0.75f }
+}
+
+@Composable
+private fun PlaybackWaveform(
+    seed: String,
+    progress: Float,
+    playedColor: Color,
+    unplayedColor: Color,
+    modifier: Modifier = Modifier,
+    barCount: Int = 32
+) {
+    val bars = remember(seed, barCount) { pseudoWaveform(seed, barCount) }
+    Canvas(modifier = modifier) {
+        val total = bars.size
+        val gap = 2.dp.toPx()
+        val barWidth = ((size.width - gap * (total - 1)) / total).coerceAtLeast(1f)
+        val playedBars = (progress.coerceIn(0f, 1f) * total).toInt()
+        bars.forEachIndexed { index, amp ->
+            val barHeight = (amp * size.height).coerceAtLeast(barWidth)
+            val x = index * (barWidth + gap) + barWidth / 2f
+            val centerY = size.height / 2f
+            drawLine(
+                color = if (index < playedBars) playedColor else unplayedColor,
+                start = Offset(x, centerY - barHeight / 2f),
+                end = Offset(x, centerY + barHeight / 2f),
+                strokeWidth = barWidth,
+                cap = StrokeCap.Round
+            )
+        }
+    }
 }
 
 private fun formatFileSize(bytes: Long): String {
