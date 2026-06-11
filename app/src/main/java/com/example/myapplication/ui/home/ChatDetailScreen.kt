@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -23,9 +24,12 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -64,6 +68,8 @@ import com.example.myapplication.data.remote.chat.ChatFailureType
 import com.example.myapplication.data.remote.chat.ChatRepository
 import com.example.myapplication.data.remote.chat.ChatResult
 import com.example.myapplication.data.remote.chat.UiChatMessage
+import com.example.myapplication.data.remote.chat.UiConversationSummary
+import com.example.myapplication.data.remote.chat.UiMedia
 import com.example.myapplication.data.remote.chat.UiMessageStatus
 import com.example.myapplication.data.remote.chat.UiPinnedMessage
 import com.example.myapplication.data.remote.chat.UiReaction
@@ -139,6 +145,16 @@ fun ChatDetailScreen(
     var currentPage by remember { mutableIntStateOf(1) }
     var hasMoreMessages by remember { mutableStateOf(true) }
     var isLoadingMore by remember { mutableStateOf(false) }
+
+    // --- Edit / forward / search state ---
+    var editingMessage by remember { mutableStateOf<MessageData?>(null) }
+    var forwardingMessage by remember { mutableStateOf<MessageData?>(null) }
+    var showSearchOverlay by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val searchResults = remember { mutableStateListOf<UiChatMessage>() }
+    var isSearching by remember { mutableStateOf(false) }
+    var highlightedMessageKey by remember { mutableStateOf<String?>(null) }
+    var isJumpingToMessage by remember { mutableStateOf(false) }
 
     var recordMode by remember { mutableStateOf(RecordMode.VOICE) }
     var isRecording by remember { mutableStateOf(false) }
@@ -253,7 +269,11 @@ fun ChatDetailScreen(
             clientId = message.clientId,
             isDeleted = message.isDeleted,
             reactions = message.reactions,
-            replyTo = message.replyTo
+            replyTo = message.replyTo,
+            messageType = message.messageType,
+            media = message.media,
+            editedAt = message.editedAt,
+            forwardedFromSenderId = message.forwardedFromSenderId
         )
     }
 
@@ -373,8 +393,18 @@ fun ChatDetailScreen(
                                     createdAtMillis = event.createdAtMillis,
                                     read = event.read,
                                     serverSequence = event.serverSequence,
-                                    replyTo = event.replyTo
+                                    replyTo = event.replyTo,
+                                    messageType = event.messageType,
+                                    media = event.media,
+                                    editedAt = event.editedAt,
+                                    forwardedFromSenderId = event.forwardedFromSenderId
                                 )
+                            }
+                        }
+
+                        is ChatSocketEvent.MessageEdited -> {
+                            if (event.conversationId == null || event.conversationId == targetConversationId) {
+                                chatLocalStore.applyEditedMessage(targetConversationId, event.messageId, event.text, event.editedAt)
                             }
                         }
 
@@ -571,6 +601,53 @@ fun ChatDetailScreen(
         }
     }
 
+    // --- SEARCH: jump to a message, loading older pages until it is in view ---
+    val jumpToMessage: (UiChatMessage) -> Unit = { target ->
+        val targetConversationId = conversationId
+        if (targetConversationId != null && !isJumpingToMessage) {
+            scope.launch {
+                isJumpingToMessage = true
+                try {
+                    var index = messages.indexOfFirst { it.id == target.id }
+                    var attempts = 0
+                    while (index < 0 && hasMoreMessages && attempts < 20) {
+                        val nextPage = currentPage + 1
+                        when (val result = chatRepository.getMessagesPage(targetConversationId, nextPage)) {
+                            is ChatResult.Success -> {
+                                if (result.value.isEmpty()) {
+                                    hasMoreMessages = false
+                                } else {
+                                    chatLocalStore.saveBackendMessages(targetConversationId, result.value)
+                                    currentPage = nextPage
+                                    if (result.value.size < 50) hasMoreMessages = false
+                                }
+                            }
+                            is ChatResult.Error -> hasMoreMessages = false
+                        }
+                        delay(80)
+                        index = messages.indexOfFirst { it.id == target.id }
+                        attempts++
+                    }
+
+                    showSearchOverlay = false
+
+                    if (index >= 0) {
+                        val key = messages[index].clientId ?: messages[index].id
+                        delay(150)
+                        listState.animateScrollToItem(index)
+                        highlightedMessageKey = key
+                        delay(1600)
+                        if (highlightedMessageKey == key) highlightedMessageKey = null
+                    } else {
+                        errorText = "Xabar topilmadi."
+                    }
+                } finally {
+                    isJumpingToMessage = false
+                }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Image(
             painter = backgroundImage,
@@ -727,7 +804,8 @@ fun ChatDetailScreen(
                                                         heartBurstIds.value = heartBurstIds.value + stableKey
                                                         toggleHeartReaction(message)
                                                     }
-                                                }
+                                                },
+                                                isHighlighted = highlightedMessageKey == stableKey
                                             )
                                         }
                                     }
@@ -843,22 +921,39 @@ fun ChatDetailScreen(
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(pillBg)
-                            .border(0.5.dp, glassBorder, CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                keyboardController?.hide()
-                                showMemberProfile = true
-                            },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Person, null, tint = contentColor.copy(0.4f), modifier = Modifier.size(24.dp))
+                        if (!isRequest) {
+                            HeaderPillButton(
+                                onClick = {
+                                    keyboardController?.hide()
+                                    showSearchOverlay = true
+                                },
+                                isDarkMode = isDarkMode
+                            ) {
+                                Icon(Icons.Default.Search, null, tint = contentColor.copy(0.4f), modifier = Modifier.size(22.dp))
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(pillBg)
+                                .border(0.5.dp, glassBorder, CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    keyboardController?.hide()
+                                    showMemberProfile = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Person, null, tint = contentColor.copy(0.4f), modifier = Modifier.size(24.dp))
+                        }
                     }
                 }
 
@@ -953,6 +1048,37 @@ fun ChatDetailScreen(
                     }
                     if (System.currentTimeMillis() < sendBlockedUntilMillis) {
                         errorText = "Iltimos, biroz kutib turing."
+                        return@sendBlock
+                    }
+
+                    val editingSnapshot = editingMessage
+                    if (editingSnapshot != null) {
+                        val editBackendId = backendIdOrNull(editingSnapshot)
+                        if (editBackendId == null) {
+                            errorText = "Bu xabarni tahrirlab bo'lmaydi."
+                            editingMessage = null
+                            messageText = ""
+                            return@sendBlock
+                        }
+                        editingMessage = null
+                        messageText = ""
+                        isMenuOpen = false
+                        scope.launch {
+                            when (val result = chatRepository.editMessage(editBackendId, trimmedText)) {
+                                is ChatResult.Success -> {
+                                    chatLocalStore.applyEditedMessage(
+                                        conversationId = targetConversationId,
+                                        messageId = editBackendId,
+                                        text = result.value.text,
+                                        editedAtMillis = result.value.editedAt ?: System.currentTimeMillis()
+                                    )
+                                    errorText = null
+                                }
+                                is ChatResult.Error -> {
+                                    errorText = result.message
+                                }
+                            }
+                        }
                         return@sendBlock
                     }
 
@@ -1051,6 +1177,24 @@ fun ChatDetailScreen(
                                 isDarkMode = isDarkMode,
                                 accentBlue = accentBlue,
                                 onCancel = { replyingTo = null }
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = editingMessage != null,
+                        enter = expandVertically(animationSpec = spring(dampingRatio = 0.85f, stiffness = 500f)) + fadeIn(tween(180)),
+                        exit = shrinkVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) + fadeOut(tween(120))
+                    ) {
+                        editingMessage?.let { editing ->
+                            EditPreviewBar(
+                                text = editing.text,
+                                isDarkMode = isDarkMode,
+                                accentBlue = accentBlue,
+                                onCancel = {
+                                    editingMessage = null
+                                    messageText = ""
+                                }
                             )
                         }
                     }
@@ -1342,6 +1486,25 @@ fun ChatDetailScreen(
             )
         }
 
+        AnimatedVisibility(
+            visible = showSearchOverlay,
+            enter = slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(280, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(240, easing = FastOutSlowInEasing))
+        ) {
+            MessageSearchOverlay(
+                isDarkMode = isDarkMode,
+                accentBlue = accentBlue,
+                conversationId = conversationId,
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                results = searchResults,
+                isSearching = isSearching,
+                onSearchingChange = { isSearching = it },
+                onDismiss = { showSearchOverlay = false },
+                onResultClick = jumpToMessage
+            )
+        }
+
         // --- CALL OVERLAYS ---
         if (showVoiceCall) {
             VoiceCallScreen(userName = userName, onHangUp = { showVoiceCall = false })
@@ -1370,7 +1533,36 @@ fun ChatDetailScreen(
                 },
                 onTogglePin = { togglePin(activeMessage) },
                 onDeleteForMe = { deleteMessage(activeMessage, "self") },
-                onDeleteForEveryone = { deleteMessage(activeMessage, "everyone") }
+                onDeleteForEveryone = { deleteMessage(activeMessage, "everyone") },
+                onEdit = {
+                    editingMessage = activeMessage
+                    messageText = activeMessage.text
+                    replyingTo = null
+                },
+                onForward = { forwardingMessage = activeMessage }
+            )
+        }
+
+        // --- FORWARD MESSAGE PICKER ---
+        forwardingMessage?.let { activeForward ->
+            ForwardPickerOverlay(
+                isDarkMode = isDarkMode,
+                onDismiss = { forwardingMessage = null },
+                onSelect = { conversation ->
+                    val sourceMessageId = backendIdOrNull(activeForward)
+                    if (sourceMessageId != null) {
+                        scope.launch {
+                            when (val result = chatRepository.forwardMessage(conversation.id, sourceMessageId)) {
+                                is ChatResult.Success -> {
+                                    chatLocalStore.saveBackendMessages(conversation.id, listOf(result.value))
+                                    errorText = null
+                                }
+                                is ChatResult.Error -> errorText = result.message
+                            }
+                        }
+                    }
+                    forwardingMessage = null
+                }
             )
         }
     }
@@ -1385,7 +1577,8 @@ fun MessageBubble(
     showHeartBurst: Boolean = false,
     onHeartBurstEnd: () -> Unit = {},
     onLongPress: () -> Unit = {},
-    onDoubleTap: () -> Unit = {}
+    onDoubleTap: () -> Unit = {},
+    isHighlighted: Boolean = false
 ) {
     val alignment = if (message.isMe) Alignment.End else Alignment.Start
     val bubbleColor = when {
@@ -1393,6 +1586,12 @@ fun MessageBubble(
         message.isMe -> PremiumBlue
         else -> if (isDarkMode) Color(0xFF262626) else Color(0xFFF0F2F0)
     }
+    val highlightColor = if (isDarkMode) Color(0xFFFFD60A) else Color(0xFFFFE082)
+    val animatedBubbleColor by animateColorAsState(
+        targetValue = if (isHighlighted) highlightColor.copy(alpha = 0.6f) else bubbleColor,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "bubble_highlight"
+    )
     val textColor = when {
         message.isDeleted -> if (isDarkMode) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f)
         message.isMe -> Color.White
@@ -1426,7 +1625,7 @@ fun MessageBubble(
     ) {
         Box {
             Surface(
-                color = bubbleColor,
+                color = animatedBubbleColor,
                 shape = shape,
                 modifier = Modifier
                     .widthIn(max = 280.dp)
@@ -1457,6 +1656,26 @@ fun MessageBubble(
                             )
                         }
                     } else {
+                        if (message.forwardedFromSenderId != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = null,
+                                    tint = textColor.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Uzatilgan xabar",
+                                    color = textColor.copy(alpha = 0.6f),
+                                    fontSize = 11.sp,
+                                    fontStyle = FontStyle.Italic
+                                )
+                            }
+                        }
                         message.replyTo?.let { reply ->
                             ReplyQuoteBlock(reply = reply, textColor = textColor, isMe = message.isMe)
                         }
@@ -1475,6 +1694,14 @@ fun MessageBubble(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
+                        if (message.editedAt != null && !message.isDeleted) {
+                            Text(
+                                text = "tahrirlangan",
+                                color = textColor.copy(alpha = 0.5f),
+                                fontSize = 10.sp,
+                                fontStyle = FontStyle.Italic
+                            )
+                        }
                         Text(text = timeString, color = textColor.copy(alpha = 0.5f), fontSize = 10.sp)
                         if (message.isMe) {
                             AnimatedContent(
@@ -2055,7 +2282,11 @@ data class MessageData(
     val clientId: String? = null,
     val isDeleted: Boolean = false,
     val reactions: List<UiReaction> = emptyList(),
-    val replyTo: UiReplyPreview? = null
+    val replyTo: UiReplyPreview? = null,
+    val messageType: String = "text",
+    val media: UiMedia? = null,
+    val editedAt: Long? = null,
+    val forwardedFromSenderId: String? = null
 )
 
 @Composable
@@ -2357,6 +2588,66 @@ private fun ReplyPreviewBar(
 }
 
 @Composable
+private fun EditPreviewBar(
+    text: String,
+    isDarkMode: Boolean,
+    accentBlue: Color,
+    onCancel: () -> Unit
+) {
+    val contentColor = if (isDarkMode) Color.White else Color.Black
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(2.5.dp)
+                .height(32.dp)
+                .background(accentBlue, RoundedCornerShape(2.dp))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Icon(
+            imageVector = Icons.Default.Edit,
+            contentDescription = null,
+            tint = accentBlue,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Xabarni tahrirlash",
+                color = accentBlue,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = text,
+                color = contentColor.copy(alpha = 0.65f),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontFamily = IosEmojiFont
+            )
+        }
+        IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.5f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun PinnedMessageBanner(
     pinnedMessage: UiPinnedMessage,
     isDarkMode: Boolean,
@@ -2432,7 +2723,9 @@ private fun MessageContextMenuOverlay(
     onReply: () -> Unit,
     onTogglePin: () -> Unit,
     onDeleteForMe: () -> Unit,
-    onDeleteForEveryone: () -> Unit
+    onDeleteForEveryone: () -> Unit,
+    onEdit: () -> Unit,
+    onForward: () -> Unit
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -2508,6 +2801,18 @@ private fun MessageContextMenuOverlay(
                                         contentColor
                                     ) { onTogglePin(); close() }
                                 )
+                                add(
+                                    ContextMenuAction("Uzatish", Icons.AutoMirrored.Filled.Send, contentColor) {
+                                        onForward(); close()
+                                    }
+                                )
+                            }
+                            if (message.isMe && message.messageType == "text" && canPin) {
+                                add(
+                                    ContextMenuAction("Tahrirlash", Icons.Default.Edit, contentColor) {
+                                        onEdit(); close()
+                                    }
+                                )
                             }
                         }
                         add(
@@ -2564,6 +2869,291 @@ private fun ContextMenuCard(isDarkMode: Boolean, items: List<ContextMenuAction>)
     }
 }
 
+@Composable
+private fun ForwardPickerOverlay(
+    isDarkMode: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (UiConversationSummary) -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+
+    val close: () -> Unit = { visible = false }
+
+    LaunchedEffect(visible) {
+        if (!visible) {
+            delay(180)
+            onDismiss()
+        }
+    }
+
+    val chatRepository = remember { ChatRepository() }
+    var conversations by remember { mutableStateOf<List<UiConversationSummary>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        when (val result = chatRepository.getConversations()) {
+            is ChatResult.Success -> conversations = result.value
+            is ChatResult.Error -> Unit
+        }
+        isLoading = false
+    }
+
+    val contentColor = if (isDarkMode) Color.White else Color.Black
+    val bg = if (isDarkMode) Color(0xFF2C2C2E) else Color.White
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(160)),
+        exit = fadeOut(tween(160)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = close
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            AnimatedVisibility(
+                visible = visible,
+                enter = scaleIn(animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f), initialScale = 0.85f) + fadeIn(tween(160)),
+                exit = scaleOut(animationSpec = tween(140, easing = FastOutSlowInEasing), targetScale = 0.85f) + fadeOut(tween(120)),
+                modifier = Modifier
+                    .padding(horizontal = 32.dp)
+                    .widthIn(max = 320.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(bg)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
+                        )
+                ) {
+                    Text(
+                        text = "Xabarni uzatish",
+                        color = contentColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                    when {
+                        isLoading -> Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = contentColor.copy(alpha = 0.5f)
+                            )
+                        }
+                        conversations.isEmpty() -> Text(
+                            text = "Suhbatlar topilmadi",
+                            color = contentColor.copy(alpha = 0.5f),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                        else -> LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                            items(conversations, key = { it.id }) { conv ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            close()
+                                            onSelect(conv)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDarkMode) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.06f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = contentColor.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = conv.displayName,
+                                        color = contentColor,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageSearchOverlay(
+    isDarkMode: Boolean,
+    accentBlue: Color,
+    conversationId: String?,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    results: SnapshotStateList<UiChatMessage>,
+    isSearching: Boolean,
+    onSearchingChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onResultClick: (UiChatMessage) -> Unit
+) {
+    val backgroundColor = if (isDarkMode) Color.Black else Color.White
+    val contentColor = if (isDarkMode) Color.White else Color.Black
+    val chatRepository = remember { ChatRepository() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(150)
+        focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(query, conversationId) {
+        val targetConversationId = conversationId
+        if (query.isBlank() || targetConversationId == null) {
+            results.clear()
+            onSearchingChange(false)
+            return@LaunchedEffect
+        }
+        delay(350)
+        onSearchingChange(true)
+        when (val result = chatRepository.searchMessages(targetConversationId, query.trim())) {
+            is ChatResult.Success -> {
+                results.clear()
+                results.addAll(result.value)
+            }
+            is ChatResult.Error -> results.clear()
+        }
+        onSearchingChange(false)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .statusBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconButton(onClick = {
+                keyboardController?.hide()
+                onDismiss()
+            }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = contentColor)
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                if (query.isEmpty()) {
+                    Text(text = "Xabarlarni qidirish...", color = contentColor.copy(alpha = 0.45f), fontSize = 14.sp)
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    textStyle = TextStyle(color = contentColor, fontSize = 14.sp, fontFamily = IosEmojiFont),
+                    cursorBrush = SolidColor(accentBlue),
+                    singleLine = true
+                )
+            }
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = contentColor.copy(alpha = 0.5f))
+                }
+            }
+        }
+
+        when {
+            isSearching -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = contentColor.copy(alpha = 0.5f)
+                )
+            }
+            query.isNotBlank() && results.isEmpty() -> Text(
+                text = "Hech narsa topilmadi",
+                color = contentColor.copy(alpha = 0.5f),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(16.dp)
+            )
+            else -> {
+                val timeFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(results, key = { it.id }) { msg ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onResultClick(msg) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = msg.senderName ?: "Siz",
+                                color = accentBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = msg.text.ifBlank { "[Media]" },
+                                color = contentColor,
+                                fontSize = 14.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                fontFamily = IosEmojiFont
+                            )
+                            Text(
+                                text = timeFormat.format(Date(msg.timestamp)),
+                                color = contentColor.copy(alpha = 0.4f),
+                                fontSize = 11.sp
+                            )
+                        }
+                        HorizontalDivider(color = contentColor.copy(alpha = 0.06f), thickness = 0.5.dp)
+                    }
+                }
+            }
+        }
+    }
+}
 
 
 

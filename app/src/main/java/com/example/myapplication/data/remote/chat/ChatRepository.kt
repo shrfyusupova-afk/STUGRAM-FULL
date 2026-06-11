@@ -4,7 +4,12 @@ import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.RetrofitClient
 import com.google.gson.JsonParser
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
+import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.time.Instant
@@ -28,7 +33,8 @@ data class UiReplyPreview(
     val id: String,
     val text: String,
     val senderName: String?,
-    val mine: Boolean
+    val mine: Boolean,
+    val messageType: String? = null
 )
 
 data class UiPinnedMessage(
@@ -41,6 +47,20 @@ data class UiConversationInfo(
     val pinnedMessage: UiPinnedMessage? = null
 )
 
+data class UiConversationSummary(
+    val id: String,
+    val displayName: String
+)
+
+data class UiMedia(
+    val url: String,
+    val type: String,
+    val fileName: String? = null,
+    val fileSize: Long? = null,
+    val mimeType: String? = null,
+    val durationSeconds: Int? = null
+)
+
 data class UiChatMessage(
     val id: String,
     val text: String,
@@ -51,7 +71,11 @@ data class UiChatMessage(
     val serverSequence: Long = 0L,
     val isDeleted: Boolean = false,
     val reactions: List<UiReaction> = emptyList(),
-    val replyTo: UiReplyPreview? = null
+    val replyTo: UiReplyPreview? = null,
+    val messageType: String = "text",
+    val media: UiMedia? = null,
+    val editedAt: Long? = null,
+    val forwardedFromSenderId: String? = null
 )
 
 enum class UiMessageStatus {
@@ -279,6 +303,105 @@ class ChatRepository(
         }
     }
 
+    suspend fun editMessage(messageId: String, text: String): ChatResult<UiChatMessage> {
+        return try {
+            val response = api.editMessage(messageId, EditMessageRequest(text))
+            val message = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(message.toUiMessage())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun forwardMessage(
+        conversationId: String,
+        sourceMessageId: String,
+        comment: String? = null
+    ): ChatResult<UiChatMessage> {
+        return try {
+            val response = api.forwardMessage(
+                conversationId,
+                ForwardMessageRequest(sourceMessageId = sourceMessageId, comment = comment)
+            )
+            val message = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(message.toUiMessage())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun getConversations(page: Int = 1, limit: Int = 50): ChatResult<List<UiConversationSummary>> {
+        return try {
+            val response = api.getConversations(page = page, limit = limit)
+            val conversations = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(
+                conversations.map { conv ->
+                    val other = conv.otherParticipant
+                    UiConversationSummary(
+                        id = conv._id,
+                        displayName = other?.fullName?.takeIf { it.isNotBlank() }
+                            ?: other?.username?.takeIf { it.isNotBlank() }
+                            ?: "Foydalanuvchi"
+                    )
+                }
+            )
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Network error.")
+        }
+    }
+
+    suspend fun searchMessages(conversationId: String, query: String, page: Int = 1): ChatResult<List<UiChatMessage>> {
+        return try {
+            val response = api.searchMessages(conversationId = conversationId, query = query, page = page)
+            val messages = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(messages.map { it.toUiMessage() })
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Qidirishda timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Qidirishda tarmoq xatosi.")
+        }
+    }
+
+    suspend fun sendMediaMessage(
+        conversationId: String,
+        file: File,
+        mimeType: String,
+        messageType: String,
+        text: String? = null,
+        clientId: String? = null,
+        replyToMessageId: String? = null
+    ): ChatResult<UiChatMessage> {
+        return try {
+            val mediaTypeValue = mimeType.toMediaTypeOrNull()
+            val filePart = MultipartBody.Part.createFormData(
+                "media",
+                file.name,
+                file.asRequestBody(mediaTypeValue)
+            )
+            val plainText = "text/plain".toMediaTypeOrNull()
+            val response = api.sendMediaMessage(
+                conversationId = conversationId,
+                media = filePart,
+                messageType = messageType.toRequestBody(plainText),
+                text = text?.toRequestBody(plainText),
+                clientId = clientId?.toRequestBody(plainText),
+                replyToMessageId = replyToMessageId?.toRequestBody(plainText)
+            )
+            val message = unwrap(response) ?: return mapError(response)
+            ChatResult.Success(message.toUiMessage())
+        } catch (ex: SocketTimeoutException) {
+            ChatResult.Error(code = null, message = "Yuklashda timeout.")
+        } catch (ex: IOException) {
+            ChatResult.Error(code = null, message = "Yuklashda tarmoq xatosi.")
+        }
+    }
+
     private fun <T> unwrap(response: Response<ApiEnvelope<T>>): T? {
         if (!response.isSuccessful) return null
         return response.body()?.data
@@ -331,8 +454,22 @@ private fun MessageDto.toUiMessage(): UiChatMessage {
             id = reply._id.orEmpty(),
             text = reply.text?.takeIf { it.isNotBlank() } ?: "Xabar",
             senderName = reply.sender?.fullName ?: reply.sender?.username,
-            mine = myId != null && reply.sender?._id == myId
+            mine = myId != null && reply.sender?._id == myId,
+            messageType = reply.messageType
         )
+    }
+    val uiMedia = media?.url?.let { url ->
+        UiMedia(
+            url = url,
+            type = media.type ?: messageType ?: "file",
+            fileName = media.fileName,
+            fileSize = media.fileSize,
+            mimeType = media.mimeType,
+            durationSeconds = media.durationSeconds
+        )
+    }
+    val editedAtMillis = editedAt?.let { value ->
+        runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
     }
     return UiChatMessage(
         id = _id,
@@ -344,7 +481,11 @@ private fun MessageDto.toUiMessage(): UiChatMessage {
         serverSequence = serverSequence ?: 0L,
         isDeleted = isDeletedForEveryone == true,
         reactions = uiReactions,
-        replyTo = replyTo
+        replyTo = replyTo,
+        messageType = messageType ?: "text",
+        media = uiMedia,
+        editedAt = editedAtMillis,
+        forwardedFromSenderId = forwardedFromSenderId
     )
 }
 

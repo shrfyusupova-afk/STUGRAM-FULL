@@ -11,7 +11,18 @@ sealed class ChatSocketEvent {
         val createdAtMillis: Long,
         val read: Boolean,
         val serverSequence: Long = 0L,
-        val replyTo: UiReplyPreview? = null
+        val replyTo: UiReplyPreview? = null,
+        val messageType: String = "text",
+        val media: UiMedia? = null,
+        val editedAt: Long? = null,
+        val forwardedFromSenderId: String? = null
+    ) : ChatSocketEvent()
+
+    data class MessageEdited(
+        val conversationId: String?,
+        val messageId: String,
+        val text: String,
+        val editedAt: Long
     ) : ChatSocketEvent()
 
     data class MessageSeen(

@@ -245,6 +245,27 @@ object ChatSocketManager {
             _events.tryEmit(ChatSocketEvent.ConversationUnpinned(conversationId = conversationId))
         }
         target.on("message_unpinned", unpinnedHandler)
+
+        val editedHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            val message = obj.optJSONObject("message")
+            val messageId = message?.optString("_id")?.ifBlank { null }
+                ?: obj.optString("messageId").ifBlank { null }
+                ?: return@Listener
+            val conversationId = obj.optString("conversationId").ifBlank { null }
+            val text = message?.optString("text") ?: obj.optString("text")
+            val editedAt = parseTimeMillis(message?.optString("editedAt") ?: obj.optString("editedAt"))
+            _events.tryEmit(
+                ChatSocketEvent.MessageEdited(
+                    conversationId = conversationId,
+                    messageId = messageId,
+                    text = text.orEmpty(),
+                    editedAt = editedAt
+                )
+            )
+        }
+        target.on("message_edited", editedHandler)
     }
 
     @Synchronized
@@ -296,7 +317,11 @@ object ChatSocketManager {
             read = !rootMessage.optString("readAt").isNullOrBlank(),
             serverSequence = rootMessage.optLong("serverSequence", 0L).takeIf { it > 0L }
                 ?: obj.optLong("serverSequence", 0L),
-            replyTo = parseReplyPreview(rootMessage.optJSONObject("replyToMessage"))
+            replyTo = parseReplyPreview(rootMessage.optJSONObject("replyToMessage")),
+            messageType = rootMessage.optString("messageType").ifBlank { "text" },
+            media = parseMediaFromJson(rootMessage.optJSONObject("media")),
+            editedAt = rootMessage.optString("editedAt").ifBlank { null }?.let { parseTimeMillis(it) },
+            forwardedFromSenderId = rootMessage.optString("forwardedFromSenderId").ifBlank { null }
         )
     }
 
@@ -310,7 +335,21 @@ object ChatSocketManager {
             text = reply.optString("text").ifBlank { "Xabar" },
             senderName = replySender?.optString("fullName")?.ifBlank { null }
                 ?: replySender?.optString("username")?.ifBlank { null },
-            mine = myId != null && replySenderId == myId
+            mine = myId != null && replySenderId == myId,
+            messageType = reply.optString("messageType").ifBlank { null }
+        )
+    }
+
+    private fun parseMediaFromJson(media: JSONObject?): UiMedia? {
+        media ?: return null
+        val url = media.optString("url").ifBlank { null } ?: return null
+        return UiMedia(
+            url = url,
+            type = media.optString("type").ifBlank { "file" },
+            fileName = media.optString("fileName").ifBlank { null },
+            fileSize = media.optLong("fileSize", 0L).takeIf { it > 0L },
+            mimeType = media.optString("mimeType").ifBlank { null },
+            durationSeconds = media.optInt("durationSeconds", 0).takeIf { it > 0 }
         )
     }
 

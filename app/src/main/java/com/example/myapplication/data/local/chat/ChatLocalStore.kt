@@ -5,6 +5,7 @@ import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.chat.ChatEventDto
 import com.example.myapplication.data.remote.chat.ChatEventsDataDto
 import com.example.myapplication.data.remote.chat.UiChatMessage
+import com.example.myapplication.data.remote.chat.UiMedia
 import com.example.myapplication.data.remote.chat.UiMessageStatus
 import com.example.myapplication.data.remote.chat.UiReaction
 import com.example.myapplication.data.remote.chat.UiReplyPreview
@@ -54,7 +55,9 @@ class ChatLocalStore(
         senderId: String,
         text: String,
         nowMillis: Long,
-        replyTo: UiReplyPreview? = null
+        replyTo: UiReplyPreview? = null,
+        messageType: String = "text",
+        media: UiMedia? = null
     ): UiChatMessage {
         val stableId = "client:$clientId"
         val entity = ChatMessageEntity(
@@ -73,7 +76,15 @@ class ChatLocalStore(
             replyToId = replyTo?.id,
             replyToText = replyTo?.text,
             replyToSenderName = replyTo?.senderName,
-            replyToMine = replyTo?.mine ?: false
+            replyToMine = replyTo?.mine ?: false,
+            replyToMessageType = replyTo?.messageType,
+            messageType = messageType,
+            mediaUrl = media?.url,
+            mediaType = media?.type,
+            mediaFileName = media?.fileName,
+            mediaFileSize = media?.fileSize,
+            mediaMimeType = media?.mimeType,
+            mediaDurationSeconds = media?.durationSeconds
         )
         dao.upsertMessage(entity)
         return entity.toUi()
@@ -89,7 +100,7 @@ class ChatLocalStore(
         val stableId = existing?.stableId ?: buildStableId(serverMessage, clientId)
         val replyTo = serverMessage.replyTo ?: existing?.let {
             it.replyToId?.let { id ->
-                UiReplyPreview(id = id, text = it.replyToText.orEmpty(), senderName = it.replyToSenderName, mine = it.replyToMine)
+                UiReplyPreview(id = id, text = it.replyToText.orEmpty(), senderName = it.replyToSenderName, mine = it.replyToMine, messageType = it.replyToMessageType)
             }
         }
         dao.upsertMessage(
@@ -110,7 +121,17 @@ class ChatLocalStore(
                 replyToId = replyTo?.id,
                 replyToText = replyTo?.text,
                 replyToSenderName = replyTo?.senderName,
-                replyToMine = replyTo?.mine ?: false
+                replyToMine = replyTo?.mine ?: false,
+                replyToMessageType = replyTo?.messageType,
+                messageType = serverMessage.messageType,
+                mediaUrl = serverMessage.media?.url ?: existing?.mediaUrl,
+                mediaType = serverMessage.media?.type ?: existing?.mediaType,
+                mediaFileName = serverMessage.media?.fileName ?: existing?.mediaFileName,
+                mediaFileSize = serverMessage.media?.fileSize ?: existing?.mediaFileSize,
+                mediaMimeType = serverMessage.media?.mimeType ?: existing?.mediaMimeType,
+                mediaDurationSeconds = serverMessage.media?.durationSeconds ?: existing?.mediaDurationSeconds,
+                editedAt = serverMessage.editedAt ?: existing?.editedAt,
+                forwardedFromSenderId = serverMessage.forwardedFromSenderId ?: existing?.forwardedFromSenderId
             )
         )
     }
@@ -134,7 +155,11 @@ class ChatLocalStore(
         createdAtMillis: Long,
         read: Boolean,
         serverSequence: Long = 0L,
-        replyTo: UiReplyPreview? = null
+        replyTo: UiReplyPreview? = null,
+        messageType: String = "text",
+        media: UiMedia? = null,
+        editedAt: Long? = null,
+        forwardedFromSenderId: String? = null
     ) {
         val existingByClientId = clientId?.let { dao.findByClientId(conversationId, it) }
         val existingByBackendId = dao.findByBackendId(conversationId, backendId)
@@ -150,7 +175,7 @@ class ChatLocalStore(
             else -> "backend:$backendId"
         }
         val effectiveReplyTo = replyTo ?: base?.replyToId?.let { id ->
-            UiReplyPreview(id = id, text = base.replyToText.orEmpty(), senderName = base.replyToSenderName, mine = base.replyToMine)
+            UiReplyPreview(id = id, text = base.replyToText.orEmpty(), senderName = base.replyToSenderName, mine = base.replyToMine, messageType = base.replyToMessageType)
         }
         dao.upsertMessage(
             ChatMessageEntity(
@@ -170,7 +195,17 @@ class ChatLocalStore(
                 replyToId = effectiveReplyTo?.id,
                 replyToText = effectiveReplyTo?.text,
                 replyToSenderName = effectiveReplyTo?.senderName,
-                replyToMine = effectiveReplyTo?.mine ?: false
+                replyToMine = effectiveReplyTo?.mine ?: false,
+                replyToMessageType = effectiveReplyTo?.messageType,
+                messageType = messageType.takeIf { it.isNotBlank() } ?: base?.messageType ?: "text",
+                mediaUrl = media?.url ?: base?.mediaUrl,
+                mediaType = media?.type ?: base?.mediaType,
+                mediaFileName = media?.fileName ?: base?.mediaFileName,
+                mediaFileSize = media?.fileSize ?: base?.mediaFileSize,
+                mediaMimeType = media?.mimeType ?: base?.mediaMimeType,
+                mediaDurationSeconds = media?.durationSeconds ?: base?.mediaDurationSeconds,
+                editedAt = editedAt ?: base?.editedAt,
+                forwardedFromSenderId = forwardedFromSenderId ?: base?.forwardedFromSenderId
             )
         )
     }
@@ -184,6 +219,18 @@ class ChatLocalStore(
         val existing = dao.findByBackendId(conversationId, messageId)
             ?: clientId?.let { dao.findByClientId(conversationId, it) }
         if (existing != null) dao.deleteByStableId(existing.stableId)
+    }
+
+    /** Applies a live-edited text + editedAt timestamp to a cached message. */
+    suspend fun applyEditedMessage(conversationId: String, messageId: String, text: String, editedAtMillis: Long) {
+        val existing = dao.findByBackendId(conversationId, messageId) ?: return
+        dao.upsertMessage(
+            existing.copy(
+                text = text,
+                editedAt = editedAtMillis,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
     }
 
     /** Marks a message as deleted-for-everyone, mirroring the live socket/event behavior. */
@@ -273,7 +320,8 @@ class ChatLocalStore(
                         id = mapString(reply, "_id").orEmpty(),
                         text = mapString(reply, "text")?.takeIf { it.isNotBlank() } ?: "Xabar",
                         senderName = mapString(replySender, "fullName") ?: mapString(replySender, "username"),
-                        mine = myId != null && mapString(replySender, "_id") == myId
+                        mine = myId != null && mapString(replySender, "_id") == myId,
+                        messageType = mapString(reply, "messageType")
                     )
                 }
                 upsertIncomingSocketMessage(
@@ -286,7 +334,11 @@ class ChatLocalStore(
                     createdAtMillis = parseIsoMillis(mapString(messagePayload, "createdAt")),
                     read = mapString(messagePayload, "readAt").isNullOrBlank().not(),
                     serverSequence = seq,
-                    replyTo = replyTo
+                    replyTo = replyTo,
+                    messageType = mapString(messagePayload, "messageType") ?: "text",
+                    media = parseMediaFromMap(messagePayload["media"] as? Map<*, *>),
+                    editedAt = mapString(messagePayload, "editedAt")?.let { parseIsoMillis(it) },
+                    forwardedFromSenderId = mapString(messagePayload, "forwardedFromSenderId")
                 )
                 true
             }
@@ -295,12 +347,17 @@ class ChatLocalStore(
                 val backendId = event.messageId ?: (payload?.get("messageId") as? String) ?: return false
                 val existing = dao.findByBackendId(conversationId, backendId) ?: return false
                 if (existing.serverSequence > seq) return true
+                val messageMap = payload?.get("message") as? Map<*, *>
                 val nextText = (payload?.get("text") as? String)
-                    ?: ((payload?.get("message") as? Map<*, *>)?.get("text") as? String)
+                    ?: mapString(messageMap, "text")
                     ?: existing.text
+                val editedAtMillis = (payload?.get("editedAt") as? String)?.let { parseIsoMillis(it) }
+                    ?: mapString(messageMap, "editedAt")?.let { parseIsoMillis(it) }
+                    ?: System.currentTimeMillis()
                 dao.upsertMessage(
                     existing.copy(
                         text = nextText,
+                        editedAt = editedAtMillis,
                         serverSequence = seq,
                         updatedAt = System.currentTimeMillis()
                     )
@@ -376,7 +433,17 @@ class ChatLocalStore(
             replyToId = replyTo?.id,
             replyToText = replyTo?.text,
             replyToSenderName = replyTo?.senderName,
-            replyToMine = replyTo?.mine ?: false
+            replyToMine = replyTo?.mine ?: false,
+            replyToMessageType = replyTo?.messageType,
+            messageType = messageType,
+            mediaUrl = media?.url,
+            mediaType = media?.type,
+            mediaFileName = media?.fileName,
+            mediaFileSize = media?.fileSize,
+            mediaMimeType = media?.mimeType,
+            mediaDurationSeconds = media?.durationSeconds,
+            editedAt = editedAt,
+            forwardedFromSenderId = forwardedFromSenderId
         )
     }
 
@@ -392,8 +459,21 @@ class ChatLocalStore(
             isDeleted = isDeleted,
             reactions = deserializeReactions(reactionsJson),
             replyTo = replyToId?.let { id ->
-                UiReplyPreview(id = id, text = replyToText.orEmpty(), senderName = replyToSenderName, mine = replyToMine)
-            }
+                UiReplyPreview(id = id, text = replyToText.orEmpty(), senderName = replyToSenderName, mine = replyToMine, messageType = replyToMessageType)
+            },
+            messageType = messageType,
+            media = mediaUrl?.let { url ->
+                UiMedia(
+                    url = url,
+                    type = mediaType ?: messageType,
+                    fileName = mediaFileName,
+                    fileSize = mediaFileSize,
+                    mimeType = mediaMimeType,
+                    durationSeconds = mediaDurationSeconds
+                )
+            },
+            editedAt = editedAt,
+            forwardedFromSenderId = forwardedFromSenderId
         )
     }
 
@@ -412,6 +492,19 @@ class ChatLocalStore(
 
     private fun mapString(map: Map<*, *>?, key: String): String? {
         return map?.get(key) as? String
+    }
+
+    private fun parseMediaFromMap(map: Map<*, *>?): UiMedia? {
+        map ?: return null
+        val url = mapString(map, "url") ?: return null
+        return UiMedia(
+            url = url,
+            type = mapString(map, "type") ?: "file",
+            fileName = mapString(map, "fileName"),
+            fileSize = (map["fileSize"] as? Number)?.toLong(),
+            mimeType = mapString(map, "mimeType"),
+            durationSeconds = (map["durationSeconds"] as? Number)?.toInt()
+        )
     }
 
     private fun serializeReactions(reactions: List<UiReaction>): String? {
