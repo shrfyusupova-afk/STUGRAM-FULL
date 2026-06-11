@@ -1,7 +1,12 @@
 package com.example.myapplication.ui.home
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.myapplication.R
 import com.example.myapplication.data.local.chat.ChatDatabase
 import com.example.myapplication.data.local.chat.ChatLocalStore
@@ -210,6 +216,32 @@ fun ChatDetailScreen(
     )
 
     val context = LocalContext.current
+
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted -> hasAudioPermission = granted }
+    var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember { mutableStateOf<File?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaRecorder?.let { recorder ->
+                try {
+                    recorder.stop()
+                } catch (_: Exception) {
+                }
+                recorder.release()
+            }
+            recordingFile?.delete()
+        }
+    }
+
     val chatDatabase = remember { ChatDatabase.getInstance(context) }
     val chatRepository = remember { ChatRepository() }
     val cursorDao = remember { chatDatabase.chatEventCursorDao() }
@@ -1250,13 +1282,117 @@ fun ChatDetailScreen(
                     }
                 }
 
+                val sendVoiceMessage: (File, Int) -> Unit = { file, durationSeconds ->
+                    val targetConversationId = conversationId
+                    if (!isConversationLoading && !targetConversationId.isNullOrBlank()) {
+                        val replySnapshot = replyingTo
+                        replyingTo = null
+                        scope.launch {
+                            val mimeType = "audio/mp4"
+                            val clientId = "android:${UUID.randomUUID()}"
+                            val now = System.currentTimeMillis()
+                            val media = UiMedia(
+                                url = file.toURI().toString(),
+                                type = "voice",
+                                fileName = file.name,
+                                fileSize = file.length(),
+                                mimeType = mimeType,
+                                durationSeconds = durationSeconds
+                            )
+                            newMessageIds.value = newMessageIds.value + clientId
+                            chatLocalStore.saveOptimisticMessage(
+                                conversationId = targetConversationId,
+                                clientId = clientId,
+                                senderId = "me",
+                                text = "",
+                                nowMillis = now,
+                                replyTo = replySnapshot,
+                                messageType = "voice",
+                                media = media
+                            )
+                            scrollToStart()
+
+                            when (val result = chatRepository.sendMediaMessage(
+                                conversationId = targetConversationId,
+                                file = file,
+                                mimeType = mimeType,
+                                messageType = "voice",
+                                text = null,
+                                clientId = clientId,
+                                replyToMessageId = replySnapshot?.id
+                            )) {
+                                is ChatResult.Success -> {
+                                    chatLocalStore.replaceOptimisticWithServer(
+                                        conversationId = targetConversationId,
+                                        clientId = clientId,
+                                        serverMessage = result.value,
+                                        senderId = "me"
+                                    )
+                                    errorText = null
+                                }
+                                is ChatResult.Error -> {
+                                    chatLocalStore.markFailed(targetConversationId, clientId)
+                                    errorText = result.message
+                                }
+                            }
+                        }
+                    } else {
+                        file.delete()
+                    }
+                }
+
                 val finishRecording: (Boolean) -> Unit = { send ->
+                    val wasRecording = isRecording
+                    val duration = recordSeconds
+                    val file = recordingFile
+                    val recorder = mediaRecorder
                     isRecording = false
                     isLocked = false
                     recordDragY = 0f
                     flashOn = false
-                    if (send && recordSeconds > 0) {
+                    mediaRecorder = null
+                    recordingFile = null
+                    if (recorder != null) {
+                        try {
+                            recorder.stop()
+                        } catch (_: Exception) {
+                        }
+                        recorder.release()
+                    }
+                    if (wasRecording && send && duration > 0 && file != null) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        sendVoiceMessage(file, duration)
+                    } else {
+                        file?.delete()
+                    }
+                }
+
+                val startVoiceRecording: () -> Unit = {
+                    if (!hasAudioPermission) {
+                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    } else {
+                        try {
+                            val file = File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
+                            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                MediaRecorder(context)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                MediaRecorder()
+                            }
+                            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+                            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                            recorder.setOutputFile(file.absolutePath)
+                            recorder.prepare()
+                            recorder.start()
+                            mediaRecorder = recorder
+                            recordingFile = file
+                            isRecording = true
+                            recordDragY = 0f
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        } catch (ex: Exception) {
+                            errorText = "Ovoz yozishni boshlab bo'lmadi."
+                        }
                     }
                 }
 
@@ -1515,9 +1651,13 @@ fun ChatDetailScreen(
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         },
                                         onLongPress = {
-                                            isRecording = true
-                                            recordDragY = 0f
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            if (recordMode == RecordMode.VOICE) {
+                                                startVoiceRecording()
+                                            } else {
+                                                isRecording = true
+                                                recordDragY = 0f
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }
                                         },
                                         onDrag = { dy ->
                                             if (isRecording && !isLocked) {
@@ -1808,6 +1948,7 @@ fun MessageBubble(
                                     "image" -> MediaImageContent(media = media, onClick = { onMediaClick(media) })
                                     "video" -> MediaVideoContent(media = media, isDarkMode = isDarkMode, onClick = { onMediaClick(media) })
                                     "file" -> MediaFileContent(media = media, textColor = textColor, onClick = { onMediaClick(media) })
+                                    "voice" -> MediaVoiceContent(media = media, textColor = textColor)
                                     else -> {}
                                 }
                             }
@@ -2008,6 +2149,86 @@ private fun MediaFileContent(media: UiMedia, textColor: Color, onClick: () -> Un
                 fontSize = 12.sp
             )
         }
+    }
+}
+
+@Composable
+private fun MediaVoiceContent(media: UiMedia, textColor: Color) {
+    val context = LocalContext.current
+    var isPlaying by remember(media.url) { mutableStateOf(false) }
+    var progress by remember(media.url) { mutableFloatStateOf(0f) }
+    val mediaPlayer = remember(media.url) { mutableStateOf<MediaPlayer?>(null) }
+
+    DisposableEffect(media.url) {
+        onDispose {
+            mediaPlayer.value?.release()
+            mediaPlayer.value = null
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            val player = mediaPlayer.value
+            if (player != null && player.duration > 0) {
+                progress = player.currentPosition.toFloat() / player.duration.toFloat()
+            }
+            delay(100)
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .widthIn(min = 160.dp, max = 220.dp)
+            .padding(vertical = 2.dp)
+    ) {
+        IconButton(
+            onClick = {
+                val player = mediaPlayer.value
+                if (player == null) {
+                    runCatching {
+                        val newPlayer = MediaPlayer()
+                        newPlayer.setDataSource(context, Uri.parse(media.url))
+                        newPlayer.setOnCompletionListener {
+                            isPlaying = false
+                            progress = 0f
+                        }
+                        newPlayer.prepare()
+                        newPlayer.start()
+                        mediaPlayer.value = newPlayer
+                        isPlaying = true
+                    }
+                } else if (player.isPlaying) {
+                    player.pause()
+                    isPlaying = false
+                } else {
+                    player.start()
+                    isPlaying = true
+                }
+            },
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = textColor
+            )
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .weight(1f)
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = textColor,
+            trackColor = textColor.copy(alpha = 0.25f)
+        )
+        Text(
+            text = formatRecordTime(media.durationSeconds ?: 0),
+            color = textColor.copy(alpha = 0.7f),
+            fontSize = 11.sp
+        )
     }
 }
 
