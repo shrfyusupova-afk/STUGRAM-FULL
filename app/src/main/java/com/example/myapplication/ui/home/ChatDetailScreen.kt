@@ -1,5 +1,13 @@
 package com.example.myapplication.ui.home
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import coil.compose.AsyncImage
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -78,9 +86,12 @@ import com.example.myapplication.data.remote.chat.ChatSocketEvent
 import com.example.myapplication.data.remote.chat.ChatSocketManager
 import com.example.myapplication.ui.theme.IosEmojiFont
 import com.example.myapplication.ui.theme.PremiumBlue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
@@ -155,6 +166,9 @@ fun ChatDetailScreen(
     var isSearching by remember { mutableStateOf(false) }
     var highlightedMessageKey by remember { mutableStateOf<String?>(null) }
     var isJumpingToMessage by remember { mutableStateOf(false) }
+
+    // --- Media attachment state ---
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
     var recordMode by remember { mutableStateOf(RecordMode.VOICE) }
     var isRecording by remember { mutableStateOf(false) }
@@ -805,6 +819,17 @@ fun ChatDetailScreen(
                                                         toggleHeartReaction(message)
                                                     }
                                                 },
+                                                onMediaClick = { media ->
+                                                    if (media.url.startsWith("http")) {
+                                                        if (media.type == "image") {
+                                                            fullScreenImageUrl = media.url
+                                                        } else {
+                                                            runCatching {
+                                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(media.url)))
+                                                            }
+                                                        }
+                                                    }
+                                                },
                                                 isHighlighted = highlightedMessageKey == stableKey
                                             )
                                         }
@@ -1033,6 +1058,81 @@ fun ChatDetailScreen(
                 val canSendNow = !isConversationLoading &&
                     conversationId != null &&
                     System.currentTimeMillis() >= sendBlockedUntilMillis
+
+                val sendMediaFromUri: (Uri) -> Unit = { uri ->
+                    val targetConversationId = conversationId
+                    if (!isConversationLoading && !targetConversationId.isNullOrBlank()) {
+                        isMenuOpen = false
+                        val replySnapshot = replyingTo
+                        replyingTo = null
+                        scope.launch {
+                            val picked = withContext(Dispatchers.IO) { pickedMediaFromUri(context, uri) }
+                            if (picked == null) {
+                                errorText = "Faylni o'qib bo'lmadi."
+                                return@launch
+                            }
+                            val mediaMessageType = messageTypeForMime(picked.mimeType)
+                            val clientId = "android:${UUID.randomUUID()}"
+                            val now = System.currentTimeMillis()
+                            val media = UiMedia(
+                                url = picked.file.toURI().toString(),
+                                type = mediaMessageType,
+                                fileName = picked.fileName,
+                                fileSize = picked.fileSize,
+                                mimeType = picked.mimeType,
+                                durationSeconds = null
+                            )
+                            newMessageIds.value = newMessageIds.value + clientId
+                            chatLocalStore.saveOptimisticMessage(
+                                conversationId = targetConversationId,
+                                clientId = clientId,
+                                senderId = "me",
+                                text = "",
+                                nowMillis = now,
+                                replyTo = replySnapshot,
+                                messageType = mediaMessageType,
+                                media = media
+                            )
+                            scrollToStart()
+
+                            when (val result = chatRepository.sendMediaMessage(
+                                conversationId = targetConversationId,
+                                file = picked.file,
+                                mimeType = picked.mimeType,
+                                messageType = mediaMessageType,
+                                text = null,
+                                clientId = clientId,
+                                replyToMessageId = replySnapshot?.id
+                            )) {
+                                is ChatResult.Success -> {
+                                    chatLocalStore.replaceOptimisticWithServer(
+                                        conversationId = targetConversationId,
+                                        clientId = clientId,
+                                        serverMessage = result.value,
+                                        senderId = "me"
+                                    )
+                                    errorText = null
+                                }
+                                is ChatResult.Error -> {
+                                    chatLocalStore.markFailed(targetConversationId, clientId)
+                                    errorText = result.message
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val pickGalleryLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.PickVisualMedia()
+                ) { uri -> uri?.let(sendMediaFromUri) }
+
+                val pickFileLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri -> uri?.let(sendMediaFromUri) }
+
+                val pickAudioLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri -> uri?.let(sendMediaFromUri) }
 
                 val sendTextMessage: () -> Unit = sendBlock@{
                     val targetConversationId = conversationId
@@ -1277,7 +1377,16 @@ fun ChatDetailScreen(
                                                 contentAlignment = Alignment.CenterStart
                                             ) {
                                                 if (isMenuOpen) {
-                                                    AttachmentMenu(contentColor)
+                                                    AttachmentMenu(
+                                                        contentColor = contentColor,
+                                                        onPickGallery = {
+                                                            pickGalleryLauncher.launch(
+                                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                                                            )
+                                                        },
+                                                        onPickFile = { pickFileLauncher.launch("*/*") },
+                                                        onPickAudio = { pickAudioLauncher.launch("audio/*") }
+                                                    )
                                                 } else {
                                                     val inputTextStyle = TextStyle(color = contentColor, fontSize = 15.sp, lineHeight = 20.sp, fontFamily = IosEmojiFont)
                                                     if (messageText.isEmpty()) {
@@ -1565,6 +1674,14 @@ fun ChatDetailScreen(
                 }
             )
         }
+
+        // --- FULL SCREEN IMAGE VIEWER ---
+        fullScreenImageUrl?.let { url ->
+            FullScreenImageViewer(
+                url = url,
+                onDismiss = { fullScreenImageUrl = null }
+            )
+        }
     }
 }
 
@@ -1578,6 +1695,7 @@ fun MessageBubble(
     onHeartBurstEnd: () -> Unit = {},
     onLongPress: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
+    onMediaClick: (UiMedia) -> Unit = {},
     isHighlighted: Boolean = false
 ) {
     val alignment = if (message.isMe) Alignment.End else Alignment.Start
@@ -1679,13 +1797,30 @@ fun MessageBubble(
                         message.replyTo?.let { reply ->
                             ReplyQuoteBlock(reply = reply, textColor = textColor, isMe = message.isMe)
                         }
-                        Text(
-                            text = message.text,
-                            color = textColor,
-                            fontSize = 15.sp,
-                            lineHeight = 20.sp,
-                            fontFamily = IosEmojiFont
-                        )
+                        message.media?.let { media ->
+                            val mediaModifier = if (message.text.isNotBlank()) {
+                                Modifier.padding(bottom = 6.dp)
+                            } else {
+                                Modifier
+                            }
+                            Box(modifier = mediaModifier) {
+                                when (message.messageType) {
+                                    "image" -> MediaImageContent(media = media, onClick = { onMediaClick(media) })
+                                    "video" -> MediaVideoContent(media = media, isDarkMode = isDarkMode, onClick = { onMediaClick(media) })
+                                    "file" -> MediaFileContent(media = media, textColor = textColor, onClick = { onMediaClick(media) })
+                                    else -> {}
+                                }
+                            }
+                        }
+                        if (message.text.isNotBlank()) {
+                            Text(
+                                text = message.text,
+                                color = textColor,
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp,
+                                fontFamily = IosEmojiFont
+                            )
+                        }
                     }
                     Row(
                         modifier = Modifier
@@ -1798,6 +1933,115 @@ private fun ReplyQuoteBlock(reply: UiReplyPreview, textColor: Color, isMe: Boole
 }
 
 @Composable
+private fun MediaImageContent(media: UiMedia, onClick: () -> Unit) {
+    AsyncImage(
+        model = media.url,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(220.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    )
+}
+
+@Composable
+private fun MediaVideoContent(media: UiMedia, isDarkMode: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(220.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDarkMode) Color(0xFF1C1C1E) else Color(0xFFD9D9DC))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.PlayCircleFilled,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(48.dp)
+        )
+        media.durationSeconds?.let { duration ->
+            Text(
+                text = formatRecordTime(duration),
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaFileContent(media: UiMedia, textColor: Color, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .widthIn(min = 160.dp, max = 240.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.InsertDriveFile,
+            contentDescription = null,
+            tint = textColor,
+            modifier = Modifier.size(32.dp)
+        )
+        Column {
+            Text(
+                text = media.fileName ?: "Fayl",
+                color = textColor,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatFileSize(media.fileSize ?: 0L),
+                color = textColor.copy(alpha = 0.6f),
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun FullScreenImageViewer(url: String, onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = url,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+        }
+    }
+}
+
+@Composable
 private fun ReactionBadgeRow(reactions: List<UiReaction>, isMe: Boolean, isDarkMode: Boolean) {
     Row(
         modifier = Modifier
@@ -1872,25 +2116,30 @@ private fun BoxScope.HeartBurstOverlay(onEnd: () -> Unit) {
 }
 
 @Composable
-fun AttachmentMenu(contentColor: Color) {
+fun AttachmentMenu(
+    contentColor: Color,
+    onPickGallery: () -> Unit = {},
+    onPickFile: () -> Unit = {},
+    onPickAudio: () -> Unit = {}
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AttachmentItem(Icons.Default.Image, "Galereya", contentColor)
-        AttachmentItem(Icons.Default.Description, "File", contentColor)
-        AttachmentItem(Icons.Default.MusicNote, "Music", contentColor)
+        AttachmentItem(Icons.Default.Image, "Galereya", contentColor, onClick = onPickGallery)
+        AttachmentItem(Icons.Default.Description, "File", contentColor, onClick = onPickFile)
+        AttachmentItem(Icons.Default.MusicNote, "Music", contentColor, onClick = onPickAudio)
         AttachmentItem(Icons.Default.LocationOn, "Location", contentColor)
     }
 }
 
 @Composable
-fun AttachmentItem(icon: ImageVector, label: String, contentColor: Color) {
+fun AttachmentItem(icon: ImageVector, label: String, contentColor: Color, onClick: () -> Unit = {}) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+        modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
     ) {
         Icon(icon, null, tint = contentColor, modifier = Modifier.size(18.dp))
         Text(label, color = contentColor, fontSize = 8.sp)
@@ -2515,6 +2764,54 @@ private fun formatRecordTime(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
     return "%d:%02d".format(m, s)
+}
+
+private fun formatFileSize(bytes: Long): String {
+    val kb = bytes / 1024.0
+    return if (kb < 1024) "%.0f KB".format(kb) else "%.1f MB".format(kb / 1024.0)
+}
+
+private fun messageTypeForMime(mimeType: String): String = when {
+    mimeType.startsWith("image/") -> "image"
+    mimeType.startsWith("video/") -> "video"
+    else -> "file"
+}
+
+private data class PickedMedia(
+    val file: File,
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Long
+)
+
+// Copies a content:// URI's bytes into a cache file because the upload API
+// (and Coil's optimistic preview) need a real File / file:// path, while
+// content URIs from the system picker are not guaranteed to remain readable.
+private fun pickedMediaFromUri(context: android.content.Context, uri: Uri): PickedMedia? {
+    return try {
+        val resolver = context.contentResolver
+        val mimeType = resolver.getType(uri) ?: "application/octet-stream"
+        var displayName: String? = null
+        var size = 0L
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (cursor.moveToFirst()) {
+                if (nameIndex >= 0) displayName = cursor.getString(nameIndex)
+                if (sizeIndex >= 0) size = cursor.getLong(sizeIndex)
+            }
+        }
+        val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+        val fileName = displayName ?: "file_${System.currentTimeMillis()}${extension?.let { ".$it" } ?: ""}"
+        val outFile = File(context.cacheDir, "chat_${System.currentTimeMillis()}_$fileName")
+        resolver.openInputStream(uri)?.use { input ->
+            outFile.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+        if (size <= 0L) size = outFile.length()
+        PickedMedia(file = outFile, fileName = fileName, mimeType = mimeType, fileSize = size)
+    } catch (ex: Exception) {
+        null
+    }
 }
 
 private fun lerpColor(start: Color, end: Color, t: Float): Color {
