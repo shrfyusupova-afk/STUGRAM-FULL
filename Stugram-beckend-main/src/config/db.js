@@ -52,7 +52,7 @@ const buildMongoOptions = () => {
     serverSelectionTimeoutMS: env.mongoServerSelectionTimeoutMs,
     connectTimeoutMS: env.mongoConnectTimeoutMs,
     socketTimeoutMS: env.mongoSocketTimeoutMs,
-    maxPoolSize: env.nodeEnv === "production" ? 20 : 10,
+    maxPoolSize: env.mongoMaxPoolSize || (env.nodeEnv === "production" ? 20 : 10),
   };
 
   if (env.mongoForceIpv4) {

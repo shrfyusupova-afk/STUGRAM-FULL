@@ -64,6 +64,7 @@ const envSchema = z.object({
   MONGO_FORCE_IPV4: z.coerce.boolean().default(true),
   MONGO_STARTUP_DIAGNOSTICS: z.coerce.boolean().default(true),
   MONGO_DNS_SERVERS: z.string().optional(),
+  MONGO_MAX_POOL_SIZE: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(500),
   AUTHENTICATED_RATE_LIMIT_MAX: z.coerce.number().default(5000),
@@ -98,6 +99,7 @@ const envSchema = z.object({
   CHAT_REPLAY_SYNC_ENABLED: z.coerce.boolean().default(true),
   CHAT_REALTIME_ENABLED: z.coerce.boolean().default(true),
   CHAT_RATE_LIMIT_STRICT_MODE: z.coerce.boolean().default(false),
+  SOCKET_IO_REDIS_ADAPTER_ENABLED: z.coerce.boolean().default(false),
 });
 
 const normalizedEnv = {
@@ -375,6 +377,7 @@ const env = {
   mongoSocketTimeoutMs: parsedEnv.MONGO_SOCKET_TIMEOUT_MS,
   mongoForceIpv4: parsedEnv.MONGO_FORCE_IPV4,
   mongoStartupDiagnostics: parsedEnv.MONGO_STARTUP_DIAGNOSTICS,
+  mongoMaxPoolSize: parsedEnv.MONGO_MAX_POOL_SIZE || null,
   mongoDnsServers: (parsedEnv.MONGO_DNS_SERVERS || "")
     .split(",")
     .map((item) => item.trim())
@@ -417,6 +420,7 @@ const env = {
   chatRealtimeEnabled: parsedEnv.CHAT_REALTIME_ENABLED,
   socketJoinConversationEnabled: parseBooleanEnv(process.env.SOCKET_JOIN_CONVERSATION_ENABLED, true) !== false,
   chatRateLimitStrictMode: parsedEnv.CHAT_RATE_LIMIT_STRICT_MODE,
+  socketIoRedisAdapterEnabled: parsedEnv.SOCKET_IO_REDIS_ADAPTER_ENABLED,
 };
 
 module.exports = { env };
