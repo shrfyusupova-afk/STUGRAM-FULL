@@ -75,8 +75,18 @@ fun NotificationsScreen(
                 modifier = Modifier.weight(1f)
             )
             if (ui.unreadCount > 0) {
-                TextButton(onClick = { viewModel.markAllRead() }) {
-                    Text("Hammasini ko'rildi", color = accent, fontSize = 12.sp)
+                LiquidGlassSurface(
+                    shape = RoundedCornerShape(50),
+                    isDarkMode = isDarkMode,
+                    onClick = { viewModel.markAllRead() }
+                ) {
+                    Text(
+                        "Hammasini ko'rildi",
+                        color = accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
             }
         }

@@ -468,22 +468,23 @@ fun HomeHeaderInline(
             letterSpacing = 1.sp
         )
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(24.dp))
-                .background((if (isDarkMode) Color.White else Color.Black).copy(alpha = 0.07f))
-                .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(24.dp))
-                .padding(horizontal = 4.dp)
+        LiquidGlassSurface(
+            isDarkMode = isDarkMode,
+            shape = RoundedCornerShape(24.dp)
         ) {
-            IconButton(onClick = { onThemeChange(!isDarkMode) }) {
-                Icon(if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode, null, tint = contentColor)
-            }
-            IconButton(onClick = onSavedClick) {
-                Icon(Icons.Default.BookmarkBorder, null, tint = contentColor)
-            }
-            IconButton(onClick = onNotificationsClick) {
-                Icon(Icons.Default.NotificationsNone, null, tint = contentColor)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            ) {
+                IconButton(onClick = { onThemeChange(!isDarkMode) }) {
+                    Icon(if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode, null, tint = contentColor)
+                }
+                IconButton(onClick = onSavedClick) {
+                    Icon(Icons.Default.BookmarkBorder, null, tint = contentColor)
+                }
+                IconButton(onClick = onNotificationsClick) {
+                    Icon(Icons.Default.NotificationsNone, null, tint = contentColor)
+                }
             }
         }
     }
@@ -491,31 +492,27 @@ fun HomeHeaderInline(
 
 @Composable
 fun CreatePostButton(onClick: () -> Unit, accentBlue: Color, isDarkMode: Boolean) {
-    Surface(
-        onClick = onClick,
+    LiquidGlassSurface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).height(50.dp),
         shape = RoundedCornerShape(16.dp),
-        color = if (isDarkMode) Color.White.copy(0.10f) else Color.White.copy(0.62f),
-        border = BorderStroke(1.dp, Color.White.copy(0.2f))
+        isDarkMode = isDarkMode,
+        onClick = onClick
     ) {
-        Box {
-            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.White.copy(0.1f), Color.Transparent))))
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AddPhotoAlternate, null, tint = accentBlue, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        "Nima yangiliklar?",
-                        color = if (isDarkMode) Color.White.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.5f),
-                        fontSize = 14.sp
-                    )
-                }
-                Icon(Icons.Default.AutoAwesome, null, tint = accentBlue.copy(0.5f), modifier = Modifier.size(20.dp))
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AddPhotoAlternate, null, tint = accentBlue, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Nima yangiliklar?",
+                    color = if (isDarkMode) Color.White.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.5f),
+                    fontSize = 14.sp
+                )
             }
+            Icon(Icons.Default.AutoAwesome, null, tint = accentBlue.copy(0.5f), modifier = Modifier.size(20.dp))
         }
     }
 }

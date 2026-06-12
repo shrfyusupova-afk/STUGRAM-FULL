@@ -169,16 +169,20 @@ fun CommentInputSection(isDarkMode: Boolean, accentBlue: Color) {
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceAround) {
                 emojis.forEach { emoji -> Text(emoji, fontSize = 24.sp, modifier = Modifier.clickable { }) }
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                    .background(if (isDarkMode) Color.White.copy(0.05f) else Color.Black.copy(0.05f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            LiquidGlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                isDarkMode = isDarkMode
             ) {
-                AsyncImage(model = "https://picsum.photos/seed/me/100/100", contentDescription = null, modifier = Modifier.size(32.dp).clip(CircleShape))
-                Spacer(Modifier.width(12.dp))
-                Text("Add a comment...", color = placeholderColor, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text("Post", color = accentBlue, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    AsyncImage(model = "https://picsum.photos/seed/me/100/100", contentDescription = null, modifier = Modifier.size(32.dp).clip(CircleShape))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Add a comment...", color = placeholderColor, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text("Post", color = accentBlue, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
