@@ -1,5 +1,7 @@
-﻿package com.example.myapplication.ui.home
+package com.example.myapplication.ui.home
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.remote.AuthApi
@@ -13,30 +15,45 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 data class AlphaProfileUiState(
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val error: String? = null,
     val saveError: String? = null,
+    val userId: String = "",
     val fullName: String = "",
     val username: String = "",
     val bio: String = "",
+    val avatar: String? = null,
+    val banner: String? = null,
     val location: String = "",
     val school: String = "",
+    val region: String = "",
+    val district: String = "",
+    val grade: String = "",
+    val group: String = "",
+    val birthday: String? = null,
+    val type: String = "student",
+    val isPrivateAccount: Boolean = false,
     val followersCount: Int = 0,
     val followingCount: Int = 0,
     val postsCount: Int = 0,
     val targetUsername: String? = null,
     val isSelf: Boolean = true,
     val followStatus: String = "self",
-    val posts: List<ProfilePostItem> = emptyList()
+    val posts: List<ProfilePostItem> = emptyList(),
+    val highlights: List<StoryHighlight> = emptyList()
 )
 
 data class ProfilePostItem(
     val id: String,
     val caption: String,
-    val mediaUrl: String?
+    val mediaUrl: String?,
+    val type: String = "post"  // "post" or "reel"
 )
 
 class ProfileViewModel(
@@ -67,58 +84,72 @@ class ProfileViewModel(
                 }
                 if (!response.isSuccessful) {
                     _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            error = "Profile yuklanmadi (${response.code()})"
-                        )
+                        it.copy(isLoading = false, error = "Profile yuklanmadi (${response.code()})")
                     }
                     return@launch
                 }
 
                 val data = response.body()?.getAsJsonObject("data")
+                val followStatus = data?.get("followStatus")?.asString
+                    ?: if (target.isNullOrBlank()) "self" else "not_following"
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        userId = data?.get("_id")?.asString.orEmpty(),
                         fullName = data?.get("fullName")?.asString.orEmpty(),
                         username = data?.get("username")?.asString.orEmpty(),
                         bio = data?.get("bio")?.asString.orEmpty(),
+                        avatar = data?.get("avatar")?.let { el -> if (el.isJsonNull) null else el.asString },
+                        banner = data?.get("banner")?.let { el -> if (el.isJsonNull) null else el.asString },
                         location = data?.get("location")?.asString.orEmpty(),
                         school = data?.get("school")?.asString.orEmpty(),
+                        region = data?.get("region")?.asString.orEmpty(),
+                        district = data?.get("district")?.asString.orEmpty(),
+                        grade = data?.get("grade")?.asString.orEmpty(),
+                        group = data?.get("group")?.asString.orEmpty(),
+                        birthday = data?.get("birthday")?.let { el -> if (el.isJsonNull) null else el.asString },
+                        type = data?.get("type")?.asString.orEmpty(),
+                        isPrivateAccount = data?.get("isPrivateAccount")?.asBoolean ?: false,
                         followersCount = data?.get("followersCount")?.asInt ?: 0,
                         followingCount = data?.get("followingCount")?.asInt ?: 0,
                         postsCount = data?.get("postsCount")?.asInt ?: 0,
-                        isSelf = data?.get("followStatus")?.asString == "self",
-                        followStatus = data?.get("followStatus")?.asString ?: if (target.isNullOrBlank()) "self" else "not_following",
+                        isSelf = followStatus == "self",
+                        followStatus = followStatus,
                         error = null,
                         saveError = null,
                         posts = emptyList()
                     )
                 }
                 loadProfilePosts()
+                loadHighlights()
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = "Tarmoq xatosi: ${e.message}"
-                    )
+                    it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}")
                 }
             }
         }
     }
 
     private suspend fun fetchPostsFor(username: String): List<ProfilePostItem> {
-        val response = withContext(ioDispatcher) { authApi.getUserPosts(username = username, page = 1, limit = 20) }
+        val response = withContext(ioDispatcher) {
+            authApi.getUserPosts(username = username, page = 1, limit = 50)
+        }
         if (!response.isSuccessful) return emptyList()
         val array = response.body()?.getAsJsonArray("data") ?: return emptyList()
         return array.mapNotNull { element ->
             runCatching {
                 val obj = element.asJsonObject
-                val mediaArray = if (obj.has("media") && obj.get("media").isJsonArray) obj.getAsJsonArray("media") else null
-                val mediaUrl = mediaArray?.firstOrNull()?.asJsonObject?.get("url")?.asString
+                val mediaArray = if (obj.has("media") && obj.get("media").isJsonArray)
+                    obj.getAsJsonArray("media") else null
+                val firstMedia = mediaArray?.firstOrNull()?.asJsonObject
+                val mediaUrl = firstMedia?.get("url")?.asString
+                val mediaType = firstMedia?.get("type")?.asString ?: "image"
                 ProfilePostItem(
                     id = obj.get("_id")?.asString ?: return@runCatching null,
                     caption = obj.get("caption")?.asString.orEmpty(),
-                    mediaUrl = mediaUrl
+                    mediaUrl = mediaUrl,
+                    type = if (mediaType == "video") "reel" else "post"
                 )
             }.getOrNull()
         }
@@ -133,34 +164,132 @@ class ProfileViewModel(
         }
     }
 
+    private fun loadHighlights() {
+        val username = _uiState.value.username
+        if (username.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val resp = withContext(ioDispatcher) { authApi.getHighlights(username) }
+                if (resp.isSuccessful) {
+                    val data = resp.body()?.getAsJsonArray("data") ?: return@launch
+                    val items = data.mapNotNull { el ->
+                        runCatching {
+                            val obj = el.asJsonObject
+                            val id = obj.get("_id")?.takeIf { !it.isJsonNull }?.asString
+                                ?: return@runCatching null
+                            StoryHighlight(
+                                id = id,
+                                title = obj.get("title")?.takeIf { !it.isJsonNull }?.asString ?: "Highlight",
+                                coverUrl = (obj.get("coverUrl") ?: obj.get("cover"))
+                                    ?.takeIf { !it.isJsonNull }?.asString
+                            )
+                        }.getOrNull()
+                    }
+                    _uiState.update { it.copy(highlights = items) }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun followOrUnfollow() {
         val state = _uiState.value
-        val target = state.targetUsername ?: return
         if (state.isSelf) return
+        val userId = state.userId.ifBlank { return }
+
+        // Optimistic UI update first, then call API
+        val nowFollowing = state.followStatus != "following"
+        _uiState.update {
+            it.copy(
+                isSaving = true,
+                saveError = null,
+                followStatus = if (nowFollowing) "following" else "not_following",
+                followersCount = if (nowFollowing) it.followersCount + 1 else (it.followersCount - 1).coerceAtLeast(0)
+            )
+        }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, saveError = null) }
             try {
-                val profileResponse = withContext(ioDispatcher) { authApi.getProfileByUsername(target) }
-                if (!profileResponse.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Follow holati aniqlanmadi (${profileResponse.code()})") }
-                    return@launch
-                }
-                val userId = profileResponse.body()?.getAsJsonObject("data")?.get("_id")?.asString
-                if (userId.isNullOrBlank()) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "User ID topilmadi") }
-                    return@launch
-                }
-
                 val response = withContext(ioDispatcher) {
-                    if (state.followStatus == "following") authApi.unfollowUser(userId) else authApi.followUser(userId)
+                    if (nowFollowing) authApi.followUser(userId)
+                    else authApi.unfollowUser(userId)
                 }
                 if (!response.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Follow amal bajarilmadi (${response.code()})") }
+                    // Revert optimistic update on failure
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            saveError = "Amal bajarilmadi (${response.code()})",
+                            followStatus = if (nowFollowing) "not_following" else "following",
+                            followersCount = if (nowFollowing) it.followersCount - 1 else it.followersCount + 1
+                        )
+                    }
                     return@launch
                 }
                 _uiState.update { it.copy(isSaving = false) }
-                refresh()
+            } catch (e: Exception) {
+                // Revert on network error
+                _uiState.update {
+                    it.copy(
+                        isSaving = false,
+                        saveError = "Tarmoq xatosi: ${e.message}",
+                        followStatus = if (nowFollowing) "not_following" else "following",
+                        followersCount = if (nowFollowing) it.followersCount - 1 else it.followersCount + 1
+                    )
+                }
+            }
+        }
+    }
+
+    fun uploadAvatar(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, saveError = null) }
+            try {
+                val bytes = withContext(ioDispatcher) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                } ?: run {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Rasm o'qib bo'lmadi") }
+                    return@launch
+                }
+                val body = bytes.toRequestBody("image/jpeg".toMediaType())
+                val part = MultipartBody.Part.createFormData("avatar", "avatar_${System.currentTimeMillis()}.jpg", body)
+                val resp = withContext(ioDispatcher) { authApi.updateMyAvatar(part) }
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Avatar saqlanmadi (${resp.code()})") }
+                    return@launch
+                }
+                val newUrl = resp.body()?.getAsJsonObject("data")
+                    ?.get("avatar")?.takeIf { !it.isJsonNull }?.asString
+                _uiState.update {
+                    it.copy(isSaving = false, saveError = null, avatar = newUrl ?: it.avatar)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
+    }
+
+    fun uploadBanner(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true, saveError = null) }
+            try {
+                val bytes = withContext(ioDispatcher) {
+                    context.contentResolver.openInputStream(uri)?.readBytes()
+                } ?: run {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Rasm o'qib bo'lmadi") }
+                    return@launch
+                }
+                val body = bytes.toRequestBody("image/jpeg".toMediaType())
+                val part = MultipartBody.Part.createFormData("banner", "banner_${System.currentTimeMillis()}.jpg", body)
+                val resp = withContext(ioDispatcher) { authApi.updateMyBanner(part) }
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(isSaving = false, saveError = "Banner saqlanmadi (${resp.code()})") }
+                    return@launch
+                }
+                val newUrl = resp.body()?.getAsJsonObject("data")
+                    ?.get("banner")?.takeIf { !it.isJsonNull }?.asString
+                _uiState.update {
+                    it.copy(isSaving = false, saveError = null, banner = newUrl ?: it.banner)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
             }
@@ -192,7 +321,6 @@ class ProfileViewModel(
                     }
                     return@launch
                 }
-
                 val data = response.body()?.getAsJsonObject("data")
                 _uiState.update {
                     it.copy(

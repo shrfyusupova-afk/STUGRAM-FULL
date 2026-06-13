@@ -9,6 +9,12 @@ val GlobalBackgroundColor = Color(0xFF0F0F0F)
 
 // --- MA'LUMOT MODELLARI ---
 @Immutable
+data class PostMedia(
+    val url: String,
+    val isVideo: Boolean
+)
+
+@Immutable
 data class PostData(
     val id: String,
     val user: String,
@@ -17,7 +23,9 @@ data class PostData(
     val likes: Int = 0,
     val comments: Int = 0,
     val reposts: Int = 0,
-    val isVideo: Boolean = false
+    val isVideo: Boolean = false,
+    val media: List<PostMedia> = emptyList(),
+    val authorAvatar: String = ""
 )
 
 @Immutable
@@ -45,7 +53,28 @@ data class StoryActivityUser(
 data class TabItem(val name: String, val icon: ImageVector)
 
 @Immutable
-data class RecommendedProfile(val id: Int, val name: String, val image: String, val username: String)
+data class RecommendedProfile(
+    val id: String,
+    val name: String,
+    val username: String,
+    val avatar: String = "",
+    val banner: String = "",
+    val bio: String = "",
+    val followersCount: Int = 0,
+    val followStatus: String = "not_following"
+)
+
+@Immutable
+data class ReelItem(
+    val id: String,
+    val authorUsername: String,
+    val authorAvatar: String = "",
+    val mediaUrl: String?,
+    val caption: String,
+    val likes: Int = 0,
+    val comments: Int = 0,
+    val isVideo: Boolean = true
+)
 
 @Immutable
 data class CommentData(
@@ -56,4 +85,11 @@ data class CommentData(
     val time: String,
     val likes: Int = 0,
     val replies: List<CommentData> = emptyList()
+)
+
+@Immutable
+data class StoryHighlight(
+    val id: String,
+    val title: String,
+    val coverUrl: String?
 )

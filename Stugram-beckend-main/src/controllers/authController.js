@@ -85,6 +85,11 @@ const switchProfile = catchAsync(async (req, res) => {
   sendResponse(res, { statusCode: 200, message: "Profile switched successfully", data: result });
 });
 
+const deleteAccount = catchAsync(async (req, res) => {
+  const result = await authService.deleteAccount(req.account.id, req.user.id, getRequestMeta(req));
+  sendResponse(res, { statusCode: 200, message: "Account deleted successfully", data: result });
+});
+
 module.exports = {
   sendOtp,
   verifyOtp,
@@ -101,4 +106,5 @@ module.exports = {
   revokeSession,
   googleLogin,
   switchProfile,
+  deleteAccount,
 };

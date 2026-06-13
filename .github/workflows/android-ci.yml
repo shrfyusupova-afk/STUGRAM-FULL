@@ -1,0 +1,144 @@
+name: Android CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "*.gradle"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-ci.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "*.gradle"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-ci.yml"
+
+jobs:
+  unit-tests-and-debug-build:
+    name: Unit Tests + Debug Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: false
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: app/build/reports/tests/testDebugUnitTest/
+          retention-days: 7
+
+  release-build-check:
+    name: Release Build (signing-optional)
+    runs-on: ubuntu-latest
+    # This job validates the release build pipeline without real signing.
+    # It will FAIL if the Google OAuth placeholder is present (intentional guard).
+    # To build a real release APK, supply KEYSTORE_FILE, KEYSTORE_PASSWORD,
+    # KEY_ALIAS, KEY_PASSWORD, and GOOGLE_WEB_CLIENT_ID as repository secrets.
+    needs: unit-tests-and-debug-build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: true
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Check if production secrets are available
+        id: secrets-check
+        run: |
+          if [ -n "$GOOGLE_WEB_CLIENT_ID" ] && [ "$GOOGLE_WEB_CLIENT_ID" != "YOUR_GOOGLE_WEB_CLIENT_ID" ]; then
+            echo "secrets_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "secrets_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ GOOGLE_WEB_CLIENT_ID not configured — release build will be intentionally blocked."
+            echo "Set GOOGLE_WEB_CLIENT_ID repository secret to enable release builds."
+          fi
+        env:
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+
+      - name: Write keystore file (CI only)
+        if: steps.secrets-check.outputs.secrets_available == 'true'
+        run: |
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > $RUNNER_TEMP/release.keystore
+
+      - name: Assemble release APK
+        if: steps.secrets-check.outputs.secrets_available == 'true'
+        run: ./gradlew assembleRelease --no-daemon
+        env:
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
+          # GOOGLE_WEB_CLIENT_ID is read by build.gradle.kts via resolveSigningProp()
+          # and injected as a resValue — no sed patching needed.
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload release APK
+        if: steps.secrets-check.outputs.secrets_available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
+
+      - name: Confirm release build is intentionally blocked (no secrets)
+        if: steps.secrets-check.outputs.secrets_available == 'false'
+        run: |
+          echo "Release build intentionally blocked: production secrets not configured."
+          echo "This is expected in open-source CI. See docs/release-build.md for setup."

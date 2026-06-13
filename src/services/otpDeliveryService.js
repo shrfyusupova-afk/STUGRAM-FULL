@@ -240,7 +240,7 @@ const sendWithBrevoSms = async (identity, otp) => {
 const sendOtpSms = async (identity, otp) => {
   if (env.otpProvider === "mock") {
     logDeliveryAttempt({ eventName: "otp_send_attempted", identity, channel: "sms", provider: "mock" });
-    console.log(`[MOCK OTP] SMS to ${identity}: ${otp}`);
+    logger.debug("mock_otp_sent", { channel: "sms", identity: identity ? `${String(identity).slice(0, 3)}***` : null });
     logDeliverySuccess({ eventName: "otp_send_success", identity, channel: "sms", provider: "mock" });
 
     return {
@@ -270,7 +270,7 @@ const sendOtpSms = async (identity, otp) => {
 const sendOtpEmail = async (identity, otp) => {
   if (env.otpProvider === "mock") {
     logDeliveryAttempt({ eventName: "otp_send_attempted", identity, channel: "email", provider: "mock" });
-    console.log(`[MOCK OTP] Email to ${identity}: ${otp}`);
+    logger.debug("mock_otp_sent", { channel: "email", identity: identity ? `${String(identity).slice(0, 3)}***` : null });
     logDeliverySuccess({ eventName: "otp_send_success", identity, channel: "email", provider: "mock" });
 
     return {

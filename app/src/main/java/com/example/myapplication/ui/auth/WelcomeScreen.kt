@@ -2,6 +2,7 @@ package com.example.myapplication.ui.auth
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,9 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -24,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.*
-import kotlinx.coroutines.delay
 
 @Composable
 fun WelcomeScreen(
@@ -32,59 +30,36 @@ fun WelcomeScreen(
     onRegisterClick: () -> Unit
 ) {
     var startAnimation by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        startAnimation = true
-    }
+    LaunchedEffect(Unit) { startAnimation = true }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF0F2F5)) // Rasmdagi ochiq kulrang fon
+            .background(Color(0xFFF0F2F5))
     ) {
-        // --- 1. SETKA (GRID LINE) FON ---
+        // Setka (grid) fon
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val gridStep = 50.dp.toPx()
+            val step = 50.dp.toPx()
             val gridColor = Color(0xFFE2E8F0)
-            
-            // Vertikal chiziqlar
-            for (x in 0..size.width.toInt() step gridStep.toInt()) {
-                drawLine(
-                    color = gridColor,
-                    start = Offset(x.toFloat(), 0f),
-                    end = Offset(x.toFloat(), size.height),
-                    strokeWidth = 1f
-                )
+            for (x in 0..size.width.toInt() step step.toInt()) {
+                drawLine(gridColor, Offset(x.toFloat(), 0f), Offset(x.toFloat(), size.height), 1f)
             }
-            // Gorizontal chiziqlar
-            for (y in 0..size.height.toInt() step gridStep.toInt()) {
-                drawLine(
-                    color = gridColor,
-                    start = Offset(0f, y.toFloat()),
-                    end = Offset(size.width, y.toFloat()),
-                    strokeWidth = 1f
-                )
+            for (y in 0..size.height.toInt() step step.toInt()) {
+                drawLine(gridColor, Offset(0f, y.toFloat()), Offset(size.width, y.toFloat()), 1f)
             }
         }
 
-        // --- 2. ASOSIY OQ SURFACE (KATTA RADIUSLI) ---
+        // Oq yuzalik — katta burchakli
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 100.dp)
-                .background(
-                    color = Color.White.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(topStart = 80.dp)
-                )
-                .border(
-                    width = 1.dp,
-                    color = Color.White,
-                    shape = RoundedCornerShape(topStart = 80.dp)
-                )
+                .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(topStart = 80.dp))
+                .border(1.dp, Color.White, RoundedCornerShape(topStart = 80.dp))
         )
 
-        // --- 3. DEKORATIV YUMSHOQ DOG'LAR ---
+        // Dekorativ yumshoq dog'
         Box(
             modifier = Modifier
                 .size(300.dp)
@@ -94,92 +69,79 @@ fun WelcomeScreen(
                 .background(Color(0xFFD1D5DB).copy(alpha = 0.3f), CircleShape)
         )
 
-        // --- CONTENT ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 40.dp, vertical = 60.dp),
             horizontalAlignment = Alignment.Start
         ) {
-            // Logo qo'shish (Circle olib tashlandi)
             Image(
                 painter = painterResource(id = R.drawable.logo),
                 contentDescription = "App Logo",
                 modifier = Modifier.size(60.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(Modifier.height(32.dp))
 
-            // Yuqoridagi kichik "+" belgilari
-            Text(
-                text = "+",
-                style = TextStyle(
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Light,
-                    color = Color.Black.copy(alpha = 0.15f)
-                ),
-                modifier = Modifier.offset(x = (-10).dp)
-            )
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // Matn animatsiyasi
+            // Brend sarlavhasi
             AnimatedVisibility(
                 visible = startAnimation,
-                enter = fadeIn(tween(1000)) + slideInHorizontally(tween(1000)) { -40 }
+                enter = fadeIn(tween(800)) + slideInHorizontally(tween(800)) { -40 }
             ) {
                 Column {
                     Text(
-                        text = "Liquid",
+                        text = "STUGRAM",
                         style = TextStyle(
-                            fontSize = 64.sp,
-                            fontWeight = FontWeight.Light,
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Black,
                             color = Color(0xFF1A1C1E),
-                            letterSpacing = (-2).sp
+                            letterSpacing = (-1).sp
                         )
                     )
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "glass",
+                        text = "Talabalar uchun\nijtimoiy tarmoq",
                         style = TextStyle(
-                            fontSize = 54.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Normal,
                             color = Color(0xFF64748B),
-                            letterSpacing = (-1).sp
-                        ),
-                        modifier = Modifier.offset(y = (-15).dp)
+                            lineHeight = 26.sp
+                        )
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
 
-            // --- LIQUID GLASS PLUS BUTTON ---
+            // Kirish / Ro'yxatdan o'tish tugmalari
             AnimatedVisibility(
                 visible = startAnimation,
-                enter = scaleIn(tween(800, delayMillis = 500)) + fadeIn()
+                enter = fadeIn(tween(800, delayMillis = 400)) +
+                        slideInVertically(tween(800, delayMillis = 400)) { 60 }
             ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    LiquidGlassPlusButton(
-                        onClick = {
-                            isLoading = true
-                        }
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PremiumButton(text = "Kirish", onClick = onLoginClick)
+
+                    OutlinedButton(
+                        onClick = onRegisterClick,
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF1A1C1E).copy(0.15f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1A1C1E))
+                    ) {
+                        Text(
+                            text = "Ro'yxatdan o'tish",
+                            style = TextStyle(
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.2.sp
+                            )
+                        )
+                    }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(40.dp))
-        }
 
-        // --- LOADING STATE ---
-        if (isLoading) {
-            LoadingOverlay()
-            LaunchedEffect(Unit) {
-                delay(2000)
-                onLoginClick()
-            }
+            Spacer(Modifier.height(40.dp))
         }
     }
 }

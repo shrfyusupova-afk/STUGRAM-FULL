@@ -302,3 +302,67 @@ describe("Auth integration", () => {
     expect(await PasswordResetToken.countDocuments({ identity: "forgot-prod@example.com", usedAt: null })).toBe(0);
   });
 });
+
+describe("Account deletion (DELETE /api/v1/auth/me)", () => {
+  const User = require("../../src/models/User");
+
+  const registerAndLogin = async (identity = "delete-me@example.com", username = "deleteme_user") => {
+    const client = getClient();
+    const otpRes = await client.post("/api/v1/auth/send-otp").send({ identity, purpose: "register" });
+    const otp = otpRes.body.data.otp;
+    await client.post("/api/v1/auth/verify-otp").send({ identity, otp, purpose: "register" });
+    const regRes = await client.post("/api/v1/auth/register").send({ identity, otp, fullName: "Delete Me", username, password: "Password123" });
+    return { accessToken: regRes.body.data.accessToken, identity };
+  };
+
+  it("soft-deletes the authenticated user and revokes all sessions", async () => {
+    const client = getClient();
+    const { accessToken, identity } = await registerAndLogin();
+
+    const res = await client
+      .delete("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.deleted).toBe(true);
+
+    const user = await User.findOne({ identity }).lean();
+    expect(user.isDeleted).toBe(true);
+    expect(user.deletedAt).toBeTruthy();
+    expect(user.fullName).toBe("Deleted User");
+  });
+
+  it("deleted user cannot authenticate after deletion", async () => {
+    const client = getClient();
+    const identity = "delete-noauth@example.com";
+    const { accessToken } = await registerAndLogin(identity, "deletednoauth_user");
+
+    await client.delete("/api/v1/auth/me").set("Authorization", `Bearer ${accessToken}`);
+
+    // Old access token must be denied (denylisted)
+    const profileRes = await client
+      .get("/api/v1/profiles/me")
+      .set("Authorization", `Bearer ${accessToken}`);
+    expect(profileRes.statusCode).toBe(401);
+  });
+
+  it("requires authentication", async () => {
+    const client = getClient();
+    const res = await client.delete("/api/v1/auth/me");
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("deleted user does not appear in search results", async () => {
+    const client = getClient();
+    const identity = "delete-search@example.com";
+    const username = "deletesearch_user";
+    const { accessToken } = await registerAndLogin(identity, username);
+
+    await client.delete("/api/v1/auth/me").set("Authorization", `Bearer ${accessToken}`);
+
+    const searchRes = await client.get(`/api/v1/search/users?q=${username}`);
+    const users = searchRes.body.data?.users || searchRes.body.data?.items || [];
+    const found = users.some((u) => u.username === username);
+    expect(found).toBe(false);
+  });
+});

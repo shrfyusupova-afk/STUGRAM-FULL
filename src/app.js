@@ -17,6 +17,7 @@ const { getFirebaseStatus } = require("./config/firebaseAdmin");
 const { isCloudinaryConfigured } = require("./config/cloudinary");
 const recommendationRefreshService = require("./services/recommendationRefreshService");
 const { renderPrometheusMetrics, getMetricsSnapshot } = require("./services/chatMetricsService");
+const { renderPrometheusText, getFullSnapshot } = require("./services/metricsService");
 
 const app = express();
 
@@ -95,10 +96,19 @@ const getQueueHealthSnapshot = async () => {
 };
 
 const isInternalMonitoringRequest = (req) => {
-  if (env.nodeEnv !== "production") return true;
   const internalKey = process.env.INTERNAL_METRICS_KEY;
   const suppliedKey = req.headers["x-internal-monitoring-key"];
-  return Boolean(internalKey && suppliedKey === internalKey);
+
+  // If a key is configured, require it in every environment so staging cannot
+  // leak atlas host, Redis topology, or Firebase internals to unauthenticated callers.
+  if (internalKey) {
+    return suppliedKey === internalKey;
+  }
+
+  // No key configured: allow only loopback requests so local dev still works
+  // without any extra setup, but deployed staging/prod is effectively locked out.
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 };
 
 const buildPublicHealthData = ({ database, redis, queueHealth, pushStatus }) => ({
@@ -291,6 +301,31 @@ app.get("/metrics/chat", (req, res) => {
 
   res.setHeader("Content-Type", "text/plain; version=0.0.4");
   return res.status(200).send(renderPrometheusMetrics());
+});
+
+// General Prometheus-format metrics endpoint (HTTP counters + latency histograms).
+// Internal only — requires X-Internal-Monitoring-Key header in production.
+app.get("/metrics", (req, res) => {
+  if (!isInternalMonitoringRequest(req)) {
+    return res.status(404).send("Not found");
+  }
+
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  return res.status(200).send(renderPrometheusText());
+});
+
+// JSON snapshot of all metrics for dashboards that prefer structured data.
+app.get("/metrics/snapshot", (req, res) => {
+  if (!isInternalMonitoringRequest(req)) {
+    return res.status(404).json({ success: false, message: "Not found", data: null, meta: null });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Metrics snapshot",
+    data: getFullSnapshot(),
+    meta: null,
+  });
 });
 
 app.use("/api/v1", routes);

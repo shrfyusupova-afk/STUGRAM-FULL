@@ -207,6 +207,21 @@ if (parsedEnv.OTP_PROVIDER === "email") {
   }
 }
 
+// Enforce minimum safe values for rate limits so a misconfigured deployment
+// fails loudly rather than silently clamping the value.
+if (parsedEnv.RATE_LIMIT_MAX < 5) {
+  providerValidationErrors.push(
+    `RATE_LIMIT_MAX=${parsedEnv.RATE_LIMIT_MAX} is below the minimum safe value of 5. ` +
+    "Set a higher value or remove the override to use the default."
+  );
+}
+if (parsedEnv.AUTHENTICATED_RATE_LIMIT_MAX < 10) {
+  providerValidationErrors.push(
+    `AUTHENTICATED_RATE_LIMIT_MAX=${parsedEnv.AUTHENTICATED_RATE_LIMIT_MAX} is below the minimum safe value of 10. ` +
+    "Set a higher value or remove the override to use the default."
+  );
+}
+
 if (parsedEnv.NODE_ENV === "production") {
   if (parsedEnv.ALLOW_MEMORY_DB_FALLBACK === true) {
     providerValidationErrors.push("ALLOW_MEMORY_DB_FALLBACK must be disabled in production");

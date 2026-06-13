@@ -15,10 +15,13 @@ const serializeError = (error) => ({
 let connectDatabase;
 let closeDatabaseConnection;
 let getDatabaseStatus;
+let buildMongoOptions;
 let env;
 let app;
 let logger;
 let initSocketServer;
+let attachRedisAdapter;
+let getSocketAdapterStatus;
 let closeSocketServer;
 let registerChatSocket;
 let connectRedis;
@@ -33,11 +36,11 @@ let startMaintenanceCleanupScheduler;
 let stopMaintenanceCleanupScheduler;
 
 try {
-  ({ connectDatabase, closeDatabaseConnection, getDatabaseStatus } = require("./src/config/db"));
+  ({ connectDatabase, closeDatabaseConnection, getDatabaseStatus, buildMongoOptions } = require("./src/config/db"));
   ({ env } = require("./src/config/env"));
   app = require("./src/app");
   logger = require("./src/utils/logger");
-  ({ initSocketServer, closeSocketServer } = require("./src/socket/socketServer"));
+  ({ initSocketServer, attachRedisAdapter, getSocketAdapterStatus, closeSocketServer } = require("./src/socket/socketServer"));
   ({ registerChatSocket } = require("./src/socket/chatSocket"));
   ({ connectRedis, getRedisStatus, closeRedisConnection, isRedisReady } = require("./src/config/redis"));
   ({ closeRecommendationQueueResources } = require("./src/queues/recommendationRefreshQueue"));
@@ -125,6 +128,8 @@ const logStartupSummary = () => {
     redisUsernameConfigured: redis.usernameConfigured,
     redisRetryPolicy: redis.retryPolicy,
     redisLastFailure: redis.lastFailure,
+    socketIoAdapter: getSocketAdapterStatus(),
+    mongoMaxPoolSize: buildMongoOptions().maxPoolSize,
     queueEnabled: env.queueEnabled,
     workerRequired: env.workerRequired,
     recommendationWorkerEnabled: env.recommendationWorkerEnabled,
@@ -277,6 +282,9 @@ const startServer = async () => {
     setStartupPhase("before_socket_hooks");
     const io = initSocketServer(httpServer);
     registerChatSocket(io);
+
+    setStartupPhase("before_socket_redis_adapter");
+    await attachRedisAdapter(io);
 
     setStartupPhase("before_maintenance_hooks");
     startMaintenanceCleanupScheduler();

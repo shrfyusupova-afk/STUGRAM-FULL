@@ -1,0 +1,89 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "server.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "server.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  test:
+    name: Backend Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: ["20.x", "22.x"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:ci
+        env:
+          NODE_ENV: test
+          # Required test env — these are CI-only non-secret values;
+          # real production secrets live in Render env vars, never in CI.
+          MONGODB_URI: "mongodb://localhost:27017/stugram_ci_test"
+          JWT_ACCESS_SECRET: "ci-access-secret-minimum-16-chars"
+          JWT_REFRESH_SECRET: "ci-refresh-secret-minimum-16-chars"
+          OTP_SECRET: "ci-otp-secret-min8"
+
+      - name: Upload coverage report
+        if: matrix.node-version == '22.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint (if configured)
+        # Lint is skipped gracefully when no ESLint config is present.
+        # Add .eslintrc.js to enable enforcement.
+        run: |
+          if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f ".eslintrc.cjs" ] || \
+             (node -e "require('./package.json').eslintConfig" 2>/dev/null); then
+            npm run lint
+          else
+            echo "No ESLint config found — skipping lint. Add .eslintrc.js to enforce."
+          fi

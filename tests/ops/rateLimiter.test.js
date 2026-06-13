@@ -95,6 +95,54 @@ describe("rate limiter middleware", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it("respects configured limit exactly — no silent minimum override", async () => {
+    // Admin set AUTHENTICATED_RATE_LIMIT_MAX=100: the 101st request must get 429.
+    // The old code silently clamped to Math.max(configuredValue, 5000) which
+    // broke this guarantee. Verify the supplied limit value flows through as-is.
+    consumeRateLimit.mockResolvedValue({ allowed: true, remaining: 99, retryAfterMs: 0 });
+
+    const limiter = createDistributedRateLimiter({
+      keyPrefix: "api",
+      windowMs: 15 * 60 * 1000,
+      limit: 100,
+      message: "Too many requests.",
+    });
+    const req = { headers: {}, ip: "10.0.0.1" };
+    const res = buildResponse();
+    const next = jest.fn();
+
+    await limiter(req, res, next);
+
+    expect(consumeRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 100 })
+    );
+    expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Limit", "100");
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("respects admin-configured authenticated limit — AUTHENTICATED_RATE_LIMIT_MAX=200 means limit is 200", async () => {
+    consumeRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterMs: 60_000 });
+
+    const limiter = createDistributedRateLimiter({
+      keyPrefix: "api",
+      windowMs: 15 * 60 * 1000,
+      limit: (req) => (req.user?.id ? 200 : 50),
+      message: "Too many requests.",
+    });
+    const req = { headers: {}, ip: "10.0.0.2", user: { id: "u1" } };
+    const res = buildResponse();
+    const next = jest.fn();
+
+    await limiter(req, res, next);
+
+    expect(consumeRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 200 })
+    );
+    expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Limit", "200");
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("returns the production JSON 429 response when the unauthenticated bucket is exceeded", async () => {
     consumeRateLimit.mockResolvedValue({
       allowed: false,

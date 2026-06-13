@@ -36,5 +36,6 @@ router.get("/sessions", requireAuth, authController.listSessions);
 router.delete("/sessions/:sessionId", requireAuth, validate(sessionIdParamSchema), authController.revokeSession);
 router.post("/switch-profile", requireAuth, validate(switchProfileSchema), authController.switchProfile);
 router.post("/google", authLimiter, validate(googleLoginSchema), authController.googleLogin);
+router.delete("/me", requireAuth, authController.deleteAccount);
 
 module.exports = router;

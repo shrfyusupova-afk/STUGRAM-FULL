@@ -66,7 +66,7 @@ fun GroupChatDetailScreen(
 
     var messageText by remember { mutableStateOf("") }
     var showGroupInfo by remember { mutableStateOf(false) }
-    val groupChatBackendReady = false // TODO: wire group chat endpoints before enabling send.
+    var nextMessageId by remember { mutableIntStateOf(5) }
 
     val messages = remember {
         mutableStateListOf(
@@ -76,8 +76,17 @@ fun GroupChatDetailScreen(
             GroupMessageData(1, "Salom hamma! Qandaysizlar?", "Ali", false)
         )
     }
-
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    val sendMessage: () -> Unit = send@{
+        val trimmed = messageText.trim()
+        if (trimmed.isEmpty()) return@send
+        messages.add(0, GroupMessageData(nextMessageId, trimmed, "Siz", true))
+        nextMessageId++
+        messageText = ""
+        scope.launch { listState.animateScrollToItem(0) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Image(
@@ -96,7 +105,11 @@ fun GroupChatDetailScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = totalHeaderHeight + 10.dp, bottom = 12.dp)
                 ) {
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        GroupMessageBubble(message, isDarkMode, true, true, accentBlue)
+                        val prevMsg = if (index > 0) messages[index - 1] else null
+                        val nextMsg = if (index < messages.size - 1) messages[index + 1] else null
+                        val isLastInGroup = prevMsg == null || prevMsg.isMe != message.isMe || prevMsg.senderName != message.senderName
+                        val isFirstInGroup = nextMsg == null || nextMsg.isMe != message.isMe || nextMsg.senderName != message.senderName
+                        GroupMessageBubble(message, isDarkMode, true, true, accentBlue, isFirstInGroup, isLastInGroup)
                     }
                 }
 
@@ -189,52 +202,113 @@ fun GroupChatDetailScreen(
                         onValueChange = { messageText = it },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = TextStyle(color = contentColor, fontSize = 15.sp),
+                        cursorBrush = SolidColor(accentBlue),
                         decorationBox = { innerTextField ->
                             if (messageText.isEmpty()) Text("Xabar yozing...", color = contentColor.copy(0.5f), fontSize = 15.sp)
                             innerTextField()
                         }
                     )
                 }
-                
+
+                val canSend = messageText.trim().isNotEmpty()
                 IconButton(
-                    onClick = { /* TODO: enable after backend group endpoint integration */ },
-                    enabled = groupChatBackendReady,
+                    onClick = sendMessage,
+                    enabled = canSend,
                     modifier = Modifier
                         .size(48.dp)
-                        .background(accentBlue, CircleShape)
+                        .background(
+                            if (canSend) accentBlue else accentBlue.copy(0.4f),
+                            CircleShape
+                        )
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White)
                 }
             }
         }
 
-        AnimatedVisibility(visible = showGroupInfo, enter = slideInVertically(initialOffsetY = { it }) + fadeIn(), exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()) {
+        AnimatedVisibility(
+            visible = showGroupInfo,
+            enter = slideInVertically(tween(300, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(240, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(260, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(200, easing = FastOutSlowInEasing))
+        ) {
             GroupInfoScreen(groupName = groupName, isDarkMode = isDarkMode, onBack = { showGroupInfo = false })
         }
     }
 }
 
 @Composable
-private fun GroupMessageBubble(message: GroupMessageData, isDarkMode: Boolean, showName: Boolean, showAvatar: Boolean, accentBlue: Color) {
+private fun GroupMessageBubble(
+    message: GroupMessageData,
+    isDarkMode: Boolean,
+    showName: Boolean,
+    showAvatar: Boolean,
+    accentBlue: Color,
+    isFirstInGroup: Boolean = true,
+    isLastInGroup: Boolean = true
+) {
     val alignment = if (message.isMe) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isMe) PremiumBlue else (if (isDarkMode) Color(0xFF262626) else Color(0xFFF0F0F0))
     val textColor = if (message.isMe) Color.White else (if (isDarkMode) Color.White else Color.Black)
-    val shape = if (message.isMe) { RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp) } else { RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalAlignment = alignment) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = if (message.isMe) Arrangement.End else Arrangement.Start) {
+    val r = 18.dp
+    val t = 4.dp
+    val shape = when {
+        message.isMe -> when {
+            isLastInGroup -> RoundedCornerShape(r, r, t, r)
+            isFirstInGroup -> RoundedCornerShape(r, t, r, r)
+            else -> RoundedCornerShape(r, t, t, r)
+        }
+        else -> when {
+            isLastInGroup -> RoundedCornerShape(r, r, r, t)
+            isFirstInGroup -> RoundedCornerShape(t, r, r, r)
+            else -> RoundedCornerShape(t, r, r, t)
+        }
+    }
+
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val timeString = timeFormat.format(Date(message.timestamp))
+    val bottomPad = if (isLastInGroup) 6.dp else 2.dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = bottomPad, top = 1.dp),
+        horizontalAlignment = alignment
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (message.isMe) Arrangement.End else Arrangement.Start
+        ) {
             if (!message.isMe) {
-                Surface(modifier = Modifier.size(28.dp), shape = CircleShape, color = Color.Gray.copy(0.2f)) {
-                    Icon(Icons.Default.Person, null, modifier = Modifier.padding(6.dp), tint = Color.Gray)
+                if (isLastInGroup) {
+                    Surface(modifier = Modifier.size(28.dp), shape = CircleShape, color = Color.Gray.copy(0.2f)) {
+                        Icon(Icons.Default.Person, null, modifier = Modifier.padding(6.dp), tint = Color.Gray)
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(28.dp))
                 }
                 Spacer(Modifier.width(6.dp))
             }
             Column(horizontalAlignment = alignment) {
-                if (showName && !message.isMe) { 
-                    Text(message.senderName, color = (if (isDarkMode) Color.White else Color.Black).copy(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) 
+                if (showName && !message.isMe && isFirstInGroup) {
+                    Text(
+                        text = message.senderName,
+                        color = accentBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                    )
                 }
                 Surface(color = bubbleColor, shape = shape) {
-                    Text(text = message.text, color = textColor, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                    Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)) {
+                        Text(text = message.text, color = textColor, fontSize = 15.sp, lineHeight = 20.sp)
+                        Text(
+                            text = timeString,
+                            color = textColor.copy(alpha = 0.5f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.align(Alignment.End).padding(top = 2.dp)
+                        )
+                    }
                 }
             }
         }

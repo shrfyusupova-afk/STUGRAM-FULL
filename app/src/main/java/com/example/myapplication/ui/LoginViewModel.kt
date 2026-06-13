@@ -13,7 +13,9 @@ import com.example.myapplication.data.remote.chat.ChatSocketManager
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import com.example.myapplication.data.remote.ForgotPasswordRequest
 import com.example.myapplication.data.remote.LoginRequest
+import com.example.myapplication.data.remote.ResetPasswordRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -60,9 +62,9 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
                         TokenManager(context).saveTokens(access, refresh)
+                        AuthSession.setToken(access)
+                        ChatSocketManager.updateAccessToken(access)
                     }
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 } else {
@@ -131,9 +133,9 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
                         TokenManager(context).saveTokens(access, refresh)
+                        AuthSession.setToken(access)
+                        ChatSocketManager.updateAccessToken(access)
                     } else {
                         _uiState.update {
                             it.copy(
@@ -165,7 +167,125 @@ class LoginViewModel : ViewModel() {
     }
 
     fun togglePasswordResetModal(show: Boolean) {
-        _uiState.update { it.copy(showPasswordResetModal = show) }
+        _uiState.update {
+            it.copy(
+                showPasswordResetModal = show,
+                resetStep = 1,
+                resetEmail = "",
+                resetOtp = "",
+                resetNewPassword = "",
+                resetConfirmPassword = "",
+                resetError = null,
+                resetSuccess = false,
+                resetOtpSent = false
+            )
+        }
+    }
+
+    fun onResetEmailChange(value: String) {
+        _uiState.update { it.copy(resetEmail = value, resetError = null) }
+    }
+
+    fun onResetOtpChange(value: String) {
+        _uiState.update { it.copy(resetOtp = value, resetError = null) }
+    }
+
+    fun onResetNewPasswordChange(value: String) {
+        _uiState.update { it.copy(resetNewPassword = value, resetError = null) }
+    }
+
+    fun onResetConfirmPasswordChange(value: String) {
+        _uiState.update { it.copy(resetConfirmPassword = value, resetError = null) }
+    }
+
+    fun advanceResetToStep3() {
+        if (_uiState.value.resetOtp.length != 6) {
+            _uiState.update { it.copy(resetError = "6 xonali kodni to'liq kiriting") }
+            return
+        }
+        _uiState.update { it.copy(resetStep = 3, resetError = null) }
+    }
+
+    fun prevResetStep() {
+        val step = _uiState.value.resetStep
+        if (step > 1) {
+            _uiState.update { it.copy(resetStep = step - 1, resetError = null) }
+        } else {
+            togglePasswordResetModal(false)
+        }
+    }
+
+    fun submitForgotPassword() {
+        val email = _uiState.value.resetEmail.trim()
+        if (email.isBlank()) {
+            _uiState.update { it.copy(resetError = "Email yoki username kiriting") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isResetLoading = true, resetError = null) }
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.forgotPassword(ForgotPasswordRequest(identity = email))
+                }
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isResetLoading = false, resetOtpSent = true, resetStep = 2) }
+                } else {
+                    val body = response.errorBody()?.string()?.take(250)
+                    _uiState.update {
+                        it.copy(
+                            isResetLoading = false,
+                            resetError = "Xato (${response.code()}): ${body ?: "So'rov muvaffaqiyatsiz"}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isResetLoading = false, resetError = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
+    }
+
+    fun submitResetPassword() {
+        val state = _uiState.value
+        if (state.resetOtp.isBlank() || state.resetNewPassword.isBlank() || state.resetConfirmPassword.isBlank()) {
+            _uiState.update { it.copy(resetError = "Barcha maydonlarni to'ldiring") }
+            return
+        }
+        if (state.resetNewPassword.length < 8) {
+            _uiState.update { it.copy(resetError = "Parol kamida 8 ta belgidan iborat bo'lishi kerak") }
+            return
+        }
+        if (state.resetNewPassword != state.resetConfirmPassword) {
+            _uiState.update { it.copy(resetError = "Parollar mos kelmadi") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isResetLoading = true, resetError = null) }
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.resetPassword(
+                        ResetPasswordRequest(
+                            identity = state.resetEmail.trim(),
+                            otp = state.resetOtp.trim(),
+                            password = state.resetNewPassword,
+                            confirmPassword = state.resetConfirmPassword
+                        )
+                    )
+                }
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isResetLoading = false, resetSuccess = true, resetStep = 4) }
+                } else {
+                    val body = response.errorBody()?.string()?.take(250)
+                    _uiState.update {
+                        it.copy(
+                            isResetLoading = false,
+                            resetError = "Xato (${response.code()}): ${body ?: "Parolni tiklash muvaffaqiyatsiz"}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isResetLoading = false, resetError = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
     }
 }
 
@@ -175,5 +295,14 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val isSuccess: Boolean = false,
-    val showPasswordResetModal: Boolean = false
+    val showPasswordResetModal: Boolean = false,
+    val resetStep: Int = 1,
+    val resetEmail: String = "",
+    val resetOtp: String = "",
+    val resetNewPassword: String = "",
+    val resetConfirmPassword: String = "",
+    val isResetLoading: Boolean = false,
+    val resetError: String? = null,
+    val resetOtpSent: Boolean = false,
+    val resetSuccess: Boolean = false
 )

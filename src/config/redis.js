@@ -3,15 +3,26 @@ const Redis = require("ioredis");
 const { env } = require("./env");
 const logger = require("../utils/logger");
 
-const REDIS_RETRY_POLICY = "bounded-exponential-5";
-const REDIS_RECONNECT_MAX_DELAY_MS = 1000;
+const REDIS_RETRY_POLICY = "bounded-exponential-10";
+const REDIS_MAX_RETRIES = 10;
+const REDIS_RECONNECT_MAX_DELAY_MS = 30_000;
 
+// Bounded exponential backoff: 100ms → 200ms → 400ms … → 30s cap.
+// After REDIS_MAX_RETRIES the strategy returns null which tells ioredis to stop
+// reconnecting. The app continues in explicit degraded mode instead of looping
+// forever and flooding logs.
 const buildRetryStrategy = () => (times) => {
-  if (times > 5) {
+  if (times > REDIS_MAX_RETRIES) {
+    logger.warn("redis_reconnect_exhausted", {
+      attempts: times,
+      policy: REDIS_RETRY_POLICY,
+      action: "degraded-mode",
+    });
     return null;
   }
-
-  return Math.min(50 * 2 ** (times - 1), REDIS_RECONNECT_MAX_DELAY_MS);
+  const delay = Math.min(100 * 2 ** (times - 1), REDIS_RECONNECT_MAX_DELAY_MS);
+  logger.info("redis_reconnect_scheduled", { attempt: times, delayMs: delay, policy: REDIS_RETRY_POLICY });
+  return delay;
 };
 
 const buildRedisClientOptions = ({ purpose = "shared" } = {}) => {

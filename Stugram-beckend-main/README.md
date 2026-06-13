@@ -51,3 +51,25 @@ After redeploy:
 1. Confirm authenticated users can load profiles, search, and open chats without premature `429`.
 2. Confirm unauthenticated request bursts still receive JSON `429` responses.
 3. Confirm `/readyz` is healthy and no production mock providers are active.
+
+## Scaling beyond a single instance
+
+These knobs are off/conservative by default and only need to change once the
+underlying infrastructure (bigger Render plan, dedicated Redis, larger MongoDB
+Atlas tier) has been provisioned:
+
+- `MONGO_MAX_POOL_SIZE` — overrides the Mongoose connection pool size (default
+  20 in production, 10 elsewhere). Raise this in line with the MongoDB Atlas
+  tier's connection limit when running more app instances.
+- `SOCKET_IO_REDIS_ADAPTER_ENABLED=true` — attaches the
+  `@socket.io/redis-adapter` so realtime chat/presence/typing events are
+  broadcast across **all** backend instances via Redis pub/sub. Required as
+  soon as more than one instance runs behind a load balancer, otherwise users
+  connected to different instances won't see each other's realtime events.
+  Requires `REDIS_URL`/`REDIS_REQUIRED=true` pointing at a Redis reachable from
+  every instance. The adapter status is reported at `/health` and `/readyz`
+  under `socketIoAdapter`.
+
+When running multiple instances, the load balancer should also be configured
+for sticky sessions (or Socket.IO falls back to HTTP long-polling, which still
+works correctly with the Redis adapter but is less efficient than WebSockets).

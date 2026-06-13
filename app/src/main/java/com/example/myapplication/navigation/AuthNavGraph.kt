@@ -25,11 +25,15 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.ui.auth.AuthScreen
 import com.example.myapplication.ui.home.*
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 
 sealed class Screen(val route: String) {
     object Auth : Screen("auth")
@@ -44,6 +48,15 @@ sealed class Screen(val route: String) {
     object UserProfile : Screen("profile/{username}") {
         fun createRoute(username: String) = "profile/$username"
     }
+    object CreatePost : Screen("create_post")
+    object Notifications : Screen("notifications")
+    object SavedPosts : Screen("saved_posts")
+    object Followers : Screen("followers/{username}/{mode}") {
+        fun createRoute(username: String, mode: String) = "followers/$username/$mode"
+    }
+    object Hashtag : Screen("hashtag/{tag}") {
+        fun createRoute(tag: String) = "hashtag/$tag"
+    }
 }
 
 @Composable
@@ -52,16 +65,36 @@ fun AuthNavGraph(
     isDarkMode: Boolean,
     onThemeChange: (Boolean) -> Unit
 ) {
+    // Observe session state so that a forced logout (e.g. expired refresh token)
+    // navigates the user back to the auth screen from anywhere in the app.
+    val sessionState by AuthSession.sessionState.collectAsState()
+    val currentBackStack by navController.currentBackStackEntryAsState()
+
+    LaunchedEffect(sessionState) {
+        if (sessionState == AuthSession.State.LOGGED_OUT) {
+            val currentRoute = currentBackStack?.destination?.route
+            if (currentRoute != null && currentRoute != Screen.Auth.route) {
+                navController.navigate(Screen.Auth.route) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Auth.route
     ) {
         composable(route = Screen.Auth.route) {
-            AuthScreen(onNavigateToHome = {
-                navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Auth.route) { inclusive = true }
-                }
-            })
+            AuthScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Auth.route) { inclusive = true }
+                    }
+                },
+                isDarkMode = isDarkMode,
+                onThemeChange = onThemeChange
+            )
         }
 
         composable(
@@ -81,7 +114,82 @@ fun AuthNavGraph(
                 },
                 onNavigateToProfile = { username ->
                     navController.navigate(Screen.UserProfile.createRoute(username))
+                },
+                onNavigateToCreatePost = {
+                    navController.navigate(Screen.CreatePost.route)
+                },
+                onNavigateToNotifications = {
+                    navController.navigate(Screen.Notifications.route)
+                },
+                onNavigateToSaved = {
+                    navController.navigate(Screen.SavedPosts.route)
+                },
+                onNavigateToHashtag = { tag ->
+                    navController.navigate(Screen.Hashtag.createRoute(tag))
+                },
+                onNavigateToFollowList = { username, mode ->
+                    navController.navigate(Screen.Followers.createRoute(username, mode))
                 }
+            )
+        }
+
+        composable(
+            route = Screen.Notifications.route,
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) {
+            NotificationsScreen(
+                isDarkMode = isDarkMode,
+                onBack = { navController.popBackStack() },
+                onOpenProfile = { username ->
+                    navController.navigate(Screen.UserProfile.createRoute(username))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.SavedPosts.route,
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) {
+            SavedPostsScreen(
+                isDarkMode = isDarkMode,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.Followers.route,
+            arguments = listOf(
+                navArgument("username") { type = NavType.StringType },
+                navArgument("mode") { type = NavType.StringType }
+            ),
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) { backStackEntry ->
+            val username = backStackEntry.arguments?.getString("username").orEmpty()
+            val mode = if (backStackEntry.arguments?.getString("mode") == "following")
+                FollowListMode.FOLLOWING else FollowListMode.FOLLOWERS
+            FollowListScreen(
+                isDarkMode = isDarkMode,
+                username = username,
+                mode = mode,
+                onBack = { navController.popBackStack() },
+                onOpenProfile = { name -> navController.navigate(Screen.UserProfile.createRoute(name)) }
+            )
+        }
+
+        composable(
+            route = Screen.Hashtag.route,
+            arguments = listOf(navArgument("tag") { type = NavType.StringType }),
+            enterTransition = { slideInHorizontally(tween(280)) { it } + fadeIn(tween(280)) },
+            popExitTransition = { slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220)) }
+        ) { backStackEntry ->
+            val tag = backStackEntry.arguments?.getString("tag").orEmpty()
+            HashtagDiscoveryScreen(
+                isDarkMode = isDarkMode,
+                hashtag = tag,
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -150,7 +258,29 @@ fun AuthNavGraph(
                 onRefresh = {},
                 isMyProfile = false,
                 targetUsername = username,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenFollowList = { name, mode ->
+                    navController.navigate(Screen.Followers.createRoute(name, mode))
+                },
+                onOpenChat = { name ->
+                    navController.navigate(Screen.ChatDetail.createRoute(name, false))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.CreatePost.route,
+            enterTransition = {
+                slideInHorizontally(tween(340)) { it } + fadeIn(tween(340))
+            },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = {
+                slideOutHorizontally(tween(340)) { it } + fadeOut(tween(280))
+            }
+        ) {
+            CreatePostHost(
+                onClose = { navController.popBackStack() }
             )
         }
     }

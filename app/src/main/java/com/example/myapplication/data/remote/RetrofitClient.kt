@@ -1,25 +1,36 @@
 package com.example.myapplication.data.remote
 
 import com.example.myapplication.BuildConfig
+import com.example.myapplication.core.storage.TokenManager
+import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
+import okhttp3.TlsVersion
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
-object RetrofitClient {
-    private const val BASE_URL = "https://stugram-beckend.onrender.com/"
+// CERTIFICATE PINNING — DEFERRED
+// The backend runs on Render.com (stugram-full.onrender.com) which manages
+// TLS certificates automatically (Let's Encrypt, auto-rotation every 90 days).
+// Render does not expose upcoming leaf or intermediate pins before rotation,
+// so hardcoded pins would break the app silently when Render rotates the cert.
+// Trust strategy for closed beta:
+//   - Network security config (Phase 1) disables cleartext in production.
+//   - MODERN_TLS ConnectionSpec enforces TLS 1.2+ at the OkHttp layer.
+//   - Public CA validation remains in effect (system trust store).
+// Pinning can be added once the backend migrates to a host that provides
+// advance notice of certificate changes (e.g. a custom domain with manual cert).
 
+object RetrofitClient {
+    // URL comes from BuildConfig so debug and release variants can use different
+    // endpoints without changing source code.
+    private val BASE_URL: String get() = BuildConfig.API_BASE_URL
+
+    // Sensitive JSON field names to redact from debug logs.
     private val sensitiveJsonFields = listOf(
-        "accessToken",
-        "refreshToken",
-        "token",
-        "password",
-        "currentPassword",
-        "newPassword",
-        "confirmPassword",
-        "otp",
-        "code"
+        "accessToken", "refreshToken", "token", "password",
+        "currentPassword", "newPassword", "confirmPassword", "otp", "code"
     )
 
     private fun sanitizeLogLine(line: String): String {
@@ -40,27 +51,68 @@ object RetrofitClient {
     }.apply {
         redactHeader("Authorization")
         redactHeader("Cookie")
-        level = if (BuildConfig.DEBUG) {
-            HttpLoggingInterceptor.Level.BODY
-        } else {
-            HttpLoggingInterceptor.Level.NONE
-        }
+        level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
+                else HttpLoggingInterceptor.Level.NONE
     }
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor { chain ->
-            val requestBuilder = chain.request().newBuilder()
-            val token = AuthSession.accessToken
-            if (!token.isNullOrBlank()) {
-                requestBuilder.addHeader("Authorization", "Bearer $token")
+    // Injected by MainActivity.initialize() before any network call is made.
+    @Volatile private var tokenManager: TokenManager? = null
+    @Volatile private var authenticator: TokenAuthenticator? = null
+
+    // Called once from MainActivity.onCreate() before the UI is shown so the
+    // authenticator has a TokenManager before the first request fires.
+    fun initialize(manager: TokenManager) {
+        if (tokenManager != null) return  // guard against double-init
+        tokenManager = manager
+        authenticator = TokenAuthenticator(
+            tokenManager = manager,
+            refreshApiProvider = { refreshClient.create(AuthApi::class.java) }
+        )
+    }
+
+    // Plain client used only by TokenAuthenticator for the refresh call.
+    // Must NOT have an authenticator attached to avoid infinite 401 loops.
+    private val refreshClient: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(
+                OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .build()
+            )
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    // Enforce TLS 1.2+ at the OkHttp layer. MODERN_TLS covers TLS 1.2 and 1.3.
+    // In release builds network_security_config.xml already blocks cleartext at
+    // the OS level; this is defense-in-depth at the library level.
+    private val tlsConnectionSpecs = if (BuildConfig.DEBUG) {
+        listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.CLEARTEXT)
+    } else {
+        listOf(ConnectionSpec.MODERN_TLS)
+    }
+
+    private val okHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val requestBuilder = chain.request().newBuilder()
+                val token = AuthSession.accessToken
+                if (!token.isNullOrBlank()) {
+                    requestBuilder.addHeader("Authorization", "Bearer $token")
+                }
+                chain.proceed(requestBuilder.build())
             }
-            chain.proceed(requestBuilder.build())
-        }
-        .addInterceptor(loggingInterceptor)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+            .addInterceptor(loggingInterceptor)
+            .apply { authenticator?.let { authenticator(it) } }
+            .connectionSpecs(tlsConnectionSpecs)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
 
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
@@ -74,7 +126,5 @@ object RetrofitClient {
         retrofit.create(AuthApi::class.java)
     }
 
-    fun <T> createService(service: Class<T>): T {
-        return retrofit.create(service)
-    }
+    fun <T> createService(service: Class<T>): T = retrofit.create(service)
 }

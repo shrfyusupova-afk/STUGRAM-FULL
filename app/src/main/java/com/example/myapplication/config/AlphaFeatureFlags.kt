@@ -3,12 +3,12 @@ package com.example.myapplication.config
 object AlphaFeatureFlags {
     const val ALPHA_MODE: Boolean = true
 
-    const val FEED_INTERACTIONS_ENABLED: Boolean = false
-    const val STORIES_ENABLED: Boolean = false
-    const val REELS_ENABLED: Boolean = false
+    const val FEED_INTERACTIONS_ENABLED: Boolean = true
+    const val STORIES_ENABLED: Boolean = true
+    const val REELS_ENABLED: Boolean = true
     const val SEARCH_DISCOVERY_ENABLED: Boolean = false
-    const val CAMERA_CREATE_ENABLED: Boolean = false
-    const val GROUP_CHAT_ENABLED: Boolean = false
+    const val CAMERA_CREATE_ENABLED: Boolean = true
+    const val GROUP_CHAT_ENABLED: Boolean = true
     const val ADVANCED_SETTINGS_ENABLED: Boolean = false
 
     const val REQUESTS_ENABLED: Boolean = true

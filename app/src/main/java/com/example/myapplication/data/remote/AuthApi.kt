@@ -1,10 +1,15 @@
 package com.example.myapplication.data.remote
 
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 import com.google.gson.JsonObject
 
 interface AuthApi {
+    @POST("api/v1/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<JsonObject>
+
     @POST("api/v1/auth/send-otp")
     suspend fun sendOtp(@Body request: OtpRequest): Response<JsonObject>
 
@@ -19,6 +24,15 @@ interface AuthApi {
 
     @POST("api/v1/auth/google")
     suspend fun googleLogin(@Body request: GoogleLoginRequest): Response<JsonObject>
+
+    @POST("api/v1/auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<JsonObject>
+
+    @POST("api/v1/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<JsonObject>
+
+    @DELETE("api/v1/auth/me")
+    suspend fun deleteAccount(): Response<JsonObject>
 
     @GET("api/v1/posts/feed/me")
     suspend fun getPostFeed(
@@ -38,6 +52,18 @@ interface AuthApi {
     @PATCH("api/v1/profiles/me")
     suspend fun updateMyProfile(@Body request: UpdateProfileRequest): Response<JsonObject>
 
+    @Multipart
+    @PATCH("api/v1/profiles/me/avatar")
+    suspend fun updateMyAvatar(
+        @Part avatar: MultipartBody.Part
+    ): Response<JsonObject>
+
+    @Multipart
+    @PATCH("api/v1/profiles/me/banner")
+    suspend fun updateMyBanner(
+        @Part banner: MultipartBody.Part
+    ): Response<JsonObject>
+
     @GET("api/v1/profiles/{username}")
     suspend fun getProfileByUsername(@Path("username") username: String): Response<JsonObject>
 
@@ -48,14 +74,82 @@ interface AuthApi {
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
 
+    @GET("api/v1/search/posts")
+    suspend fun searchPosts(
+        @Query("q") query: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/search/hashtags")
+    suspend fun searchHashtags(
+        @Query("q") query: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<JsonObject>
+
+    @GET("api/v1/search/users/advanced")
+    suspend fun searchUsersAdvanced(
+        @Query("q") query: String? = null,
+        @Query("region") region: String? = null,
+        @Query("district") district: String? = null,
+        @Query("school") school: String? = null,
+        @Query("grade") grade: String? = null,
+        @Query("group") group: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 20
+    ): Response<JsonObject>
+
     @POST("api/v1/follows/{userId}")
     suspend fun followUser(@Path("userId") userId: String): Response<JsonObject>
 
     @DELETE("api/v1/follows/{userId}")
     suspend fun unfollowUser(@Path("userId") userId: String): Response<JsonObject>
 
+    @GET("api/v1/follows/{username}/followers")
+    suspend fun getFollowers(
+        @Path("username") username: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/follows/{username}/following")
+    suspend fun getFollowing(
+        @Path("username") username: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    // ── Blocks ──
+    @GET("api/v1/blocks/me")
+    suspend fun getBlockedAccounts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @POST("api/v1/blocks/{userId}")
+    suspend fun blockUser(@Path("userId") userId: String): Response<JsonObject>
+
+    @DELETE("api/v1/blocks/{userId}")
+    suspend fun unblockUser(@Path("userId") userId: String): Response<JsonObject>
+
     @POST("api/v1/posts")
     suspend fun createPost(@Body request: CreatePostRequest): Response<JsonObject>
+
+    @Multipart
+    @POST("api/v1/posts")
+    suspend fun createPostWithMedia(
+        @Part media: MultipartBody.Part?,
+        @Part("caption") caption: RequestBody,
+        @Part("location") location: RequestBody
+    ): Response<JsonObject>
+
+    @Multipart
+    @POST("api/v1/stories")
+    suspend fun createStoryWithMedia(
+        @Part media: MultipartBody.Part?,
+        @Part("caption") caption: RequestBody
+    ): Response<JsonObject>
 
     @GET("api/v1/posts/user/{username}")
     suspend fun getUserPosts(
@@ -63,7 +157,128 @@ interface AuthApi {
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 20
     ): Response<JsonObject>
+
+    @GET("api/v1/feed/me")
+    suspend fun getRecommendedFeed(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/reels/me")
+    suspend fun getRecommendedReels(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/profiles/suggestions")
+    suspend fun getProfileSuggestions(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/explore/trending")
+    suspend fun getTrendingPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    @GET("api/v1/explore/creators")
+    suspend fun getCreatorsDiscovery(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
+    // ── Comments ──
+    @GET("api/v1/comments/posts/{postId}")
+    suspend fun getPostComments(
+        @Path("postId") postId: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @POST("api/v1/comments/posts/{postId}")
+    suspend fun addPostComment(
+        @Path("postId") postId: String,
+        @Body request: AddCommentRequest
+    ): Response<JsonObject>
+
+    @DELETE("api/v1/comments/{commentId}")
+    suspend fun deletePostComment(
+        @Path("commentId") commentId: String
+    ): Response<JsonObject>
+
+    // ── Likes ──
+    @POST("api/v1/likes/posts/{postId}")
+    suspend fun likePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @DELETE("api/v1/likes/posts/{postId}")
+    suspend fun unlikePost(@Path("postId") postId: String): Response<JsonObject>
+
+    // ── Notifications ──
+    @GET("api/v1/notifications")
+    suspend fun getNotifications(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    @GET("api/v1/notifications/unread-count")
+    suspend fun getNotificationsUnreadCount(): Response<JsonObject>
+
+    @PATCH("api/v1/notifications/{notificationId}/read")
+    suspend fun markNotificationRead(@Path("notificationId") id: String): Response<JsonObject>
+
+    @PATCH("api/v1/notifications/read-all")
+    suspend fun markAllNotificationsRead(): Response<JsonObject>
+
+    // ── Saved posts ──
+    @POST("api/v1/posts/{postId}/save")
+    suspend fun savePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @DELETE("api/v1/posts/{postId}/save")
+    suspend fun unsavePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @GET("api/v1/posts/saved/me")
+    suspend fun getSavedPosts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<JsonObject>
+
+    // ── Post delete / update ──
+    @DELETE("api/v1/posts/{postId}")
+    suspend fun deletePost(@Path("postId") postId: String): Response<JsonObject>
+
+    @PATCH("api/v1/posts/{postId}")
+    suspend fun updatePost(
+        @Path("postId") postId: String,
+        @Body request: UpdatePostRequest
+    ): Response<JsonObject>
+
+    @GET("api/v1/posts/{postId}")
+    suspend fun getPost(@Path("postId") postId: String): Response<JsonObject>
+
+    // ── Story Highlights ──
+    @GET("api/v1/highlights/{username}")
+    suspend fun getHighlights(@Path("username") username: String): Response<JsonObject>
+
+    // ── Device token (push notifications) ──
+    @POST("api/v1/devices/register")
+    suspend fun registerDeviceToken(@Body request: DeviceTokenRequest): Response<JsonObject>
+
+    @DELETE("api/v1/devices/{token}")
+    suspend fun unregisterDeviceToken(@Path("token") token: String): Response<JsonObject>
 }
+
+data class UpdatePostRequest(
+    val caption: String? = null,
+    val location: String? = null
+)
+
+data class AddCommentRequest(
+    val content: String,
+    val parentCommentId: String? = null
+)
+
+data class RefreshTokenRequest(val refreshToken: String)
 
 data class GoogleLoginRequest(val idToken: String)
 
@@ -108,4 +323,18 @@ data class UpdateProfileRequest(
 
 data class CreatePostRequest(
     val caption: String
+)
+
+data class DeviceTokenRequest(
+    val token: String,
+    val platform: String = "android"
+)
+
+data class ForgotPasswordRequest(val identity: String)
+
+data class ResetPasswordRequest(
+    val identity: String,
+    val otp: String,
+    val password: String,
+    val confirmPassword: String
 )

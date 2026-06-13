@@ -7,6 +7,7 @@ const morgan = require("morgan");
 const { env } = require("./config/env");
 const { getDatabaseStatus, isPrimaryDatabaseReady, isMemoryFallbackReady } = require("./config/db");
 const { getRedisStatus, isRedisReady } = require("./config/redis");
+const { getSocketAdapterStatus } = require("./socket/socketServer");
 const { apiLimiter } = require("./middlewares/rateLimiter");
 const { assignRequestId } = require("./middlewares/requestId");
 const { attachResponseMeta } = require("./middlewares/responseMeta");
@@ -165,6 +166,7 @@ app.get("/health", (req, res) => {
           redisTlsEnabled: redis.tlsEnabled,
           redisConfigSource: redis.configSource,
           redis,
+          socketIoAdapter: getSocketAdapterStatus(),
           queueHealth,
           cacheMode: getCacheMode(redis),
           recommendationMode: env.recommendationMode,
@@ -228,6 +230,7 @@ app.get("/readyz", (req, res) => {
           redisTlsEnabled: redis.tlsEnabled,
           redisConfigSource: redis.configSource,
           redis,
+          socketIoAdapter: getSocketAdapterStatus(),
           queueHealth,
           cacheMode: getCacheMode(redis),
           recommendationMode: env.recommendationMode,

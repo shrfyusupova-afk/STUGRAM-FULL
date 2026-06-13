@@ -1,13 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Auto Backup rules for API levels 21–30.
+  API 31+ uses data_extraction_rules.xml instead.
+  See: https://developer.android.com/guide/topics/data/autobackup
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Auth tokens — never back up: restoring to a different device would expose
+         the previous user's session to the new device owner. -->
+    <exclude domain="sharedpref" path="auth_prefs_secure.xml" />
+
+    <!-- DataStore auth prefs (legacy plaintext migration source). -->
+    <exclude domain="file" path="datastore/auth_prefs.preferences_pb" />
+
+    <!-- Chat database — excluded so private messages are not uploaded to Google
+         Drive and are not transferred to a new device without the user's consent. -->
+    <exclude domain="database" path="stugram-chat.db" />
+    <exclude domain="database" path="stugram-chat.db-shm" />
+    <exclude domain="database" path="stugram-chat.db-wal" />
 </full-backup-content>

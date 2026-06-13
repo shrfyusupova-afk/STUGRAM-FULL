@@ -1,5 +1,8 @@
 package com.example.myapplication.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -38,7 +41,11 @@ fun EditProfileScreen(
     onBack: () -> Unit,
     onSave: (String, String, String, String, String, String) -> Unit,
     isSaving: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    currentAvatarUrl: String? = null,
+    currentBannerUrl: String? = null,
+    onAvatarPicked: (Uri) -> Unit = {},
+    onBannerPicked: (Uri) -> Unit = {}
 ) {
     val backgroundColor = if (isDarkMode) Color(0xFF0F0F0F) else Color.White
     val contentColor = if (isDarkMode) Color.White else Color.Black
@@ -56,6 +63,27 @@ fun EditProfileScreen(
     val screenWidth = configuration.screenWidthDp.dp
     val bannerHeight = screenWidth * 500f / 1080f
     val avatarSize = 110.dp
+
+    // Pending local picks — shown immediately while upload runs in the ViewModel
+    var pendingAvatar by remember { mutableStateOf<Uri?>(null) }
+    var pendingBanner by remember { mutableStateOf<Uri?>(null) }
+
+    val avatarPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            pendingAvatar = uri
+            onAvatarPicked(uri)
+        }
+    }
+    val bannerPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            pendingBanner = uri
+            onBannerPicked(uri)
+        }
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -101,9 +129,15 @@ fun EditProfileScreen(
                         .fillMaxWidth()
                         .height(bannerHeight)
                         .background(fieldColor)
+                        .clickable { bannerPicker.launch("image/*") }
                 ) {
+                    val bannerModel: Any? = when {
+                        pendingBanner != null -> pendingBanner
+                        !currentBannerUrl.isNullOrBlank() -> currentBannerUrl
+                        else -> R.drawable.kun
+                    }
                     AsyncImage(
-                        model = R.drawable.kun,
+                        model = bannerModel,
                         contentDescription = "Banner",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -129,10 +163,16 @@ fun EditProfileScreen(
                         .size(avatarSize)
                         .background(backgroundColor, CircleShape)
                         .padding(4.dp)
+                        .clickable { avatarPicker.launch("image/*") }
                 ) {
                     Box(modifier = Modifier.fillMaxSize().clip(CircleShape)) {
+                        val avatarModel: Any? = when {
+                            pendingAvatar != null -> pendingAvatar
+                            !currentAvatarUrl.isNullOrBlank() -> currentAvatarUrl
+                            else -> R.drawable.photo_1
+                        }
                         AsyncImage(
-                            model = R.drawable.photo_1,
+                            model = avatarModel,
                             contentDescription = "Profile Picture",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -156,26 +196,26 @@ fun EditProfileScreen(
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                 Text("Public Information", color = accentBlue, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 EditField(label = "Name", value = name, onValueChange = { name = it }, isDarkMode = isDarkMode)
                 Spacer(modifier = Modifier.height(16.dp))
                 EditField(label = "Username", value = username, onValueChange = { username = it }, isDarkMode = isDarkMode)
                 Spacer(modifier = Modifier.height(16.dp))
                 EditField(label = "Bio", value = bio, onValueChange = { bio = it }, isDarkMode = isDarkMode, singleLine = false)
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
-                
+
                 Text("Personal Details", color = accentBlue, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 EditField(label = "Birthday", value = birthday, onValueChange = { birthday = it }, isDarkMode = isDarkMode, icon = Icons.Default.Event)
                 Spacer(modifier = Modifier.height(16.dp))
                 EditField(label = "Location", value = location, onValueChange = { location = it }, isDarkMode = isDarkMode, icon = Icons.Default.LocationCity)
                 Spacer(modifier = Modifier.height(16.dp))
                 EditField(label = "Education", value = school, onValueChange = { school = it }, isDarkMode = isDarkMode, icon = Icons.Default.School)
-                
+
                 Spacer(modifier = Modifier.height(40.dp))
-                
+
                 Button(
                     enabled = !isSaving,
                     onClick = { onSave(name, username, bio, birthday, location, school) },
@@ -203,7 +243,7 @@ fun EditProfileScreen(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(50.dp))
         }
     }
@@ -220,12 +260,14 @@ fun EditField(
 ) {
     val contentColor = if (isDarkMode) Color.White else Color.Black
     val fieldColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
+    val labelColor = if (isDarkMode) Color.White.copy(alpha = 0.6f) else Color(0xFF7A7A7A)
+    val iconColor = if (isDarkMode) Color.White.copy(alpha = 0.55f) else Color(0xFF7A7A7A)
 
     Column {
         Text(
             text = label,
             fontSize = 13.sp,
-            color = Color.Gray,
+            color = labelColor,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
@@ -233,7 +275,7 @@ fun EditField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
-            leadingIcon = icon?.let { { Icon(it, null, tint = Color.Gray, modifier = Modifier.size(20.dp)) } },
+            leadingIcon = icon?.let { { Icon(it, null, tint = iconColor, modifier = Modifier.size(20.dp)) } },
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = fieldColor,
                 unfocusedContainerColor = fieldColor,

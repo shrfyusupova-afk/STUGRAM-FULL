@@ -25,8 +25,8 @@ const envSchema = z.object({
   BOOTSTRAP_USER_FULL_NAME: z.string().optional(),
   BOOTSTRAP_USER_ROLE: z.enum(["user", "moderator", "admin"]).optional(),
   CLIENT_URL: z.string().default("*"),
-  JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16),
+  JWT_ACCESS_SECRET: z.string().min(64, "JWT_ACCESS_SECRET must be at least 64 characters"),
+  JWT_REFRESH_SECRET: z.string().min(64, "JWT_REFRESH_SECRET must be at least 64 characters"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -64,6 +64,7 @@ const envSchema = z.object({
   MONGO_FORCE_IPV4: z.coerce.boolean().default(true),
   MONGO_STARTUP_DIAGNOSTICS: z.coerce.boolean().default(true),
   MONGO_DNS_SERVERS: z.string().optional(),
+  MONGO_MAX_POOL_SIZE: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(500),
   AUTHENTICATED_RATE_LIMIT_MAX: z.coerce.number().default(5000),
@@ -98,6 +99,7 @@ const envSchema = z.object({
   CHAT_REPLAY_SYNC_ENABLED: z.coerce.boolean().default(true),
   CHAT_REALTIME_ENABLED: z.coerce.boolean().default(true),
   CHAT_RATE_LIMIT_STRICT_MODE: z.coerce.boolean().default(false),
+  SOCKET_IO_REDIS_ADAPTER_ENABLED: z.coerce.boolean().default(false),
 });
 
 const normalizedEnv = {
@@ -207,7 +209,24 @@ if (parsedEnv.OTP_PROVIDER === "email") {
   }
 }
 
+const KNOWN_WEAK_SECRETS = new Set([
+  "stugram-secret-key-2024",
+  "secret",
+  "changeme",
+  "your-secret-key",
+  "jwt-secret",
+  "loadtest-access-secret-32chars-minimum",
+  "loadtest-refresh-secret-32chars-min",
+]);
+
 if (parsedEnv.NODE_ENV === "production") {
+  if (KNOWN_WEAK_SECRETS.has(parsedEnv.JWT_ACCESS_SECRET)) {
+    providerValidationErrors.push("JWT_ACCESS_SECRET is a known weak/default secret — generate a strong random 64+ character value");
+  }
+  if (KNOWN_WEAK_SECRETS.has(parsedEnv.JWT_REFRESH_SECRET)) {
+    providerValidationErrors.push("JWT_REFRESH_SECRET is a known weak/default secret — generate a strong random 64+ character value");
+  }
+
   if (parsedEnv.ALLOW_MEMORY_DB_FALLBACK === true) {
     providerValidationErrors.push("ALLOW_MEMORY_DB_FALLBACK must be disabled in production");
   }
@@ -358,6 +377,7 @@ const env = {
   mongoSocketTimeoutMs: parsedEnv.MONGO_SOCKET_TIMEOUT_MS,
   mongoForceIpv4: parsedEnv.MONGO_FORCE_IPV4,
   mongoStartupDiagnostics: parsedEnv.MONGO_STARTUP_DIAGNOSTICS,
+  mongoMaxPoolSize: parsedEnv.MONGO_MAX_POOL_SIZE || null,
   mongoDnsServers: (parsedEnv.MONGO_DNS_SERVERS || "")
     .split(",")
     .map((item) => item.trim())
@@ -400,6 +420,7 @@ const env = {
   chatRealtimeEnabled: parsedEnv.CHAT_REALTIME_ENABLED,
   socketJoinConversationEnabled: parseBooleanEnv(process.env.SOCKET_JOIN_CONVERSATION_ENABLED, true) !== false,
   chatRateLimitStrictMode: parsedEnv.CHAT_RATE_LIMIT_STRICT_MODE,
+  socketIoRedisAdapterEnabled: parsedEnv.SOCKET_IO_REDIS_ADAPTER_ENABLED,
 };
 
 module.exports = { env };

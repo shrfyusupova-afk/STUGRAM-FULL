@@ -1,10 +1,17 @@
 package com.example.myapplication.data.remote.chat
 
+import com.google.gson.JsonObject
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -19,6 +26,11 @@ interface ChatApi {
     suspend fun createConversation(
         @Body body: CreateConversationRequest
     ): Response<ApiEnvelope<ConversationDto>>
+
+    @GET("api/v1/chats/conversations/{conversationId}")
+    suspend fun getConversationById(
+        @Path("conversationId") conversationId: String
+    ): Response<ConversationResponse>
 
     @GET("api/v1/chats/conversations/{conversationId}/messages")
     suspend fun getMessages(
@@ -37,6 +49,65 @@ interface ChatApi {
     suspend fun markSeen(
         @Path("messageId") messageId: String
     ): Response<ApiEnvelope<MessageDto>>
+
+    @PATCH("api/v1/chats/messages/{messageId}")
+    suspend fun editMessage(
+        @Path("messageId") messageId: String,
+        @Body body: EditMessageRequest
+    ): Response<MessageResponse>
+
+    @POST("api/v1/chats/conversations/{conversationId}/messages/forward")
+    suspend fun forwardMessage(
+        @Path("conversationId") conversationId: String,
+        @Body body: ForwardMessageRequest
+    ): Response<SendMessageResponse>
+
+    @GET("api/v1/chats/conversations/{conversationId}/search")
+    suspend fun searchMessages(
+        @Path("conversationId") conversationId: String,
+        @Query("q") query: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 30
+    ): Response<SearchMessagesResponse>
+
+    @Multipart
+    @POST("api/v1/chats/conversations/{conversationId}/messages/media")
+    suspend fun sendMediaMessage(
+        @Path("conversationId") conversationId: String,
+        @Part media: MultipartBody.Part,
+        @Part("messageType") messageType: RequestBody,
+        @Part("text") text: RequestBody? = null,
+        @Part("clientId") clientId: RequestBody? = null,
+        @Part("replyToMessageId") replyToMessageId: RequestBody? = null
+    ): Response<SendMessageResponse>
+
+    @HTTP(method = "DELETE", path = "api/v1/chats/messages/{messageId}", hasBody = true)
+    suspend fun deleteMessage(
+        @Path("messageId") messageId: String,
+        @Body body: DeleteMessageRequest
+    ): Response<ApiEnvelope<JsonObject>>
+
+    @PATCH("api/v1/chats/messages/{messageId}/reaction")
+    suspend fun setReaction(
+        @Path("messageId") messageId: String,
+        @Body body: ReactionRequest
+    ): Response<MessageResponse>
+
+    @DELETE("api/v1/chats/messages/{messageId}/reaction")
+    suspend fun removeReaction(
+        @Path("messageId") messageId: String
+    ): Response<MessageResponse>
+
+    @POST("api/v1/chats/conversations/{conversationId}/pin/{messageId}")
+    suspend fun pinMessage(
+        @Path("conversationId") conversationId: String,
+        @Path("messageId") messageId: String
+    ): Response<ConversationResponse>
+
+    @DELETE("api/v1/chats/conversations/{conversationId}/pin")
+    suspend fun unpinMessage(
+        @Path("conversationId") conversationId: String
+    ): Response<ConversationResponse>
 
     @GET("api/v1/chats/conversations/{conversationId}/events")
     suspend fun getConversationEvents(

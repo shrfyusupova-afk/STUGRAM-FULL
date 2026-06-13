@@ -28,3 +28,55 @@ val AccentBlue = Color(0xFF00B0FF)
 
 val BrandBlue = Color(0xFF1332DE)
 val PremiumBlueDark = Color(0xFF1332DE)
+
+// ── Light theme palette ───────────────────────────────────────────────
+// Background is intentionally slightly off-white (warm grey) so it does
+// not feel harsh on the eyes — matches the home screen aesthetic.
+val LightBg            = Color(0xFFEDEEF2)
+val LightSurface       = Color(0xFFFFFFFF)
+val LightTextPrimary   = Color(0xFF111418)
+val LightTextSecondary = Color(0xFF6B7280)
+val LightGlassBorder   = Color(0xFFD8DCE3)
+
+// Theme-aware accessors used by auth screens.
+data class AuthPalette(
+    val bg: Color,
+    val surface: Color,
+    val surfaceAlt: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val border: Color,
+    val accent: Color,
+    val accentSoft: Color,
+    val error: Color,
+    val divider: Color
+)
+
+val DarkAuthPalette = AuthPalette(
+    bg = PremiumBg,
+    surface = PremiumSurface,
+    surfaceAlt = Color(0xFF161616),
+    textPrimary = PremiumTextPrimary,
+    textSecondary = PremiumTextSecondary,
+    border = Color(0x33FFFFFF),
+    accent = PremiumBlue,
+    accentSoft = PremiumBlue.copy(alpha = 0.14f),
+    error = PremiumError,
+    divider = Color(0x1AFFFFFF)
+)
+
+val LightAuthPalette = AuthPalette(
+    bg = LightBg,
+    surface = LightSurface,
+    surfaceAlt = Color(0xFFE6E8EF),
+    textPrimary = LightTextPrimary,
+    textSecondary = LightTextSecondary,
+    border = LightGlassBorder,
+    accent = PremiumBlue,
+    accentSoft = PremiumBlue.copy(alpha = 0.10f),
+    error = PremiumError,
+    divider = Color(0x1F000000)
+)
+
+fun authPalette(isDarkMode: Boolean): AuthPalette =
+    if (isDarkMode) DarkAuthPalette else LightAuthPalette

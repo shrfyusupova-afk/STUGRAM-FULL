@@ -128,7 +128,7 @@ const formatProfileHighlight = (highlight) => ({
 });
 
 const getProfileByUsername = async (viewerId, username) => {
-  const user = await User.findOne({ username: username.toLowerCase() }).select(publicProfileProjection);
+  const user = await User.findOne({ username: username.toLowerCase(), isDeleted: { $ne: true } }).select(publicProfileProjection);
   if (!user) {
     throw new ApiError(404, "Profile not found");
   }
@@ -267,7 +267,7 @@ const uploadBanner = async (currentUserId, file) => {
 };
 
 const getProfileReels = async (viewerId, username, query = {}) => {
-  const owner = await User.findOne({ username: username.toLowerCase() }).select(publicProfileProjection);
+  const owner = await User.findOne({ username: username.toLowerCase(), isDeleted: { $ne: true } }).select(publicProfileProjection);
   if (!owner) {
     throw new ApiError(404, "User not found");
   }
@@ -304,7 +304,7 @@ const getProfileReels = async (viewerId, username, query = {}) => {
 };
 
 const getProfileTaggedPosts = async (viewerId, username, query = {}) => {
-  const owner = await User.findOne({ username: username.toLowerCase() }).select(publicProfileProjection);
+  const owner = await User.findOne({ username: username.toLowerCase(), isDeleted: { $ne: true } }).select(publicProfileProjection);
   if (!owner) {
     throw new ApiError(404, "User not found");
   }
@@ -345,7 +345,7 @@ const getProfileTaggedPosts = async (viewerId, username, query = {}) => {
 };
 
 const getProfileSummary = async (viewerId, username) => {
-  const owner = await User.findOne({ username: username.toLowerCase() }).select(publicProfileProjection);
+  const owner = await User.findOne({ username: username.toLowerCase(), isDeleted: { $ne: true } }).select(publicProfileProjection);
   if (!owner) {
     throw new ApiError(404, "User not found");
   }
@@ -369,7 +369,7 @@ const getProfileSummary = async (viewerId, username) => {
 };
 
 const getProfileHighlights = async (viewerId, username) => {
-  const owner = await User.findOne({ username: username.toLowerCase() }).select(publicProfileProjection);
+  const owner = await User.findOne({ username: username.toLowerCase(), isDeleted: { $ne: true } }).select(publicProfileProjection);
   if (!owner) {
     throw new ApiError(404, "User not found");
   }

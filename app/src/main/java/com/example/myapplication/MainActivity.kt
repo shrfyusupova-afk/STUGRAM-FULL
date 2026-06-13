@@ -1,6 +1,5 @@
 package com.example.myapplication
 
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -15,26 +14,30 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import com.example.myapplication.core.storage.TokenManager
 import com.example.myapplication.data.local.chat.ChatDatabase
 import com.example.myapplication.data.local.chat.ChatOutboxScheduler
 import com.example.myapplication.data.remote.AuthSession
+import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.chat.ChatSocketManager
 import com.example.myapplication.navigation.AuthNavGraph
 import com.example.myapplication.ui.theme.MyApplicationTheme
-import java.security.MessageDigest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        printSHA1()
-        enableEdgeToEdge()
-        
+        try { enableEdgeToEdge() } catch (_: Throwable) {}
+
+        try {
+            RetrofitClient.initialize(TokenManager(applicationContext))
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Failed to initialize RetrofitClient/TokenManager", e)
+        }
+
         setContent {
-            // Tizim mavzusini boshlang'ich qiymat sifatida olamiz
             val systemTheme = isSystemInDarkTheme()
-            // rememberSaveable holatni saqlab qoladi (ekran aylanganda ham)
             val isDarkMode = rememberSaveable { mutableStateOf(systemTheme) }
 
             MyApplicationTheme(darkTheme = isDarkMode.value) {
@@ -53,50 +56,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        ChatSocketManager.updateAccessToken(AuthSession.accessToken)
         lifecycleScope.launch {
-            val hasPending = ChatDatabase.getInstance(applicationContext)
-                .chatPendingMessageDao()
-                .hasPending()
-            if (hasPending) {
-                ChatOutboxScheduler.schedule(applicationContext)
-            }
-        }
-    }
+            try {
+                val tokenManager = TokenManager(applicationContext)
+                val storedToken = tokenManager.accessToken.first()
+                if (storedToken != null && AuthSession.accessToken == null) {
+                    AuthSession.setToken(storedToken)
+                }
+                ChatSocketManager.updateAccessToken(AuthSession.accessToken)
 
-    private fun printSHA1() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val signingInfo = info.signingInfo
-                if (signingInfo != null) {
-                    val signatures = if (signingInfo.hasMultipleSigners()) {
-                        signingInfo.apkContentsSigners
-                    } else {
-                        signingInfo.signingCertificateHistory
-                    }
-                    if (signatures != null) {
-                        for (signature in signatures) {
-                            val md = MessageDigest.getInstance("SHA")
-                            md.update(signature.toByteArray())
-                            val sha1 = md.digest().joinToString(":") { "%02X".format(it) }
-                            Log.d("MY_SHA1", "SHA-1: $sha1")
-                        }
-                    }
+                val hasPending = ChatDatabase.getInstance(applicationContext)
+                    .chatPendingMessageDao()
+                    .hasPending()
+                if (hasPending) {
+                    ChatOutboxScheduler.schedule(applicationContext)
                 }
-            } else {
-                @Suppress("DEPRECATION")
-                val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-                @Suppress("DEPRECATION")
-                info.signatures?.forEach { signature ->
-                    val md = MessageDigest.getInstance("SHA")
-                    md.update(signature.toByteArray())
-                    val sha1 = md.digest().joinToString(":") { "%02X".format(it) }
-                    Log.d("MY_SHA1", "SHA-1: $sha1")
-                }
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "onStart background init failed", e)
             }
-        } catch (e: Exception) {
-            Log.e("MY_SHA1", "Error printing SHA-1", e)
         }
     }
 }

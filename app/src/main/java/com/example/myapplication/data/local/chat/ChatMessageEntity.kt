@@ -25,5 +25,20 @@ data class ChatMessageEntity(
     val serverSequence: Long = 0L,
     val createdAt: Long,
     val updatedAt: Long,
-    val rawJson: String? = null
+    val rawJson: String? = null,
+    val reactionsJson: String? = null,
+    val replyToId: String? = null,
+    val replyToText: String? = null,
+    val replyToSenderName: String? = null,
+    val replyToMine: Boolean = false,
+    val replyToMessageType: String? = null,
+    val messageType: String = "text",
+    val mediaUrl: String? = null,
+    val mediaType: String? = null,
+    val mediaFileName: String? = null,
+    val mediaFileSize: Long? = null,
+    val mediaMimeType: String? = null,
+    val mediaDurationSeconds: Int? = null,
+    val editedAt: Long? = null,
+    val forwardedFromSenderId: String? = null
 )

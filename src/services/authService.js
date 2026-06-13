@@ -460,8 +460,15 @@ const login = async ({ identityOrUsername, password }, meta = {}) => {
 };
 
 const forgotPassword = async (identity, meta = {}) => {
-  const normalizedIdentity = normalizeIdentity(identity);
-  const user = await User.findOne({ identity: normalizedIdentity }).select("_id identity");
+  const inputIdentity = normalizeIdentity(identity);
+
+  // Resolve user: support both email/phone and username inputs
+  let user;
+  if (inputIdentity.includes("@") || inputIdentity.startsWith("+")) {
+    user = await User.findOne({ identity: inputIdentity }).select("_id identity");
+  } else {
+    user = await User.findOne({ username: inputIdentity }).select("_id identity");
+  }
 
   if (!user) {
     await createAuditLog({
@@ -470,10 +477,33 @@ const forgotPassword = async (identity, meta = {}) => {
       status: "failure",
       ipAddress: meta.ipAddress || null,
       userAgent: meta.userAgent || null,
-      details: { identity: normalizedIdentity, reason: "user_not_found" },
+      details: { identity: inputIdentity, reason: "user_not_found" },
     });
 
-    return buildForgotPasswordResponse(normalizedIdentity, null, undefined);
+    return buildForgotPasswordResponse(inputIdentity, null, undefined);
+  }
+
+  // Always use the user's canonical identity (email/phone) for OTP operations
+  const normalizedIdentity = user.identity;
+
+  // Mobile app uses 6-digit OTP flow — generate and email the code so the
+  // client can complete reset by entering it on the next screen.
+  await OtpCode.deleteMany({ identity: normalizedIdentity, purpose: "forgot_password" });
+  const otp = generateOtp();
+  const otpExpiresAt = new Date(Date.now() + env.otpExpiresMinutes * 60 * 1000);
+  await OtpCode.create({
+    identity: normalizedIdentity,
+    purpose: "forgot_password",
+    codeHash: hashOtp(normalizedIdentity, otp),
+    expiresAt: otpExpiresAt,
+  });
+  try {
+    await sendOtpForIdentity(normalizedIdentity, otp);
+  } catch (error) {
+    logger.error("Forgot-password OTP delivery failed", {
+      identity: maskIdentity(normalizedIdentity),
+      message: error.message,
+    });
   }
   const { rawToken, expiresAt } = await issuePasswordResetToken({
     user,
@@ -577,8 +607,16 @@ const resetPassword = async (payload, meta = {}) => {
     return { reset: true };
   }
 
-  const normalizedIdentity = normalizeIdentity(identity);
-  const user = await User.findOne({ identity: normalizedIdentity }).select("_id accountId passwordHash");
+  const inputIdentity = normalizeIdentity(identity);
+
+  // Resolve user: support both email/phone and username inputs
+  let user;
+  if (inputIdentity.includes("@") || inputIdentity.startsWith("+")) {
+    user = await User.findOne({ identity: inputIdentity }).select("_id accountId passwordHash identity");
+  } else {
+    user = await User.findOne({ username: inputIdentity }).select("_id accountId passwordHash identity");
+  }
+
   if (!user) {
     await createAuditLog({
       action: "auth.reset_password",
@@ -591,6 +629,9 @@ const resetPassword = async (payload, meta = {}) => {
     throw new ApiError(400, "Invalid OTP or identity");
   }
 
+  // Use canonical identity for OTP lookup (OTP was created against the email, not the username)
+  const normalizedIdentity = user.identity;
+
   if (password !== confirmPassword) {
     throw new ApiError(400, "Passwords do not match");
   }
@@ -602,7 +643,6 @@ const resetPassword = async (payload, meta = {}) => {
   if (
     !otpRecord ||
     otpRecord.expiresAt < new Date() ||
-    !otpRecord.isVerified ||
     otpRecord.codeHash !== hashOtp(normalizedIdentity, otp)
   ) {
     await createAuditLog({

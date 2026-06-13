@@ -19,10 +19,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 /**
  * HomeScreen - Loyihaning asosiy mantiqiy markazi.
@@ -36,6 +36,11 @@ fun HomeScreen(
     onNavigateToChat: (String, Boolean) -> Unit,
     onNavigateToGroupChat: (String) -> Unit,
     onNavigateToProfile: (String) -> Unit,
+    onNavigateToCreatePost: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToSaved: () -> Unit = {},
+    onNavigateToHashtag: (String) -> Unit = {},
+    onNavigateToFollowList: (String, String) -> Unit = { _, _ -> },
     viewModel: HomeViewModel = viewModel()
 ) {
     val backgroundColor = if (isDarkMode) GlobalBackgroundColor else Color(0xFFF2F2F2)
@@ -43,20 +48,30 @@ fun HomeScreen(
     val contentColor = if (isDarkMode) Color.White else Color.Black
 
     val listState = rememberLazyListState()
+    var commentsForPost by remember { mutableStateOf<PostData?>(null) }
+    var moreMenuForPost by remember { mutableStateOf<PostData?>(null) }
+    var editingPost by remember { mutableStateOf<PostData?>(null) }
+    var deletingPost by remember { mutableStateOf<PostData?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
         Scaffold(
             containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 // Kamera yoki Story ochiq bo'lsa navigatsiyani yashiramiz
                 if (!viewModel.showCameraView && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
-                    GlassSlidingNavigation(
-                        selectedTab = viewModel.currentTab,
-                        onTabSelected = { viewModel.onTabSelected(it) },
-                        isDarkMode = isDarkMode,
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        GlassSlidingNavigation(
+                            selectedTab = viewModel.currentTab,
+                            onTabSelected = { viewModel.onTabSelected(it) },
+                            onCreatePost = onNavigateToCreatePost,
+                            isDarkMode = isDarkMode,
+                            modifier = Modifier.padding(bottom = 24.dp)
+                        )
+                    }
                 }
             }
         ) { paddingValues ->
@@ -65,7 +80,17 @@ fun HomeScreen(
                     .fillMaxSize()
                     .background(if (viewModel.currentTab == 2) Color.Black else backgroundColor)
             ) {
-                Crossfade(targetState = viewModel.currentTab, label = "main_nav") { targetTab ->
+                AnimatedContent(
+                    targetState = viewModel.currentTab,
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        val spec = tween<IntOffset>(260, easing = FastOutSlowInEasing)
+                        val fadeSpec = tween<Float>(200, easing = FastOutSlowInEasing)
+                        (slideInHorizontally(spec) { dir * 52 } + fadeIn(fadeSpec))
+                            .togetherWith(slideOutHorizontally(spec) { -dir * 52 } + fadeOut(fadeSpec))
+                    },
+                    label = "main_nav"
+                ) { targetTab ->
                     when (targetTab) {
                         0 -> HomeTabScreen(
                             posts = viewModel.posts,
@@ -77,11 +102,23 @@ fun HomeScreen(
                             contentColor = contentColor,
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
-                            onCreateClick = { viewModel.openCreatePostModal() },
-                            onCommentsClick = { viewModel.toggleComments(true) },
+                            onCreateClick = onNavigateToCreatePost,
+                            onCommentsClick = { post -> commentsForPost = post },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
-                            listState = listState
+                            listState = listState,
+                            myAvatar = viewModel.myAvatar,
+                            onAddStoryClick = onNavigateToCreatePost,
+                            onProfileClick = onNavigateToProfile,
+                            onPostMoreClick = { post -> moreMenuForPost = post },
+                            onNotificationsClick = onNavigateToNotifications,
+                            onSavedClick = onNavigateToSaved,
+                            onLoadMore = { viewModel.loadMoreIfNeeded() },
+                            isLoadingMore = viewModel.isLoadingMore,
+                            hasMore = viewModel.hasMorePosts,
+                            onHashtagClick = onNavigateToHashtag,
+                            onMentionClick = onNavigateToProfile,
+                            onError = { msg -> coroutineScope.launch { snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short) } }
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -89,7 +126,12 @@ fun HomeScreen(
                             onRefresh = { viewModel.refreshSearch() },
                             onOpenProfile = onNavigateToProfile
                         )
-                        2 -> AlphaReelsDisabledScreen(isDarkMode = isDarkMode)
+                        2 -> ReelsScreen(
+                            accentBlue = accentBlue,
+                            isDarkMode = isDarkMode,
+                            onProfileClick = onNavigateToProfile,
+                            onHashtagClick = onNavigateToHashtag
+                        )
                         3 -> MessagesScreen(
                             isDarkMode = isDarkMode,
                             onBack = { viewModel.onTabSelected(0) },
@@ -104,19 +146,33 @@ fun HomeScreen(
                             isDarkMode = isDarkMode,
                             isRefreshing = viewModel.isProfileRefreshing,
                             onRefresh = { viewModel.refreshProfile() },
-                            onBack = { viewModel.onTabSelected(0) }
+                            onBack = { viewModel.onTabSelected(0) },
+                            onOpenFollowList = onNavigateToFollowList,
+                            onOpenChat = { username -> onNavigateToChat(username, false) }
                         )
                     }
                 }
 
                 // Reels shaffof navigatsiya
                 if (viewModel.currentTab == 2 && !viewModel.showCameraView && viewModel.activeStoryProfileIndex == null) {
-                    Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
+                    val reelsNavAlpha by animateFloatAsState(
+                        targetValue = 0.82f,
+                        animationSpec = tween(300),
+                        label = "reels_nav_alpha"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         GlassSlidingNavigation(
                             selectedTab = viewModel.currentTab,
                             onTabSelected = { viewModel.onTabSelected(it) },
+                            onCreatePost = onNavigateToCreatePost,
                             isDarkMode = true,
-                            modifier = Modifier.graphicsLayer(alpha = 0.8f)
+                            modifier = Modifier.graphicsLayer(alpha = reelsNavAlpha)
                         )
                     }
                 }
@@ -138,11 +194,15 @@ fun HomeScreen(
             targetState = viewModel.activeStoryProfileIndex,
             transitionSpec = {
                 if (targetState != null) {
-                    (slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(400)) + scaleIn(initialScale = 0.85f, transformOrigin = TransformOrigin.Center))
-                        .togetherWith(fadeOut(tween(200)))
+                    val enterSpec = tween<Float>(320, easing = FastOutSlowInEasing)
+                    val enterOffset = tween<IntOffset>(320, easing = FastOutSlowInEasing)
+                    (slideInVertically(enterOffset) { it / 2 } + fadeIn(enterSpec) + scaleIn(enterSpec, initialScale = 0.88f, transformOrigin = TransformOrigin.Center))
+                        .togetherWith(fadeOut(tween(180, easing = FastOutSlowInEasing)))
                 } else {
-                    fadeIn(tween(200))
-                        .togetherWith(slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(tween(400)) + scaleOut(targetScale = 0.85f, transformOrigin = TransformOrigin.Center))
+                    val exitSpec = tween<Float>(260, easing = FastOutSlowInEasing)
+                    val exitOffset = tween<IntOffset>(260, easing = FastOutSlowInEasing)
+                    fadeIn(tween(180, easing = FastOutSlowInEasing))
+                        .togetherWith(slideOutVertically(exitOffset) { it / 2 } + fadeOut(exitSpec) + scaleOut(exitSpec, targetScale = 0.88f, transformOrigin = TransformOrigin.Center))
                 }
             },
             label = "story_modal"
@@ -161,7 +221,62 @@ fun HomeScreen(
             }
         }
 
-        // Comments bottom sheet is hidden in alpha until backend-backed comments flow is wired.
+        // Comments sheet — pasdan tepaga sirpanib chiqadi
+        commentsForPost?.let { post ->
+            CommentsBottomSheet(
+                postId = post.id,
+                initialCount = post.comments,
+                visible = true,
+                accent = accentBlue,
+                onDismiss = { commentsForPost = null }
+            )
+        }
+
+        // Post "⋯" menu sheet — Edit / Delete (o'z postlari uchun) yoki Report / Block
+        moreMenuForPost?.let { post ->
+            val isOwn = post.user.equals(viewModel.myUsername, ignoreCase = true) &&
+                viewModel.myUsername.isNotBlank()
+            PostMoreMenuSheet(
+                isOwn = isOwn,
+                postId = post.id,
+                onDismiss = { moreMenuForPost = null },
+                onEdit = {
+                    editingPost = post
+                    moreMenuForPost = null
+                },
+                onDelete = {
+                    deletingPost = post
+                    moreMenuForPost = null
+                },
+                onBlock = {
+                    viewModel.blockUserOfPost(post)
+                    moreMenuForPost = null
+                }
+            )
+        }
+
+        // Edit caption dialog
+        editingPost?.let { post ->
+            EditCaptionDialog(
+                initialCaption = post.caption,
+                onConfirm = { newCaption ->
+                    viewModel.updatePostCaption(post.id, newCaption)
+                    editingPost = null
+                },
+                onDismiss = { editingPost = null }
+            )
+        }
+
+        // Delete confirmation
+        deletingPost?.let { post ->
+            ConfirmDeleteDialog(
+                onConfirm = {
+                    viewModel.deletePost(post.id)
+                    deletingPost = null
+                },
+                onDismiss = { deletingPost = null }
+            )
+        }
     }
 }
 
@@ -207,33 +322,6 @@ private fun CreatePostDialog(
             ) { Text("Cancel") }
         }
     )
-}
-
-@Composable
-private fun AlphaReelsDisabledScreen(isDarkMode: Boolean) {
-    val bg = if (isDarkMode) Color.Black else Color.White
-    val fg = if (isDarkMode) Color.White else Color.Black
-    Box(
-        modifier = Modifier.fillMaxSize().background(bg),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(
-                text = "Reels is disabled for this alpha",
-                color = fg,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "It will be enabled after backend-backed reels reliability is ready.",
-                color = fg.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
 }
 
 @Composable

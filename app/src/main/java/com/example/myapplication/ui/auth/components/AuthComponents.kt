@@ -51,11 +51,11 @@ import com.example.myapplication.ui.theme.*
 import kotlin.math.roundToInt
 
 @Composable
-fun PremiumLogo(modifier: Modifier = Modifier) {
+fun PremiumLogo(modifier: Modifier = Modifier, isDarkMode: Boolean = true) {
     val infiniteTransition = rememberInfiniteTransition(label = "logo_glow")
     val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 0.8f,
+        initialValue = 0.35f,
+        targetValue = 0.75f,
         animationSpec = infiniteRepeatable(
             animation = tween(2500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -71,27 +71,44 @@ fun PremiumLogo(modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center,
             modifier = Modifier.padding(10.dp)
         ) {
-            // Intense Glow Effect
+            // Soft outer glow
             Box(
                 modifier = Modifier
-                    .size(90.dp)
-                    .blur(40.dp)
+                    .size(110.dp)
+                    .blur(46.dp)
                     .background(
                         brush = Brush.radialGradient(
                             colors = listOf(PremiumBlue.copy(alpha = glowAlpha), Color.Transparent),
-                            radius = 200f
+                            radius = 220f
                         ),
                         shape = CircleShape
                     )
             )
-            
+
+            // Liquid glass ring around the logo
+            val ringColor = if (isDarkMode) Color.White.copy(0.10f) else Color.Black.copy(0.05f)
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .background(ringColor, CircleShape)
+                    .border(
+                        BorderStroke(
+                            1.dp,
+                            Brush.linearGradient(
+                                listOf(PremiumBlue.copy(0.6f), Color.White.copy(0.0f))
+                            )
+                        ),
+                        CircleShape
+                    )
+            )
+
             Image(
                 painter = painterResource(id = R.drawable.logo),
                 contentDescription = "App Logo",
                 modifier = Modifier
-                    .size(85.dp)
+                    .size(82.dp)
                     .graphicsLayer {
-                        shadowElevation = 30f
+                        shadowElevation = 28f
                         shape = CircleShape
                     }
             )
@@ -110,13 +127,15 @@ fun PremiumTextField(
     errorMessage: String? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: @Composable (() -> Unit)? = null,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val glowColor by animateColorAsState(
-        targetValue = if (isFocused) PremiumBlue.copy(0.1f) else Color.Transparent,
+        targetValue = if (isFocused) p.accent.copy(0.10f) else Color.Transparent,
         label = "glow"
     )
 
@@ -128,16 +147,16 @@ fun PremiumTextField(
                 .fillMaxWidth()
                 .height(64.dp)
                 .background(glowColor, RoundedCornerShape(20.dp)),
-            textStyle = TextStyle(color = PremiumTextPrimary, fontSize = 16.sp),
-            label = if (label.isNotEmpty()) { { Text(label, color = PremiumTextSecondary.copy(0.7f), fontSize = 12.sp) } } else null,
-            placeholder = { Text(placeholder, color = PremiumTextSecondary.copy(0.4f), fontSize = 15.sp) },
-            leadingIcon = { 
+            textStyle = TextStyle(color = p.textPrimary, fontSize = 16.sp),
+            label = if (label.isNotEmpty()) { { Text(label, color = p.textSecondary.copy(0.75f), fontSize = 12.sp) } } else null,
+            placeholder = { Text(placeholder, color = p.textSecondary.copy(0.45f), fontSize = 15.sp) },
+            leadingIcon = {
                 Icon(
-                    imageVector = leadingIcon, 
-                    contentDescription = null, 
-                    tint = if (isFocused) PremiumBlue else PremiumTextSecondary.copy(0.5f),
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = if (isFocused) p.accent else p.textSecondary.copy(0.6f),
                     modifier = Modifier.size(24.dp)
-                ) 
+                )
             },
             trailingIcon = trailingIcon,
             shape = RoundedCornerShape(20.dp),
@@ -147,18 +166,20 @@ fun PremiumTextField(
             keyboardOptions = keyboardOptions,
             interactionSource = interactionSource,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = if (isError) PremiumError else PremiumBlue,
-                unfocusedBorderColor = if (isError) PremiumError.copy(0.4f) else PremiumTextSecondary.copy(0.1f),
-                focusedContainerColor = PremiumSurface,
-                unfocusedContainerColor = PremiumSurface,
-                cursorColor = PremiumBlue,
-                errorBorderColor = PremiumError
+                focusedTextColor = p.textPrimary,
+                unfocusedTextColor = p.textPrimary,
+                focusedBorderColor = if (isError) p.error else p.accent,
+                unfocusedBorderColor = if (isError) p.error.copy(0.4f) else p.border.copy(0.6f),
+                focusedContainerColor = p.surface,
+                unfocusedContainerColor = p.surface,
+                cursorColor = p.accent,
+                errorBorderColor = p.error
             )
         )
         if (isError && errorMessage != null) {
             Text(
                 text = errorMessage,
-                color = PremiumError,
+                color = p.error,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = 14.dp, top = 4.dp)
             )
@@ -245,8 +266,10 @@ fun PremiumSocialButton(
     painter: androidx.compose.ui.graphics.painter.Painter,
     text: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -261,10 +284,10 @@ fun PremiumSocialButton(
             .height(56.dp)
             .scale(scale),
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, PremiumTextSecondary.copy(0.1f)),
+        border = BorderStroke(1.dp, p.border.copy(0.6f)),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = PremiumSurface,
-            contentColor = PremiumTextPrimary
+            containerColor = p.surface,
+            contentColor = p.textPrimary
         ),
         interactionSource = interactionSource,
         contentPadding = PaddingValues(horizontal = 24.dp)
@@ -295,13 +318,16 @@ fun PremiumSocialButton(
 fun TabSwitch(
     selectedIndex: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .background(PremiumSurface, RoundedCornerShape(27.dp))
+            .background(p.surface, RoundedCornerShape(27.dp))
+            .border(1.dp, p.border.copy(0.5f), RoundedCornerShape(27.dp))
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -309,10 +335,10 @@ fun TabSwitch(
         tabs.forEachIndexed { index, title ->
             val isSelected = selectedIndex == index
             val animatedBgColor by animateColorAsState(
-                targetValue = if (isSelected) PremiumBg else Color.Transparent,
+                targetValue = if (isSelected) p.accent else Color.Transparent,
                 label = "tab_bg"
             )
-            
+
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -324,7 +350,7 @@ fun TabSwitch(
             ) {
                 Text(
                     text = title,
-                    color = if (isSelected) PremiumTextPrimary else PremiumTextSecondary.copy(0.7f),
+                    color = if (isSelected) Color.White else p.textSecondary.copy(0.75f),
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     fontSize = 15.sp
                 )
@@ -334,7 +360,8 @@ fun TabSwitch(
 }
 
 @Composable
-fun LoadingOverlay() {
+fun LoadingOverlay(isDarkMode: Boolean = true) {
+    val p = authPalette(isDarkMode)
     Dialog(
         onDismissRequest = { },
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
@@ -342,13 +369,13 @@ fun LoadingOverlay() {
         Box(
             modifier = Modifier
                 .size(110.dp)
-                .background(PremiumSurface, RoundedCornerShape(28.dp))
-                .border(1.dp, PremiumTextSecondary.copy(0.1f), RoundedCornerShape(28.dp)),
+                .background(p.surface, RoundedCornerShape(28.dp))
+                .border(1.dp, p.border.copy(0.4f), RoundedCornerShape(28.dp)),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(
                 modifier = Modifier.size(44.dp),
-                color = PremiumBlue,
+                color = p.accent,
                 strokeWidth = 4.dp
             )
         }
@@ -362,8 +389,10 @@ fun AuthDropdownField(
     onValueChange: (String) -> Unit,
     label: String,
     options: List<String>,
-    leadingIcon: ImageVector? = null
+    leadingIcon: ImageVector? = null,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     var expanded by remember { mutableStateOf(false) }
 
     ExposedDropdownMenuBox(
@@ -375,30 +404,33 @@ fun AuthDropdownField(
             value = value,
             onValueChange = {},
             readOnly = true,
-            label = { Text(label, color = PremiumTextSecondary, fontSize = 12.sp) },
-            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null, tint = PremiumBlue, modifier = Modifier.size(20.dp)) } },
+            textStyle = TextStyle(color = p.textPrimary, fontSize = 16.sp),
+            label = { Text(label, color = p.textSecondary, fontSize = 12.sp) },
+            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null, tint = p.accent, modifier = Modifier.size(20.dp)) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PremiumBlue,
-                unfocusedBorderColor = PremiumTextSecondary.copy(0.1f),
-                focusedContainerColor = PremiumSurface,
-                unfocusedContainerColor = PremiumSurface,
-                cursorColor = PremiumBlue
+                focusedTextColor = p.textPrimary,
+                unfocusedTextColor = p.textPrimary,
+                focusedBorderColor = p.accent,
+                unfocusedBorderColor = p.border.copy(0.6f),
+                focusedContainerColor = p.surface,
+                unfocusedContainerColor = p.surface,
+                cursorColor = p.accent
             )
         )
 
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(PremiumSurface)
+            modifier = Modifier.background(p.surface)
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option, color = PremiumTextPrimary) },
+                    text = { Text(option, color = p.textPrimary) },
                     onClick = {
                         onValueChange(option)
                         expanded = false
@@ -480,79 +512,88 @@ fun OtpInputField(
     otpText: String,
     onOtpTextChange: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    otpCount: Int = 4
+    otpCount: Int = 4,
+    isDarkMode: Boolean = true
 ) {
+    val p = authPalette(isDarkMode)
     val focusRequesters = remember { List(otpCount) { FocusRequester() } }
 
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        for (i in 0 until otpCount) {
-            val char = if (i < otpText.length) otpText[i].toString() else ""
-            val isFocused = otpText.length == i
+    // Match available width — 6 boxes with gaps fit on small phones too.
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val gap = 8.dp
+        val totalGaps = (otpCount - 1) * gap.value
+        val maxBoxSize = ((maxWidth.value - totalGaps) / otpCount).coerceAtMost(56f).dp
 
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .padding(4.dp)
-                    .background(
-                        if (char.isNotEmpty() || isFocused) PremiumBlue.copy(alpha = 0.05f) else PremiumSurface,
-                        RoundedCornerShape(16.dp)
-                    )
-                    .border(
-                        1.dp,
-                        if (isFocused) PremiumBlue else PremiumTextSecondary.copy(alpha = 0.1f),
-                        RoundedCornerShape(16.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                BasicTextField(
-                    value = char,
-                    onValueChange = { newValue ->
-                        if (newValue.length <= 1) {
-                            val newOtp = if (i < otpText.length) {
-                                otpText.replaceRange(i, i + 1, newValue)
-                            } else {
-                                otpText + newValue
-                            }
-                            if (newOtp.length <= otpCount) {
-                                onOtpTextChange(newOtp, newOtp.length == otpCount)
-                                if (newValue.isNotEmpty() && i < otpCount - 1) {
-                                    focusRequesters[i + 1].requestFocus()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (i in 0 until otpCount) {
+                val char = if (i < otpText.length) otpText[i].toString() else ""
+                val isFocused = otpText.length == i
+
+                Box(
+                    modifier = Modifier
+                        .size(maxBoxSize)
+                        .background(
+                            if (char.isNotEmpty() || isFocused) p.accent.copy(alpha = 0.08f) else p.surface,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .border(
+                            1.5.dp,
+                            if (isFocused) p.accent else p.border.copy(alpha = 0.6f),
+                            RoundedCornerShape(16.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BasicTextField(
+                        value = char,
+                        onValueChange = { newValue ->
+                            if (newValue.length <= 1) {
+                                val newOtp = if (i < otpText.length) {
+                                    otpText.replaceRange(i, i + 1, newValue)
+                                } else {
+                                    otpText + newValue
+                                }
+                                if (newOtp.length <= otpCount) {
+                                    onOtpTextChange(newOtp, newOtp.length == otpCount)
+                                    if (newValue.isNotEmpty() && i < otpCount - 1) {
+                                        focusRequesters[i + 1].requestFocus()
+                                    }
                                 }
                             }
-                        }
-                    },
-                    modifier = Modifier
-                        .focusRequester(focusRequesters[i])
-                        .onKeyEvent { event ->
-                            if (event.key == Key.Backspace && char.isEmpty() && i > 0) {
-                                focusRequesters[i - 1].requestFocus()
-                                val newOtp = otpText.take(i - 1) + otpText.drop(i)
-                                onOtpTextChange(newOtp, false)
-                                true
-                            } else {
-                                false
-                            }
                         },
-                    textStyle = TextStyle(
-                        color = PremiumTextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-                
-                if (char.isEmpty() && !isFocused) {
-                    Box(
                         modifier = Modifier
-                            .size(8.dp)
-                            .background(PremiumTextSecondary.copy(alpha = 0.2f), CircleShape)
+                            .focusRequester(focusRequesters[i])
+                            .onKeyEvent { event ->
+                                if (event.key == Key.Backspace && char.isEmpty() && i > 0) {
+                                    focusRequesters[i - 1].requestFocus()
+                                    val newOtp = otpText.take(i - 1) + otpText.drop(i)
+                                    onOtpTextChange(newOtp, false)
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                        textStyle = TextStyle(
+                            color = p.textPrimary,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(p.accent),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
                     )
+
+                    if (char.isEmpty() && !isFocused) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(p.textSecondary.copy(alpha = 0.25f), CircleShape)
+                        )
+                    }
                 }
             }
         }

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Privacy Policy — StuGram</title>
+<meta name="description" content="StuGram Privacy Policy — how we collect, use, store, and protect your personal information." />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <div class="container">
+    <a class="logo" href="./">StuGram</a>
+    <nav>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="delete-account.html">Delete Account</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Last updated: 18 May 2026</p>
+
+  <h2>1. Introduction</h2>
+  <p>StuGram ("we", "our", or "us") operates a social networking application for students ("Service"). This Privacy Policy explains how we collect, use, store, and protect your personal information when you use our mobile application and backend services.</p>
+  <p>By creating an account or using StuGram, you agree to the collection and use of information in accordance with this policy.</p>
+
+  <h2>2. Information We Collect</h2>
+
+  <h3>2.1 Account Information</h3>
+  <ul>
+    <li><strong>Full name</strong> — provided during registration</li>
+    <li><strong>Email address or phone number</strong> — used as account identity</li>
+    <li><strong>Username</strong> — chosen by you; visible to other users</li>
+    <li><strong>Password</strong> — stored as a bcrypt hash (we cannot recover it)</li>
+    <li><strong>Date of birth</strong> — optional; used for age-appropriate content</li>
+    <li><strong>School, grade, group, region, district</strong> — optional; used for student community features</li>
+  </ul>
+
+  <h3>2.2 Content You Create</h3>
+  <ul>
+    <li><strong>Posts</strong> (photos, videos, captions, hashtags) — stored on our servers and Cloudinary</li>
+    <li><strong>Stories</strong> — stored temporarily; automatically deleted after 24 hours</li>
+    <li><strong>Direct messages and group chats</strong> — stored on our servers</li>
+    <li><strong>Comments, likes, reactions</strong> — stored on our servers</li>
+    <li><strong>Profile picture and banner</strong> — uploaded to Cloudinary CDN</li>
+  </ul>
+
+  <h3>2.3 Usage Data</h3>
+  <ul>
+    <li><strong>Login timestamps</strong> and IP addresses — for security and suspicious activity detection</li>
+    <li><strong>Device information</strong> — device ID, user agent string — for session management</li>
+    <li><strong>Last seen timestamp</strong> — used to show online status</li>
+  </ul>
+
+  <h3>2.4 Technical Data</h3>
+  <ul>
+    <li><strong>Crash reports</strong> — collected via Sentry; includes device model, OS version, stack traces</li>
+    <li><strong>Session tokens</strong> — JWT access and refresh tokens stored securely in device encrypted storage</li>
+  </ul>
+
+  <h2>3. How We Use Your Information</h2>
+  <table>
+    <thead><tr><th>Purpose</th><th>Legal Basis</th></tr></thead>
+    <tbody>
+      <tr><td>Providing the social network service</td><td>Contract performance</td></tr>
+      <tr><td>Account security (suspicious login detection, session management)</td><td>Legitimate interest</td></tr>
+      <tr><td>Showing your profile to followers</td><td>Contract performance</td></tr>
+      <tr><td>Sending OTP and password reset emails</td><td>Contract performance</td></tr>
+      <tr><td>Crash reporting and service improvement</td><td>Legitimate interest</td></tr>
+      <tr><td>Compliance with legal obligations</td><td>Legal obligation</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    We <strong>do not</strong> sell your personal data to third parties.<br>
+    We <strong>do not</strong> use your data for targeted advertising.
+  </div>
+
+  <h2>4. Data Sharing</h2>
+  <p>We share your data only with the following processors, who are contractually bound to protect it:</p>
+  <table>
+    <thead><tr><th>Recipient</th><th>Purpose</th><th>Data Shared</th></tr></thead>
+    <tbody>
+      <tr><td>MongoDB Atlas (MongoDB Inc.)</td><td>Database storage</td><td>All user data</td></tr>
+      <tr><td>Cloudinary (Cloudinary Ltd.)</td><td>Media storage and delivery</td><td>Photos, videos, avatars</td></tr>
+      <tr><td>Sentry (Functional Software, Inc.)</td><td>Crash reporting</td><td>Device info, stack traces, anonymised user ID</td></tr>
+      <tr><td>Brevo / Resend</td><td>Email delivery (OTP, password reset)</td><td>Email address, OTP code</td></tr>
+      <tr><td>Google</td><td>OAuth sign-in</td><td>Google account ID, name, email</td></tr>
+      <tr><td>Render (Render Services, Inc.)</td><td>Backend hosting</td><td>Processed by our servers</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Data Retention</h2>
+  <table>
+    <thead><tr><th>Data Type</th><th>Retention Period</th></tr></thead>
+    <tbody>
+      <tr><td>Active account data</td><td>Until account deletion</td></tr>
+      <tr><td>Deleted account data (tombstone)</td><td>90 days after deletion, then purged</td></tr>
+      <tr><td>Session tokens</td><td>30 days or until logout</td></tr>
+      <tr><td>Crash reports (Sentry)</td><td>90 days</td></tr>
+      <tr><td>OTP codes</td><td>10 minutes</td></tr>
+      <tr><td>Password reset tokens</td><td>15 minutes</td></tr>
+      <tr><td>Story media</td><td>24 hours</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Your Rights</h2>
+  <p>You have the right to:</p>
+  <ul>
+    <li><strong>Access</strong> your personal data — available via the app (profile, settings)</li>
+    <li><strong>Correct</strong> your data — edit profile at any time</li>
+    <li><strong>Delete</strong> your account and all associated data — available in Settings → Delete Account, or via <a href="delete-account.html">this page</a></li>
+    <li><strong>Export</strong> your data — contact us at <a href="mailto:support@stugram.uz">support@stugram.uz</a></li>
+    <li><strong>Object</strong> to processing — contact us at <a href="mailto:support@stugram.uz">support@stugram.uz</a></li>
+  </ul>
+  <div class="callout">
+    <strong>Account deletion:</strong> When you delete your account through the app, your profile is immediately anonymised (name changed to "Deleted User", bio and avatar removed) and all sessions are revoked. Remaining data is purged within 90 days. This satisfies Google Play Store's account deletion policy (effective November 2023).
+  </div>
+
+  <h2>7. Children's Privacy</h2>
+  <p>StuGram is intended for users aged <strong>13 and older</strong>. We do not knowingly collect data from children under 13. If we become aware that a child under 13 has provided personal information, we will delete it immediately.</p>
+
+  <h2>8. Security</h2>
+  <p>We protect your data using:</p>
+  <ul>
+    <li>HTTPS/TLS for all data in transit</li>
+    <li>bcrypt hashing for passwords (cost factor 12)</li>
+    <li>Encrypted storage for tokens on Android devices</li>
+    <li>JWT token rotation and revocation</li>
+    <li>Rate limiting on authentication endpoints</li>
+    <li>IP-based suspicious activity detection</li>
+  </ul>
+
+  <h2>9. Third-Party Services</h2>
+  <p>StuGram integrates the following third-party services. Their respective privacy policies apply to data they process:</p>
+  <ul>
+    <li><a href="https://www.mongodb.com/legal/privacy-policy" target="_blank" rel="noopener">MongoDB Atlas</a></li>
+    <li><a href="https://cloudinary.com/privacy" target="_blank" rel="noopener">Cloudinary</a></li>
+    <li><a href="https://sentry.io/privacy/" target="_blank" rel="noopener">Sentry</a></li>
+    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google</a></li>
+    <li><a href="https://render.com/privacy" target="_blank" rel="noopener">Render</a></li>
+  </ul>
+
+  <h2>10. Changes to This Policy</h2>
+  <p>We will notify users of material changes via an in-app notification and update the "Last updated" date. Continued use of the Service after changes constitutes acceptance.</p>
+
+  <h2>11. Contact</h2>
+  <p>For privacy questions or data requests:</p>
+  <p>Email: <a href="mailto:support@stugram.uz">support@stugram.uz</a></p>
+</main>
+
+<footer>
+  <p>&copy; 2026 StuGram. All rights reserved.</p>
+  <p>
+    <a href="privacy.html">Privacy</a>·
+    <a href="terms.html">Terms</a>·
+    <a href="delete-account.html">Delete Account</a>
+  </p>
+</footer>
+</body>
+</html>
