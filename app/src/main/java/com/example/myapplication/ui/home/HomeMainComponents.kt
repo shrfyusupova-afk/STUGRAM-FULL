@@ -54,7 +54,8 @@ fun HomeTabScreen(
     onCommentsClick: () -> Unit,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    listState: LazyListState
+    listState: LazyListState,
+    onFollowProfile: (String) -> Unit = {}
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -82,12 +83,23 @@ fun HomeTabScreen(
                 HomeHeaderInline(isDarkMode, onThemeChange, accentBlue, contentColor)
             }
             item {
-                EmptyStoriesSection(isDarkMode = isDarkMode, accentBlue = accentBlue)
+                StoriesBar(
+                    storyProfiles = storyProfiles,
+                    accentBlue = accentBlue,
+                    isDarkMode = isDarkMode,
+                    onStoryClick = onStoryClick,
+                    onCreateStory = onCreateClick
+                )
             }
             item {
                 CreatePostButton(onCreateClick, accentBlue, isDarkMode)
             }
             if (posts.isEmpty()) {
+                if (recommendedProfiles.isNotEmpty()) {
+                    item {
+                        RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
+                    }
+                }
                 item {
                     EmptyFeedSection(
                         isDarkMode = isDarkMode,
@@ -100,6 +112,9 @@ fun HomeTabScreen(
                     DashboardPostItem(post, accentBlue, isDarkMode, onCommentsClick) {
                         // Profile click logic
                     }
+                    if (index == 1 && recommendedProfiles.isNotEmpty()) {
+                        RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
+                    }
                 }
             }
         }
@@ -107,28 +122,56 @@ fun HomeTabScreen(
 }
 
 @Composable
-private fun EmptyStoriesSection(isDarkMode: Boolean, accentBlue: Color) {
-    val textColor = if (isDarkMode) Color.White else Color.Black
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.04f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+private fun StoriesBar(
+    storyProfiles: List<StoryProfile>,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onStoryClick: (Int) -> Unit,
+    onCreateStory: () -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+        item {
+            CreateStoryItem(accentBlue = accentBlue, isDarkMode = isDarkMode, onClick = onCreateStory)
+        }
+        itemsIndexed(storyProfiles) { index, story ->
+            RectangleStoryItem(story, accentBlue, isDarkMode) {
+                onStoryClick(index)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateStoryItem(accentBlue: Color, isDarkMode: Boolean, onClick: () -> Unit) {
+    val textColor = if (isDarkMode) Color.White else Color.Black
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(100.dp)
+                .height(150.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (isDarkMode) Color.White.copy(0.06f) else Color.Black.copy(0.04f))
+                .border(1.dp, accentBlue.copy(0.5f), RoundedCornerShape(20.dp))
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.AutoStories, contentDescription = null, tint = accentBlue, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Stories hozircha yo'q",
-                color = textColor.copy(alpha = 0.85f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(accentBlue),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Siz", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -394,17 +437,27 @@ fun PostStatItem(icon: ImageVector, count: String, isDarkMode: Boolean, tint: Co
 }
 
 @Composable
-fun RecommendedProfilesSlider(profiles: List<RecommendedProfile>, accentBlue: Color, isDarkMode: Boolean) {
+fun RecommendedProfilesSlider(
+    profiles: List<RecommendedProfile>,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onFollow: (String) -> Unit = {}
+) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Text("Tavsiya etilganlar", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = if (isDarkMode) Color.White else Color.Black, modifier = Modifier.padding(start = 20.dp, bottom = 12.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(profiles) { profile -> RecommendedProfileCard(profile, accentBlue, isDarkMode) }
+            items(profiles) { profile -> RecommendedProfileCard(profile, accentBlue, isDarkMode, onFollow) }
         }
     }
 }
 
 @Composable
-fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDarkMode: Boolean) {
+fun RecommendedProfileCard(
+    profile: RecommendedProfile,
+    accentBlue: Color,
+    isDarkMode: Boolean,
+    onFollow: (String) -> Unit = {}
+) {
     var isFollowed by remember { mutableStateOf(false) }
     val cardBg = if (isDarkMode) Color(0xFF1A1A1A) else Color.White
     val textColor = if (isDarkMode) Color.White else Color.Black
@@ -468,7 +521,13 @@ fun RecommendedProfileCard(profile: RecommendedProfile, accentBlue: Color, isDar
                 )
                 
                 Surface(
-                    onClick = { isFollowed = !isFollowed },
+                    onClick = {
+                        val wasFollowed = isFollowed
+                        isFollowed = !isFollowed
+                        if (!wasFollowed && profile.userId.isNotBlank()) {
+                            onFollow(profile.userId)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp),

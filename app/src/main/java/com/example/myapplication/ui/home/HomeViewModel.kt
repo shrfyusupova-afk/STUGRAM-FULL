@@ -60,6 +60,16 @@ class HomeViewModel(
         createPostError = null
     }
 
+    fun openCamera() {
+        if (AlphaFeatureFlags.canOpenCameraCreate()) {
+            showCameraView = true
+        }
+    }
+
+    fun closeCamera() {
+        showCameraView = false
+    }
+
     fun openStory(index: Int) {
         if (AlphaFeatureFlags.canOpenStoryViewer()) {
             activeStoryProfileIndex = index
@@ -139,6 +149,23 @@ class HomeViewModel(
         }
     }
 
+    private fun parseRecommendedProfiles(data: JsonArray): List<RecommendedProfile> {
+        return data.mapIndexedNotNull { idx, element ->
+            runCatching {
+                val obj = element.asJsonObject
+                val username = stringOr(obj, "username", "")
+                if (username.isBlank()) return@runCatching null
+                RecommendedProfile(
+                    id = idx + 1,
+                    name = stringOr(obj, "fullName", username),
+                    image = stringOr(obj, "avatar", ""),
+                    username = username,
+                    userId = stringOr(obj, "_id", "")
+                )
+            }.getOrNull()
+        }
+    }
+
     fun loadHomeFeed() {
         viewModelScope.launch {
             isHomeRefreshing = true
@@ -157,12 +184,31 @@ class HomeViewModel(
                 } else {
                     storyProfiles = emptyList()
                 }
+                // Tavsiya etilgan profillar (feed bo'sh bo'lganda follow qilish uchun ko'rsatiladi)
+                if (AlphaFeatureFlags.SEARCH_DISCOVERY_ENABLED) {
+                    runCatching {
+                        val recResponse = withContext(ioDispatcher) { authApi.getCreatorSuggestions(page = 1, limit = 10) }
+                        if (recResponse.isSuccessful) {
+                            val dataArray = recResponse.body()?.getAsJsonArray("data")
+                            recommendedProfiles = if (dataArray != null) parseRecommendedProfiles(dataArray) else emptyList()
+                        }
+                    }
+                }
             } catch (_: Exception) {
                 // UI ko'rinishini o'zgartirmaslik uchun xatoni yutamiz, empty-state ko'rsatiladi.
                 posts = emptyList()
                 storyProfiles = emptyList()
             } finally {
                 isHomeRefreshing = false
+            }
+        }
+    }
+
+    fun followSuggestedUser(userId: String) {
+        if (userId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                withContext(ioDispatcher) { authApi.followUser(userId) }
             }
         }
     }

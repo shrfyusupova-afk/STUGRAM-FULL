@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -77,11 +78,12 @@ fun HomeScreen(
                             contentColor = contentColor,
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
-                            onCreateClick = { viewModel.openCreatePostModal() },
+                            onCreateClick = { viewModel.openCamera() },
                             onCommentsClick = { viewModel.toggleComments(true) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
-                            listState = listState
+                            listState = listState,
+                            onFollowProfile = { viewModel.followSuggestedUser(it) }
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -89,7 +91,11 @@ fun HomeScreen(
                             onRefresh = { viewModel.refreshSearch() },
                             onOpenProfile = onNavigateToProfile
                         )
-                        2 -> AlphaReelsDisabledScreen(isDarkMode = isDarkMode)
+                        2 -> ReelsScreen(
+                            accentBlue = accentBlue,
+                            isDarkMode = isDarkMode,
+                            onProfileClick = onNavigateToProfile
+                        )
                         3 -> MessagesScreen(
                             isDarkMode = isDarkMode,
                             onBack = { viewModel.onTabSelected(0) },
@@ -131,6 +137,25 @@ fun HomeScreen(
                 error = viewModel.createPostError,
                 onDismiss = { viewModel.closeCreatePostModal() },
                 onSubmit = { viewModel.createTextPost(it) }
+            )
+        }
+
+        // Kamera yoki story ochiq bo'lsa, "orqaga" tugmasi ularni yopsin
+        if (viewModel.showCameraView) {
+            BackHandler { viewModel.closeCamera() }
+        } else if (viewModel.activeStoryProfileIndex != null) {
+            BackHandler { viewModel.closeStory() }
+        }
+
+        // Instagram uslubidagi yaratish oqimi (Post / Story / Reels)
+        AnimatedVisibility(
+            visible = viewModel.showCameraView,
+            enter = fadeIn(tween(250)) + slideInVertically(initialOffsetY = { it / 3 }),
+            exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it / 3 })
+        ) {
+            CameraScreen(
+                onDismiss = { viewModel.closeCamera() },
+                accentBlue = accentBlue
             )
         }
 
@@ -207,33 +232,6 @@ private fun CreatePostDialog(
             ) { Text("Cancel") }
         }
     )
-}
-
-@Composable
-private fun AlphaReelsDisabledScreen(isDarkMode: Boolean) {
-    val bg = if (isDarkMode) Color.Black else Color.White
-    val fg = if (isDarkMode) Color.White else Color.Black
-    Box(
-        modifier = Modifier.fillMaxSize().background(bg),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(
-                text = "Reels is disabled for this alpha",
-                color = fg,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "It will be enabled after backend-backed reels reliability is ready.",
-                color = fg.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
 }
 
 @Composable

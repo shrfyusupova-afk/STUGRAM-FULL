@@ -87,7 +87,7 @@ class ProfileViewModel(
                         followersCount = data?.get("followersCount")?.asInt ?: 0,
                         followingCount = data?.get("followingCount")?.asInt ?: 0,
                         postsCount = data?.get("postsCount")?.asInt ?: 0,
-                        isSelf = data?.get("followStatus")?.asString == "self",
+                        isSelf = target.isNullOrBlank() || data?.get("followStatus")?.asString == "self",
                         followStatus = data?.get("followStatus")?.asString ?: if (target.isNullOrBlank()) "self" else "not_following",
                         error = null,
                         saveError = null,

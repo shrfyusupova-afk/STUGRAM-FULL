@@ -41,6 +41,12 @@ interface AuthApi {
     @GET("api/v1/profiles/{username}")
     suspend fun getProfileByUsername(@Path("username") username: String): Response<JsonObject>
 
+    @GET("api/v1/explore/creators")
+    suspend fun getCreatorSuggestions(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 10
+    ): Response<JsonObject>
+
     @GET("api/v1/search/users")
     suspend fun searchUsers(
         @Query("q") query: String,
