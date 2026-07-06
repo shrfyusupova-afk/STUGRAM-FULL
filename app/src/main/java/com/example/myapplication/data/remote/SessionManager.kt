@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.myapplication.core.storage.TokenManager
 import com.example.myapplication.data.remote.chat.ChatSocketManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.withContext
@@ -15,7 +16,15 @@ import kotlinx.coroutines.withContext
  */
 object SessionManager {
 
-    private val _forceLogout = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    // replay=0 keeps stale logout events from firing on new collectors, while
+    // extraBufferCapacity=1 + DROP_OLDEST guarantees tryEmit() always succeeds:
+    // if an event is already buffered it is replaced, so we never silently drop
+    // a logout because no collector happened to be active at that instant.
+    private val _forceLogout = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val forceLogout: SharedFlow<Unit> = _forceLogout
 
     enum class Restore { HOME, AUTH }

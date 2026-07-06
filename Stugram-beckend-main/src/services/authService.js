@@ -878,10 +878,16 @@ const refreshAuthToken = async (refreshToken, meta = {}) => {
   session.isRevoked = true;
   session.lastUsedAt = new Date();
   session.revokedReason = "rotated";
+  // IP mismatch is intentionally NOT a revoke trigger: mobile clients change IP
+  // on every wifi<->cellular switch, so revoking on IP change would log
+  // legitimate users out. Device and User-Agent mismatches remain hard triggers.
   const isSuspiciousRefresh =
     Boolean(session.deviceId && meta.deviceId && session.deviceId !== meta.deviceId) ||
-    Boolean(session.userAgent && meta.userAgent && session.userAgent !== meta.userAgent) ||
-    Boolean(session.ipAddress && meta.ipAddress && session.ipAddress !== meta.ipAddress);
+    Boolean(session.userAgent && meta.userAgent && session.userAgent !== meta.userAgent);
+
+  const isIpChanged = Boolean(
+    session.ipAddress && meta.ipAddress && session.ipAddress !== meta.ipAddress
+  );
 
   if (isSuspiciousRefresh) {
     session.isCompromised = true;
@@ -903,6 +909,28 @@ const refreshAuthToken = async (refreshToken, meta = {}) => {
       details: { familyId: session.familyId },
     });
     throw new ApiError(401, "Suspicious refresh token usage detected");
+  }
+
+  if (isIpChanged) {
+    // Keep the security signal without punishing the user for a network switch.
+    await createAuditLog({
+      actor: resolved.profileId,
+      action: "auth.refresh_ip_change",
+      category: "security",
+      status: "warning",
+      targetUser: resolved.profileId,
+      sessionId: session.sessionId,
+      ipAddress: meta.ipAddress || null,
+      userAgent: meta.userAgent || null,
+      details: { oldIp: session.ipAddress || null, newIp: meta.ipAddress || null },
+    });
+    logger.warn("auth.refresh_ip_change", {
+      userId: String(resolved.profileId),
+      sessionId: session.sessionId,
+      oldIp: session.ipAddress || null,
+      newIp: meta.ipAddress || null,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   await session.save();
