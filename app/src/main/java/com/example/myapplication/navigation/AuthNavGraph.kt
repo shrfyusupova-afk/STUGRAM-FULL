@@ -49,12 +49,25 @@ sealed class Screen(val route: String) {
 @Composable
 fun AuthNavGraph(
     navController: NavHostController = rememberNavController(),
+    startDestination: String = Screen.Auth.route,
     isDarkMode: Boolean,
     onThemeChange: (Boolean) -> Unit
 ) {
+    // Forced logout (refresh failure) or explicit logout: clear the whole back
+    // stack and return to Auth. A fresh Auth entry gives fresh Login/Register
+    // ViewModels, so their isSuccess flags reset automatically.
+    LaunchedEffect(Unit) {
+        com.example.myapplication.data.remote.SessionManager.forceLogout.collect {
+            navController.navigate(Screen.Auth.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Screen.Auth.route
+        startDestination = startDestination
     ) {
         composable(route = Screen.Auth.route) {
             AuthScreen(onNavigateToHome = {
