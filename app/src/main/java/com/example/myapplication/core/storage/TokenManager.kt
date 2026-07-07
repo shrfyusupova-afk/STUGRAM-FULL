@@ -25,8 +25,8 @@ private val Context.dataStore by preferencesDataStore(name = "auth_prefs")
  * NOTE (Phase 0): construction is cheap and does NO blocking I/O. Callers must
  * invoke [initialize] once from a coroutine (Dispatchers.IO) before relying on
  * the cached [accessToken]/[refreshToken] state. Background threads (e.g. the
- * OkHttp Authenticator) may use the synchronous peek*/save*/clear* helpers,
- * which never touch the main thread.
+ * OkHttp Authenticator) may use the synchronous peek-, save- and clear-prefixed
+ * helpers, which never touch the main thread.
  */
 class TokenManager(private val context: Context) {
     private val accessTokenKey = stringPreferencesKey("access_token")
