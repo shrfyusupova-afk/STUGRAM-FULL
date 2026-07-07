@@ -12,6 +12,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.ui.comments.CommentsSheet
 import com.example.myapplication.ui.create.CreatePostScreen
 import com.example.myapplication.ui.create.CreateType
 import androidx.compose.ui.Alignment
@@ -71,7 +72,7 @@ fun HomeScreen(
                 Crossfade(targetState = viewModel.currentTab, label = "main_nav") { targetTab ->
                     when (targetTab) {
                         0 -> HomeTabScreen(
-                            posts = viewModel.posts,
+                            feedState = viewModel.feedState,
                             storyProfiles = viewModel.storyProfiles,
                             recommendedProfiles = viewModel.recommendedProfiles,
                             paddingValues = paddingValues,
@@ -82,10 +83,13 @@ fun HomeScreen(
                             onStoryClick = { viewModel.openStory(it) },
                             onCreateClick = { viewModel.openCreateFlow(CreateType.POST) },
                             onCreateStory = { viewModel.openCreateFlow(CreateType.STORY) },
-                            onCommentsClick = { viewModel.toggleComments(true) },
+                            onComment = { postId -> viewModel.openComments(postId) },
+                            onLike = { postId, like -> viewModel.setLike(postId, like) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
                             listState = listState,
+                            isLoadingMore = viewModel.isLoadingMore,
+                            onLoadMore = { viewModel.loadNextPage() },
                             onFollowProfile = { viewModel.followSuggestedUser(it) }
                         )
                         1 -> SearchScreen(
@@ -133,13 +137,13 @@ fun HomeScreen(
         }
 
         // --- Overlays ---
-        if (viewModel.showCreatePostModal) {
-            CreatePostDialog(
+        // Real, backend-backed comments sheet for the tapped post.
+        viewModel.activeCommentsPostId?.let { postId ->
+            CommentsSheet(
+                postId = postId,
                 isDarkMode = isDarkMode,
-                isSaving = viewModel.isCreatingPost,
-                error = viewModel.createPostError,
-                onDismiss = { viewModel.closeCreatePostModal() },
-                onSubmit = { viewModel.createTextPost(it) }
+                accentBlue = accentBlue,
+                onDismiss = { viewModel.closeComments() }
             )
         }
 

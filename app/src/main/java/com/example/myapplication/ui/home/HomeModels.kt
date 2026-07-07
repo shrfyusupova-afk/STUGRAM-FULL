@@ -17,7 +17,8 @@ data class PostData(
     val likes: Int = 0,
     val comments: Int = 0,
     val reposts: Int = 0,
-    val isVideo: Boolean = false
+    val isVideo: Boolean = false,
+    val avatar: String? = null
 )
 
 @Immutable

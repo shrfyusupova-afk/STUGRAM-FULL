@@ -35,13 +35,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
+import com.example.myapplication.core.ui.UiState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeTabScreen(
-    posts: List<PostData>,
+    feedState: UiState<List<PostData>>,
     storyProfiles: List<StoryProfile>,
     recommendedProfiles: List<RecommendedProfile>,
     paddingValues: PaddingValues,
@@ -51,13 +51,25 @@ fun HomeTabScreen(
     onThemeChange: (Boolean) -> Unit,
     onStoryClick: (Int) -> Unit,
     onCreateClick: () -> Unit,
-    onCommentsClick: () -> Unit,
+    onComment: (String) -> Unit,
+    onLike: suspend (String, Boolean) -> Boolean,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     listState: LazyListState,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     onFollowProfile: (String) -> Unit = {},
     onCreateStory: () -> Unit = {}
 ) {
+    // Infinite scroll: trigger the next page when the last item is near the end.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { lastIndex ->
+                val total = listState.layoutInfo.totalItemsCount
+                if (lastIndex != null && total > 0 && lastIndex >= total - 2) onLoadMore()
+            }
+    }
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
@@ -80,9 +92,7 @@ fun HomeTabScreen(
                 bottom = paddingValues.calculateBottomPadding() + 80.dp
             )
         ) {
-            item {
-                HomeHeaderInline(isDarkMode, onThemeChange, accentBlue, contentColor)
-            }
+            item { HomeHeaderInline(isDarkMode, onThemeChange, accentBlue, contentColor) }
             item {
                 StoriesBar(
                     storyProfiles = storyProfiles,
@@ -92,32 +102,80 @@ fun HomeTabScreen(
                     onCreateStory = onCreateStory
                 )
             }
-            item {
-                CreatePostButton(onCreateClick, accentBlue, isDarkMode)
+            item { CreatePostButton(onCreateClick, accentBlue, isDarkMode) }
+
+            when (val state = feedState) {
+                is UiState.Loading -> {
+                    items(3) { PostSkeleton(isDarkMode) }
+                }
+                is UiState.Error -> {
+                    item { FeedErrorSection(state.message, isDarkMode, accentBlue, onRefresh) }
+                }
+                is UiState.Empty -> {
+                    if (recommendedProfiles.isNotEmpty()) {
+                        item { RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile) }
+                    }
+                    item { EmptyFeedSection(isDarkMode = isDarkMode, accentBlue = accentBlue, onCreateClick = onCreateClick) }
+                }
+                is UiState.Success -> {
+                    itemsIndexed(state.data, key = { _, post -> post.id }) { index, post ->
+                        DashboardPostItem(
+                            post = post,
+                            accentBlue = accentBlue,
+                            isDarkMode = isDarkMode,
+                            onComment = { onComment(post.id) },
+                            onLike = onLike
+                        )
+                        if (index == 1 && recommendedProfiles.isNotEmpty()) {
+                            RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
+                        }
+                    }
+                    if (isLoadingMore) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = accentBlue, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    }
+                }
             }
-            if (posts.isEmpty()) {
-                if (recommendedProfiles.isNotEmpty()) {
-                    item {
-                        RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
-                    }
-                }
-                item {
-                    EmptyFeedSection(
-                        isDarkMode = isDarkMode,
-                        accentBlue = accentBlue,
-                        onCreateClick = onCreateClick
-                    )
-                }
-            } else {
-                itemsIndexed(posts) { index, post ->
-                    DashboardPostItem(post, accentBlue, isDarkMode, onCommentsClick) {
-                        // Profile click logic
-                    }
-                    if (index == 1 && recommendedProfiles.isNotEmpty()) {
-                        RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
-                    }
-                }
-            }
+        }
+    }
+}
+
+@Composable
+private fun PostSkeleton(isDarkMode: Boolean) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "skeleton_alpha"
+    )
+    val base = if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(32.dp))
+            .background(base.copy(alpha = base.alpha * alpha))
+    )
+}
+
+@Composable
+private fun FeedErrorSection(message: String, isDarkMode: Boolean, accentBlue: Color, onRetry: () -> Unit) {
+    val textColor = if (isDarkMode) Color.White else Color.Black
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.CloudOff, contentDescription = null, tint = textColor.copy(alpha = 0.6f), modifier = Modifier.size(40.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(message, color = textColor.copy(alpha = 0.85f), fontSize = 14.sp)
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = accentBlue)) {
+            Text("Qayta urinish", color = Color.White)
         }
     }
 }
@@ -298,31 +356,38 @@ fun DashboardPostItem(
     post: PostData,
     accentBlue: Color,
     isDarkMode: Boolean,
-    onCommentsClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onComment: () -> Unit,
+    onLike: suspend (String, Boolean) -> Boolean,
+    onProfileClick: () -> Unit = {}
 ) {
     val glassBaseColor = if (isDarkMode) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.75f)
     val textColor = if (isDarkMode) Color.White else Color.Black
     val iconColor = if (isDarkMode) Color.White else Color.Black
 
-    val revealProgress by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(durationMillis = 500, easing = EaseOutCubic),
-        label = "post_reveal"
-    )
+    val scope = rememberCoroutineScope()
+    var isLiked by remember(post.id) { mutableStateOf(false) }
+    var likeCount by remember(post.id) { mutableIntStateOf(post.likes) }
+
+    val toggleLike = {
+        val prevLiked = isLiked
+        val prevCount = likeCount
+        isLiked = !isLiked
+        likeCount = (likeCount + if (isLiked) 1 else -1).coerceAtLeast(0)
+        scope.launch {
+            // On failure we revert, which is how the error reaches the UI.
+            if (!onLike(post.id, isLiked)) {
+                isLiked = prevLiked
+                likeCount = prevCount
+            }
+        }
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .aspectRatio(1f)
-            .shadow(14.dp, RoundedCornerShape(32.dp))
-            .graphicsLayer {
-                alpha = revealProgress
-                translationY = (1f - revealProgress) * 30f
-                scaleX = 0.98f + (0.02f * revealProgress)
-                scaleY = 0.98f + (0.02f * revealProgress)
-            },
+            .shadow(14.dp, RoundedCornerShape(32.dp)),
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color.Black else Color.White)
     ) {
@@ -358,19 +423,23 @@ fun DashboardPostItem(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.2f))
-                                .clickable { onProfileClick() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
+                        if (post.avatar.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.2f))
+                                    .clickable { onProfileClick() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        } else {
+                            AsyncImage(
+                                model = post.avatar,
                                 contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(26.dp).clip(CircleShape).clickable { onProfileClick() },
+                                contentScale = ContentScale.Crop
                             )
                         }
                         Spacer(Modifier.width(8.dp))
@@ -381,19 +450,19 @@ fun DashboardPostItem(
                             fontSize = 13.sp,
                             modifier = Modifier.clickable { onProfileClick() }
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(16.dp))
                     }
                 }
 
-                Surface(
-                    modifier = Modifier.size(36.dp),
-                    color = glassBaseColor,
-                    shape = CircleShape,
-                    border = BorderStroke(0.5.dp, Color.White.copy(0.2f))
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.MoreHoriz, null, tint = iconColor, modifier = Modifier.size(18.dp))
+                if (post.isVideo) {
+                    Surface(
+                        modifier = Modifier.size(36.dp),
+                        color = glassBaseColor,
+                        shape = CircleShape,
+                        border = BorderStroke(0.5.dp, Color.White.copy(0.2f))
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.PlayArrow, null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
             }
@@ -407,19 +476,37 @@ fun DashboardPostItem(
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PostStatItem(
-                            icon = Icons.Default.FavoriteBorder,
-                            count = post.likes.toString(),
-                            isDarkMode = isDarkMode,
-                            tint = iconColor
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { toggleLike() }
+                        ) {
+                            Icon(
+                                imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Like",
+                                tint = if (isLiked) Color.Red else iconColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(likeCount.toString(), color = textColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
                         Spacer(Modifier.width(12.dp))
-                        Icon(Icons.Outlined.ChatBubbleOutline, null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { onComment() }
+                        ) {
+                            Icon(Icons.Outlined.ChatBubbleOutline, "Comments", tint = iconColor, modifier = Modifier.size(20.dp))
+                            if (post.comments > 0) {
+                                Spacer(Modifier.width(4.dp))
+                                Text(post.comments.toString(), color = textColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
                         Spacer(Modifier.width(12.dp))
                         Icon(Icons.AutoMirrored.Rounded.Send, null, tint = iconColor, modifier = Modifier.size(20.dp))
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(text = post.caption, color = textColor, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (post.caption.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(text = post.caption, color = textColor, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }

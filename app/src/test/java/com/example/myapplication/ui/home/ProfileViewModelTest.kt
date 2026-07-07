@@ -8,8 +8,17 @@ import com.example.myapplication.data.remote.LoginRequest
 import com.example.myapplication.data.remote.OtpRequest
 import com.example.myapplication.data.remote.UpdateProfileRequest
 import com.example.myapplication.data.remote.VerifyOtpRequest
+import com.example.myapplication.data.remote.post.AddCommentRequest
+import com.example.myapplication.data.remote.post.ApiEnvelope
+import com.example.myapplication.data.remote.post.CommentDto
+import com.example.myapplication.data.remote.post.PaginationMeta
+import com.example.myapplication.data.remote.post.PostApi
+import com.example.myapplication.data.remote.post.PostDto
+import com.example.myapplication.data.remote.post.PostRepository
+import com.example.myapplication.data.remote.post.ProfileDto
+import com.example.myapplication.data.remote.post.StoryDto
+import com.example.myapplication.data.remote.post.UserPreviewDto
 import com.google.gson.JsonObject
-import com.google.gson.JsonArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestDispatcher
@@ -19,6 +28,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -45,18 +56,23 @@ class ProfileViewModelTest {
 
     @Test
     fun loadProfile_success_updatesState() = runTest {
-        val api = FakeAuthApi(
-            profileResponse = Response.success(
-                json(
-                    fullName = "Test User",
-                    username = "test_user",
-                    bio = "bio",
-                    location = "Tashkent",
-                    school = "School 1"
+        val vm = ProfileViewModel(
+            repository = PostRepository(
+                api = FakePostApi(
+                    profile = ProfileDto(
+                        id = "u1",
+                        fullName = "Test User",
+                        username = "test_user",
+                        bio = "bio",
+                        location = "Tashkent",
+                        school = "School 1",
+                        postsCount = 0
+                    )
                 )
-            )
+            ),
+            authApi = FakeAuthApi(),
+            ioDispatcher = dispatcher
         )
-        val vm = ProfileViewModel(authApi = api, ioDispatcher = dispatcher)
         advanceUntilIdle()
 
         val state = vm.uiState.value
@@ -68,14 +84,18 @@ class ProfileViewModelTest {
 
     @Test
     fun updateProfile_error_setsSaveError() = runTest {
-        val api = FakeAuthApi(
-            profileResponse = Response.success(json(fullName = "User", username = "user")),
-            updateResponse = Response.error(
-                409,
-                """{"success":false}""".toResponseBody("application/json".toMediaType())
-            )
+        val vm = ProfileViewModel(
+            repository = PostRepository(
+                api = FakePostApi(profile = ProfileDto(id = "u1", fullName = "User", username = "user"))
+            ),
+            authApi = FakeAuthApi(
+                updateResponse = Response.error(
+                    409,
+                    """{"success":false}""".toResponseBody("application/json".toMediaType())
+                )
+            ),
+            ioDispatcher = dispatcher
         )
-        val vm = ProfileViewModel(authApi = api, ioDispatcher = dispatcher)
         advanceUntilIdle()
 
         vm.updateProfile("User", "user", "bio", "loc", "school") {}
@@ -86,25 +106,51 @@ class ProfileViewModelTest {
         assertTrue(state.saveError?.contains("409") == true)
     }
 
-    private fun json(
-        fullName: String,
-        username: String,
-        bio: String = "",
-        location: String = "",
-        school: String = ""
-    ): JsonObject {
-        val data = JsonObject().apply {
-            addProperty("fullName", fullName)
-            addProperty("username", username)
-            addProperty("bio", bio)
-            addProperty("location", location)
-            addProperty("school", school)
-        }
-        return JsonObject().apply { add("data", data) }
+    private class FakePostApi(
+        private val profile: ProfileDto,
+        private val userPosts: List<PostDto> = emptyList()
+    ) : PostApi {
+        override suspend fun createPost(
+            idempotencyKey: String,
+            media: List<MultipartBody.Part>,
+            caption: RequestBody?
+        ): Response<JsonObject> = Response.success(JsonObject())
+
+        override suspend fun createStory(
+            idempotencyKey: String,
+            media: MultipartBody.Part,
+            caption: RequestBody?
+        ): Response<JsonObject> = Response.success(JsonObject())
+
+        override suspend fun getFeed(page: Int, limit: Int): Response<ApiEnvelope<List<PostDto>>> =
+            Response.success(ApiEnvelope(data = emptyList(), meta = PaginationMeta(page = 1, totalPages = 1)))
+
+        override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<ApiEnvelope<List<PostDto>>> =
+            Response.success(ApiEnvelope(data = userPosts, meta = PaginationMeta(page = 1, totalPages = 1)))
+
+        override suspend fun getStoriesFeed(page: Int, limit: Int): Response<ApiEnvelope<List<StoryDto>>> =
+            Response.success(ApiEnvelope(data = emptyList()))
+
+        override suspend fun getCreatorSuggestions(page: Int, limit: Int): Response<ApiEnvelope<List<UserPreviewDto>>> =
+            Response.success(ApiEnvelope(data = emptyList()))
+
+        override suspend fun getMyProfile(): Response<ApiEnvelope<ProfileDto>> =
+            Response.success(ApiEnvelope(data = profile))
+
+        override suspend fun getProfileByUsername(username: String): Response<ApiEnvelope<ProfileDto>> =
+            Response.success(ApiEnvelope(data = profile))
+
+        override suspend fun likePost(postId: String): Response<Unit> = Response.success(Unit)
+        override suspend fun unlikePost(postId: String): Response<Unit> = Response.success(Unit)
+
+        override suspend fun getComments(postId: String, page: Int, limit: Int): Response<ApiEnvelope<List<CommentDto>>> =
+            Response.success(ApiEnvelope(data = emptyList()))
+
+        override suspend fun addComment(postId: String, body: AddCommentRequest): Response<ApiEnvelope<CommentDto>> =
+            Response.success(ApiEnvelope(data = CommentDto()))
     }
 
     private class FakeAuthApi(
-        private val profileResponse: Response<JsonObject>,
         private val updateResponse: Response<JsonObject> = Response.success(JsonObject())
     ) : AuthApi {
         override suspend fun sendOtp(request: OtpRequest): Response<JsonObject> = Response.success(JsonObject())
@@ -114,15 +160,14 @@ class ProfileViewModelTest {
         override suspend fun googleLogin(request: GoogleLoginRequest): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun getPostFeed(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun getStoryFeed(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getMyProfile(): Response<JsonObject> = profileResponse
+        override suspend fun getMyProfile(): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun updateMyProfile(request: UpdateProfileRequest): Response<JsonObject> = updateResponse
-        override suspend fun getProfileByUsername(username: String): Response<JsonObject> = profileResponse
+        override suspend fun getProfileByUsername(username: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun searchUsers(query: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun getCreatorSuggestions(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun followUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun unfollowUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
         override suspend fun createPost(request: CreatePostRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> =
-            Response.success(JsonObject().apply { add("data", JsonArray()) })
+        override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
     }
 }
