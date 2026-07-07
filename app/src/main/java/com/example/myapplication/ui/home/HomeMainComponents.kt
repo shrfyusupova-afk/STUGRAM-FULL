@@ -55,7 +55,8 @@ fun HomeTabScreen(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     listState: LazyListState,
-    onFollowProfile: (String) -> Unit = {}
+    onFollowProfile: (String) -> Unit = {},
+    onCreateStory: () -> Unit = {}
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -88,7 +89,7 @@ fun HomeTabScreen(
                     accentBlue = accentBlue,
                     isDarkMode = isDarkMode,
                     onStoryClick = onStoryClick,
-                    onCreateStory = onCreateClick
+                    onCreateStory = onCreateStory
                 )
             }
             item {

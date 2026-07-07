@@ -7,6 +7,7 @@ import com.example.myapplication.config.AlphaFeatureFlags
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.CreatePostRequest
 import com.example.myapplication.data.remote.RetrofitClient
+import com.example.myapplication.ui.create.CreateType
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -23,7 +24,7 @@ class HomeViewModel(
     var showCreatePostModal by mutableStateOf(false)
     var showCommentsSheet by mutableStateOf(false)
     var activeStoryProfileIndex by mutableStateOf<Int?>(null)
-    var showCameraView by mutableStateOf(false)
+    var createFlowType by mutableStateOf<CreateType?>(null)
 
     var isHomeRefreshing by mutableStateOf(false)
     var isSearchRefreshing by mutableStateOf(false)
@@ -60,14 +61,14 @@ class HomeViewModel(
         createPostError = null
     }
 
-    fun openCamera() {
+    fun openCreateFlow(type: CreateType) {
         if (AlphaFeatureFlags.canOpenCameraCreate()) {
-            showCameraView = true
+            createFlowType = type
         }
     }
 
-    fun closeCamera() {
-        showCameraView = false
+    fun closeCreateFlow() {
+        createFlowType = null
     }
 
     fun openStory(index: Int) {

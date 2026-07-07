@@ -12,6 +12,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.ui.create.CreatePostScreen
+import com.example.myapplication.ui.create.CreateType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -50,8 +52,8 @@ fun HomeScreen(
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                // Kamera yoki Story ochiq bo'lsa navigatsiyani yashiramiz
-                if (!viewModel.showCameraView && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
+                // Yaratish oqimi yoki Story ochiq bo'lsa navigatsiyani yashiramiz
+                if (viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
                     GlassSlidingNavigation(
                         selectedTab = viewModel.currentTab,
                         onTabSelected = { viewModel.onTabSelected(it) },
@@ -78,7 +80,8 @@ fun HomeScreen(
                             contentColor = contentColor,
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
-                            onCreateClick = { viewModel.openCamera() },
+                            onCreateClick = { viewModel.openCreateFlow(CreateType.POST) },
+                            onCreateStory = { viewModel.openCreateFlow(CreateType.STORY) },
                             onCommentsClick = { viewModel.toggleComments(true) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
@@ -116,7 +119,7 @@ fun HomeScreen(
                 }
 
                 // Reels shaffof navigatsiya
-                if (viewModel.currentTab == 2 && !viewModel.showCameraView && viewModel.activeStoryProfileIndex == null) {
+                if (viewModel.currentTab == 2 && viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null) {
                     Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
                         GlassSlidingNavigation(
                             selectedTab = viewModel.currentTab,
@@ -140,23 +143,25 @@ fun HomeScreen(
             )
         }
 
-        // Kamera yoki story ochiq bo'lsa, "orqaga" tugmasi ularni yopsin
-        if (viewModel.showCameraView) {
-            BackHandler { viewModel.closeCamera() }
-        } else if (viewModel.activeStoryProfileIndex != null) {
+        // Story ochiq bo'lsa, "orqaga" tugmasi uni yopsin (yaratish oqimi o'zi boshqaradi)
+        if (viewModel.createFlowType == null && viewModel.activeStoryProfileIndex != null) {
             BackHandler { viewModel.closeStory() }
         }
 
-        // Instagram uslubidagi yaratish oqimi (Post / Story / Reels)
+        // Haqiqiy yaratish oqimi (galereyadan media tanlash -> yuklash)
         AnimatedVisibility(
-            visible = viewModel.showCameraView,
+            visible = viewModel.createFlowType != null,
             enter = fadeIn(tween(250)) + slideInVertically(initialOffsetY = { it / 3 }),
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it / 3 })
         ) {
-            CameraScreen(
-                onDismiss = { viewModel.closeCamera() },
-                accentBlue = accentBlue
-            )
+            viewModel.createFlowType?.let { flowType ->
+                CreatePostScreen(
+                    type = flowType,
+                    isDarkMode = isDarkMode,
+                    onClose = { viewModel.closeCreateFlow() },
+                    onPosted = { viewModel.loadHomeFeed() }
+                )
+            }
         }
 
         AnimatedContent(
