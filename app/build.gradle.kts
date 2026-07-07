@@ -2,8 +2,16 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services) apply false
     kotlin("kapt")
+}
+
+// google-services.json is developer-provided (Firebase Console) and is not
+// committed to the repo. Only apply the plugin when the file is present so
+// CI / fresh checkouts without it still build (FCM registration simply stays
+// inert at runtime — see PushTokenManager's guarded Firebase access).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {

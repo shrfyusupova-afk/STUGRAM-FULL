@@ -61,9 +61,14 @@ object PushTokenManager {
     private fun stableDeviceId(context: Context): String =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown-device"
 
-    private suspend fun fetchFcmToken(): String? = suspendCancellableCoroutine { cont ->
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            cont.resume(if (task.isSuccessful) task.result else null)
+    // Guarded: if google-services.json wasn't present at build time, no
+    // FirebaseApp is configured and getInstance() throws synchronously — this
+    // must never crash a screen that merely wants to register for push.
+    private suspend fun fetchFcmToken(): String? = runCatching {
+        suspendCancellableCoroutine { cont ->
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                cont.resume(if (task.isSuccessful) task.result else null)
+            }
         }
-    }
+    }.onFailure { Log.w(TAG, "FCM unavailable: ${it.message}") }.getOrNull()
 }
