@@ -22,8 +22,9 @@ import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.PremiumButton
 import com.example.myapplication.ui.auth.components.PremiumTextField
 import com.example.myapplication.ui.auth.components.PremiumSocialButton
-import com.example.myapplication.ui.theme.PremiumBlue
-import com.example.myapplication.ui.theme.PremiumTextSecondary
+import com.example.myapplication.ui.theme.AuthError
+import com.example.myapplication.ui.theme.AuthYellowDeep
+import com.example.myapplication.ui.theme.AuthTextSecondary
 
 @Composable
 fun LoginContent(
@@ -63,7 +64,7 @@ fun LoginContent(
                     Icon(
                         imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                         contentDescription = null,
-                        tint = PremiumTextSecondary.copy(0.6f)
+                        tint = AuthTextSecondary.copy(0.6f)
                     )
                 }
             }
@@ -75,9 +76,9 @@ fun LoginContent(
             ) {
                 Text(
                     "Parolni unutdingizmi?",
-                    color = PremiumBlue,
+                    color = AuthYellowDeep,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -96,14 +97,14 @@ fun LoginContent(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
+            HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.15f))
             Text(
                 text = "yoki",
                 modifier = Modifier.padding(horizontal = 16.dp),
-                color = PremiumTextSecondary,
+                color = AuthTextSecondary,
                 fontSize = 12.sp
             )
-            HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
+            HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.15f))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -117,7 +118,7 @@ fun LoginContent(
         uiState.error?.let {
             Text(
                 text = it,
-                color = Color.Red,
+                color = AuthError,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 16.dp)
             )

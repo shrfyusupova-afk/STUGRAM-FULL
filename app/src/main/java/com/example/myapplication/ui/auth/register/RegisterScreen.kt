@@ -8,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -18,7 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.*
-import com.example.myapplication.ui.theme.PremiumTextSecondary
+import com.example.myapplication.ui.theme.AuthError
+import com.example.myapplication.ui.theme.AuthTextSecondary
 
 @Composable
 fun RegisterContent(
@@ -56,9 +56,9 @@ fun RegisterContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
-                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = PremiumTextSecondary, fontSize = 12.sp)
-                HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
+                HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.1f))
+                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = AuthTextSecondary, fontSize = 12.sp)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.1f))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -74,7 +74,7 @@ fun RegisterContent(
         if (uiState.currentStep == 2) {
             Text(
                 text = "${uiState.identity} ga yuborilgan kodni kiriting",
-                color = PremiumTextSecondary,
+                color = AuthTextSecondary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
@@ -93,7 +93,7 @@ fun RegisterContent(
             )
             
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga qaytish", color = PremiumTextSecondary, fontSize = 13.sp)
+                Text("Orqaga qaytish", color = AuthTextSecondary, fontSize = 13.sp)
             }
         }
 
@@ -160,7 +160,7 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = PremiumTextSecondary.copy(0.6f)
+                            tint = AuthTextSecondary.copy(0.6f)
                         )
                     }
                 }
@@ -180,7 +180,7 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = PremiumTextSecondary.copy(0.6f)
+                            tint = AuthTextSecondary.copy(0.6f)
                         )
                     }
                 }
@@ -195,14 +195,14 @@ fun RegisterContent(
             )
             
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga", color = PremiumTextSecondary, fontSize = 13.sp)
+                Text("Orqaga", color = AuthTextSecondary, fontSize = 13.sp)
             }
         }
 
         uiState.error?.let {
             Text(
                 text = it,
-                color = Color.Red,
+                color = AuthError,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 16.dp)
             )

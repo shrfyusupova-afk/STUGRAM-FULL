@@ -28,3 +28,16 @@ val AccentBlue = Color(0xFF00B0FF)
 
 val BrandBlue = Color(0xFF1332DE)
 val PremiumBlueDark = Color(0xFF1332DE)
+
+// --- Auth screen palette (light yellow/black/white) ---
+// Scoped to the Auth flow only (login/register); the Premium* tokens above
+// stay untouched since they're also used for chat bubble tint elsewhere.
+val AuthYellow = Color(0xFFFFC229)
+val AuthYellowDeep = Color(0xFFF7A600)
+val AuthYellowSoft = Color(0xFFFFE9B8)
+val AuthCard = Color(0xFFFFFFFF)
+val AuthInputFill = Color(0xFFF1F1F4)
+val AuthTextPrimary = Color(0xFF17140D)
+val AuthTextSecondary = Color(0xFF8B8A85)
+val AuthButtonBlack = Color(0xFF161616)
+val AuthError = Color(0xFFE2483A)
