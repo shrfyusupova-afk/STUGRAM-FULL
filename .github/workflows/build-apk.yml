@@ -39,11 +39,17 @@ jobs:
             echo "GOOGLE_SERVICES_JSON_B64 secret not set — building without Firebase config."
           fi
 
-      - name: Grant execute permission to gradlew
-        run: chmod +x gradlew
+      # Provisions the Gradle version pinned in gradle-wrapper.properties via
+      # the action's own downloader (with caching), instead of letting
+      # ./gradlew's built-in bootstrap fetch it — the wrapper's minimal fetch
+      # code hits a JVM SSL trust-store init error on some hosted runners.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - name: Rename APK for release
         run: cp app/build/outputs/apk/debug/app-debug.apk stugram-debug.apk
