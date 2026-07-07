@@ -1,15 +1,11 @@
 package com.example.myapplication.ui.home
 
-import com.example.myapplication.data.remote.AuthApi
-import com.example.myapplication.data.remote.CreatePostRequest
-import com.example.myapplication.data.remote.FullRegisterRequest
-import com.example.myapplication.data.remote.GoogleLoginRequest
-import com.example.myapplication.data.remote.LoginRequest
-import com.example.myapplication.data.remote.OtpRequest
-import com.example.myapplication.data.remote.UpdateProfileRequest
-import com.example.myapplication.data.remote.VerifyOtpRequest
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
+import com.example.myapplication.core.ui.UiState
+import com.example.myapplication.data.remote.post.ApiEnvelope
+import com.example.myapplication.data.remote.post.PostRepository
+import com.example.myapplication.data.remote.post.SearchUserDto
+import com.example.myapplication.testutil.FakeAuthApi
+import com.example.myapplication.testutil.FakePostApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestDispatcher
@@ -44,62 +40,54 @@ class SearchViewModelTest {
 
     @Test
     fun searchSuccess_returnsRealUsers() = runTest {
-        val api = FakeAuthApi(searchResponse = Response.success(usersPayload("u1", "ali", "Ali")))
-        val vm = SearchViewModel(authApi = api, ioDispatcher = dispatcher)
+        val api = object : FakePostApi() {
+            override suspend fun searchUsers(
+                query: String,
+                page: Int,
+                limit: Int
+            ): Response<ApiEnvelope<List<SearchUserDto>>> = Response.success(
+                ApiEnvelope(
+                    data = listOf(
+                        SearchUserDto(id = "u1", username = "ali", fullName = "Ali", bio = "bio", followStatus = "not_following")
+                    )
+                )
+            )
+        }
+        val vm = SearchViewModel(
+            repository = PostRepository(api = api),
+            authApi = FakeAuthApi(),
+            ioDispatcher = dispatcher
+        )
 
         vm.onQueryChange("ali")
         vm.search()
         advanceUntilIdle()
 
-        assertEquals(1, vm.uiState.value.users.size)
-        assertEquals("ali", vm.uiState.value.users.first().username)
+        val state = vm.uiState.value.searchState
+        assertTrue(state is UiState.Success)
+        assertEquals("ali", (state as UiState.Success).data.first().username)
     }
 
     @Test
     fun searchError_setsErrorState() = runTest {
-        val api = FakeAuthApi(
-            searchResponse = Response.error(500, "{}".toResponseBody("application/json".toMediaType()))
+        val api = object : FakePostApi() {
+            override suspend fun searchUsers(
+                query: String,
+                page: Int,
+                limit: Int
+            ): Response<ApiEnvelope<List<SearchUserDto>>> =
+                Response.error(500, "{}".toResponseBody("application/json".toMediaType()))
+        }
+        val vm = SearchViewModel(
+            repository = PostRepository(api = api),
+            authApi = FakeAuthApi(),
+            ioDispatcher = dispatcher
         )
-        val vm = SearchViewModel(authApi = api, ioDispatcher = dispatcher)
 
         vm.onQueryChange("ali")
         vm.search()
         advanceUntilIdle()
 
-        assertTrue(vm.uiState.value.error?.contains("500") == true)
-    }
-
-    private fun usersPayload(id: String, username: String, fullName: String): JsonObject {
-        val user = JsonObject().apply {
-            addProperty("_id", id)
-            addProperty("username", username)
-            addProperty("fullName", fullName)
-            addProperty("bio", "bio")
-            addProperty("followStatus", "not_following")
-        }
-        val data = JsonArray().apply { add(user) }
-        return JsonObject().apply { add("data", data) }
-    }
-
-    private class FakeAuthApi(
-        private val searchResponse: Response<JsonObject>
-    ) : AuthApi {
-        override suspend fun sendOtp(request: OtpRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun verifyOtp(request: VerifyOtpRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun register(request: FullRegisterRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun login(request: LoginRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun googleLogin(request: GoogleLoginRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getPostFeed(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getStoryFeed(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getMyProfile(): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun updateMyProfile(request: UpdateProfileRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getProfileByUsername(username: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun searchUsers(query: String, page: Int, limit: Int): Response<JsonObject> = searchResponse
-        override suspend fun getCreatorSuggestions(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun followUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun unfollowUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun createPost(request: CreatePostRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> =
-            Response.success(JsonObject().apply { add("data", JsonArray()) })
+        assertTrue(vm.uiState.value.searchState is UiState.Error)
     }
 }

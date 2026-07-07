@@ -17,13 +17,14 @@ fun PostDto.toPostDataOrNull(): PostData? {
     val displayImage = if (isVideo) (first?.thumbnailUrl ?: first?.url) else first?.url
     return PostData(
         id = postId,
-        user = author?.fullName?.takeIf { it.isNotBlank() } ?: author?.username ?: "user",
+        user = author?.username?.takeIf { it.isNotBlank() } ?: author?.fullName ?: "user",
         image = displayImage,
         caption = caption.orEmpty(),
         likes = likesCount ?: 0,
         comments = commentsCount ?: 0,
         isVideo = isVideo,
-        avatar = author?.avatar
+        avatar = author?.avatar,
+        videoUrl = if (isVideo) first?.url else null
     )
 }
 

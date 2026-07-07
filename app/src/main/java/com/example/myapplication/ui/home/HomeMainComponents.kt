@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.myapplication.core.ui.UiState
+import com.example.myapplication.ui.video.FeedVideoPlayer
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,12 +120,19 @@ fun HomeTabScreen(
                 }
                 is UiState.Success -> {
                     itemsIndexed(state.data, key = { _, post -> post.id }) { index, post ->
+                        // Video posts auto-play (muted) only while their item is on screen.
+                        val isVisible by remember(post.id) {
+                            derivedStateOf {
+                                listState.layoutInfo.visibleItemsInfo.any { it.key == post.id }
+                            }
+                        }
                         DashboardPostItem(
                             post = post,
                             accentBlue = accentBlue,
                             isDarkMode = isDarkMode,
                             onComment = { onComment(post.id) },
-                            onLike = onLike
+                            onLike = onLike,
+                            isVisible = isVisible
                         )
                         if (index == 1 && recommendedProfiles.isNotEmpty()) {
                             RecommendedProfilesSlider(recommendedProfiles, accentBlue, isDarkMode, onFollowProfile)
@@ -358,7 +366,8 @@ fun DashboardPostItem(
     isDarkMode: Boolean,
     onComment: () -> Unit,
     onLike: suspend (String, Boolean) -> Boolean,
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    isVisible: Boolean = false
 ) {
     val glassBaseColor = if (isDarkMode) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.75f)
     val textColor = if (isDarkMode) Color.White else Color.Black
@@ -393,18 +402,27 @@ fun DashboardPostItem(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
-                AsyncImage(
-                    model = post.image,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                if (post.image.isNullOrBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(if (isDarkMode) Color(0xFF1D1D1D) else Color(0xFFF0F0F0))
+                if (post.isVideo && !post.videoUrl.isNullOrBlank()) {
+                    FeedVideoPlayer(
+                        videoUrl = post.videoUrl,
+                        isActive = isVisible,
+                        modifier = Modifier.fillMaxSize(),
+                        accent = accentBlue
                     )
+                } else {
+                    AsyncImage(
+                        model = post.image,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (post.image.isNullOrBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(if (isDarkMode) Color(0xFF1D1D1D) else Color(0xFFF0F0F0))
+                        )
+                    }
                 }
             }
 

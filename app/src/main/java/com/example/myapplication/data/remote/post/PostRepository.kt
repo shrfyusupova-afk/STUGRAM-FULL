@@ -52,6 +52,16 @@ class PostRepository(
             else PostResult.Error(response.code(), mapError(response.code()))
         }
 
+    suspend fun getReels(page: Int, limit: Int): PostResult<PagedResult<PostDto>> =
+        safePaged { api.getReels(page, limit) }
+
+    suspend fun searchUsers(query: String, page: Int = 1, limit: Int = 20): PostResult<List<SearchUserDto>> =
+        safeCall {
+            val response = api.searchUsers(query, page, limit)
+            if (response.isSuccessful) PostResult.Success(response.body()?.data.orEmpty())
+            else PostResult.Error(response.code(), mapError(response.code()))
+        }
+
     suspend fun getComments(postId: String, page: Int, limit: Int): PostResult<PagedResult<CommentDto>> =
         safePaged { api.getComments(postId, page, limit) }
 

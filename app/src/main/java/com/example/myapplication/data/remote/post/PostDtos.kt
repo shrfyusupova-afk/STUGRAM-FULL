@@ -80,6 +80,15 @@ data class AddCommentRequest(
     val parentCommentId: String? = null
 )
 
+data class SearchUserDto(
+    @SerializedName("_id") val id: String? = null,
+    val username: String? = null,
+    val fullName: String? = null,
+    val avatar: String? = null,
+    val bio: String? = null,
+    val followStatus: String? = null
+)
+
 data class ProfileDto(
     @SerializedName("_id") val id: String? = null,
     val fullName: String? = null,

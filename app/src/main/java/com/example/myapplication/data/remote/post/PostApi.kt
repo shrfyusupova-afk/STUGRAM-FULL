@@ -64,6 +64,23 @@ interface PostApi {
         @Query("limit") limit: Int
     ): Response<ApiEnvelope<List<UserPreviewDto>>>
 
+    // Reels = video posts. Dedicated backend endpoint (recommendationRoutes):
+    // GET /api/v1/reels/me returns raw post docs filtered to media.type="video"
+    // plus an extra "recommendation" object we ignore.
+    @GET("api/v1/reels/me")
+    suspend fun getReels(
+        @Query("page") page: Int,
+        @Query("limit") limit: Int
+    ): Response<ApiEnvelope<List<PostDto>>>
+
+    // --- Search ---
+    @GET("api/v1/search/users")
+    suspend fun searchUsers(
+        @Query("q") query: String,
+        @Query("page") page: Int,
+        @Query("limit") limit: Int
+    ): Response<ApiEnvelope<List<SearchUserDto>>>
+
     // --- Profiles ---
     @GET("api/v1/profiles/me")
     suspend fun getMyProfile(): Response<ApiEnvelope<ProfileDto>>
