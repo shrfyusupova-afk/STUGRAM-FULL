@@ -1,6 +1,11 @@
 package com.example.myapplication.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -10,10 +15,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.push.PushTokenManager
 import com.example.myapplication.ui.comments.CommentsSheet
-import com.example.myapplication.ui.create.CreatePostScreen
+import com.example.myapplication.ui.create.CreateFlowHost
 import com.example.myapplication.ui.create.CreateType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +55,26 @@ fun HomeScreen(
     val contentColor = if (isDarkMode) Color.White else Color.Black
 
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    // Home is the single post-auth entry point (login, register, cold-start
+    // restore), so registering the FCM token here covers every path.
+    LaunchedEffect(Unit) {
+        PushTokenManager.register(context)
+    }
+
+    // Android 13+ requires runtime opt-in before notifications can be shown.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* denied -> app works without notifications */ }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
@@ -152,14 +180,14 @@ fun HomeScreen(
             BackHandler { viewModel.closeStory() }
         }
 
-        // Haqiqiy yaratish oqimi (galereyadan media tanlash -> yuklash)
+        // Yaratish oqimi: kamera (foto/video) yoki galereya -> preview -> yuklash
         AnimatedVisibility(
             visible = viewModel.createFlowType != null,
             enter = fadeIn(tween(250)) + slideInVertically(initialOffsetY = { it / 3 }),
             exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it / 3 })
         ) {
             viewModel.createFlowType?.let { flowType ->
-                CreatePostScreen(
+                CreateFlowHost(
                     type = flowType,
                     isDarkMode = isDarkMode,
                     onClose = { viewModel.closeCreateFlow() },

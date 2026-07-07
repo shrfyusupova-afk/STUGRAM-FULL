@@ -67,6 +67,16 @@ fun ChatDetailScreen(
     onBack: () -> Unit,
     isRequest: Boolean = false
 ) {
+    // Suppress push notifications for the chat that is currently on screen.
+    DisposableEffect(userName) {
+        com.example.myapplication.push.ActiveScreenTracker.activeChatUserName = userName
+        onDispose {
+            if (com.example.myapplication.push.ActiveScreenTracker.activeChatUserName == userName) {
+                com.example.myapplication.push.ActiveScreenTracker.activeChatUserName = null
+            }
+        }
+    }
+
     val backgroundColor = if (isDarkMode) Color.Black else Color.White
     val contentColor = if (isDarkMode) Color.White else Color.Black
     val accentBlue = Color(0xFF00A3FF)

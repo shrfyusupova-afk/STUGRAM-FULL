@@ -69,6 +69,8 @@ object SessionManager {
 
     /** Explicit user logout (Settings). Fully clears state and signals the UI. */
     suspend fun logout(context: Context) = withContext(Dispatchers.IO) {
+        // Needs the still-valid session, so it must run before clearing tokens.
+        runCatching { com.example.myapplication.push.PushTokenManager.unregister(context) }
         clearLocalSession(TokenManager(context))
         _forceLogout.tryEmit(Unit)
     }

@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.create
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -34,6 +35,9 @@ fun CreatePostScreen(
     isDarkMode: Boolean,
     onClose: () -> Unit,
     onPosted: () -> Unit,
+    initialMedia: List<Uri> = emptyList(),
+    initialIsVideo: Boolean = false,
+    onBackToCapture: (() -> Unit)? = null,
     viewModel: CreatePostViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -41,7 +45,10 @@ fun CreatePostScreen(
     val bg = if (isDarkMode) Color(0xFF0F0F0F) else Color.White
     val fg = if (isDarkMode) Color.White else Color.Black
 
-    LaunchedEffect(Unit) { viewModel.init(type) }
+    LaunchedEffect(Unit) {
+        viewModel.init(type)
+        if (initialMedia.isNotEmpty()) viewModel.setMedia(initialMedia, initialIsVideo)
+    }
 
     val singlePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -56,10 +63,11 @@ fun CreatePostScreen(
         else if (viewModel.mediaUris.isEmpty()) onClose()
     }
 
-    // Open the system photo picker once; it needs no runtime permission.
+    // Fallback: opened without pre-captured media -> system photo picker
+    // (needs no runtime permission).
     var launched by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(launched) {
-        if (!launched) {
+        if (!launched && initialMedia.isEmpty()) {
             launched = true
             val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             if (type == CreateType.STORY) singlePicker.launch(request) else multiPicker.launch(request)
@@ -68,7 +76,8 @@ fun CreatePostScreen(
 
     val uploadState = viewModel.uploadState
     val isUploading = uploadState is UploadUiState.Uploading || uploadState is UploadUiState.Preparing
-    BackHandler(enabled = !isUploading) { onClose() }
+    // Back returns to the camera step when there is one; X closes the flow.
+    BackHandler(enabled = !isUploading) { onBackToCapture?.invoke() ?: onClose() }
 
     Box(
         modifier = Modifier
@@ -88,7 +97,11 @@ fun CreatePostScreen(
                     Icon(Icons.Default.Close, contentDescription = "Yopish", tint = fg)
                 }
                 Text(
-                    text = if (type == CreateType.STORY) "Yangi story" else "Yangi post",
+                    text = when (type) {
+                        CreateType.STORY -> "Yangi story"
+                        CreateType.REEL -> "Yangi reel"
+                        CreateType.POST -> "Yangi post"
+                    },
                     color = fg,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
@@ -115,6 +128,14 @@ fun CreatePostScreen(
                 val uris = viewModel.mediaUris
                 if (uris.isEmpty()) {
                     CircularProgressIndicator(color = accentBlue)
+                } else if (viewModel.isVideo) {
+                    // Captured/picked video: looping preview with tap-to-unmute.
+                    com.example.myapplication.ui.video.FeedVideoPlayer(
+                        videoUrl = uris.first().toString(),
+                        isActive = true,
+                        modifier = Modifier.fillMaxSize(),
+                        accent = accentBlue
+                    )
                 } else {
                     val pagerState = rememberPagerState(pageCount = { uris.size })
                     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->

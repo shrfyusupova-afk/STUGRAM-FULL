@@ -31,6 +31,9 @@ import com.example.myapplication.config.AlphaFeatureFlags
 import com.example.myapplication.ui.auth.AuthScreen
 import com.example.myapplication.ui.home.*
 
+/** Target parsed from a notification tap: type is the backend push "type". */
+data class DeepLinkTarget(val type: String, val param: String)
+
 sealed class Screen(val route: String) {
     object Auth : Screen("auth")
     object Home : Screen("home")
@@ -51,7 +54,9 @@ fun AuthNavGraph(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Screen.Auth.route,
     isDarkMode: Boolean,
-    onThemeChange: (Boolean) -> Unit
+    onThemeChange: (Boolean) -> Unit,
+    pendingDeepLink: DeepLinkTarget? = null,
+    onDeepLinkConsumed: () -> Unit = {}
 ) {
     // Forced logout (refresh failure) or explicit logout: clear the whole back
     // stack and return to Auth. A fresh Auth entry gives fresh Login/Register
@@ -63,6 +68,27 @@ fun AuthNavGraph(
                 launchSingleTop = true
             }
         }
+    }
+
+    // Notification deep link. Chat pushes carry senderName, which is exactly
+    // what the chat route needs; other types (like/comment/follow) have no
+    // matching detail route yet, so they simply open the app on Home.
+    LaunchedEffect(pendingDeepLink) {
+        val target = pendingDeepLink ?: return@LaunchedEffect
+        if (startDestination != Screen.Home.route) {
+            onDeepLinkConsumed()
+            return@LaunchedEffect
+        }
+        when (target.type) {
+            "chat" -> if (target.param.isNotBlank() && AlphaFeatureFlags.DIRECT_MESSAGES_ENABLED) {
+                navController.navigate(Screen.ChatDetail.createRoute(target.param, false))
+            }
+            "group_chat" -> if (target.param.isNotBlank() && AlphaFeatureFlags.GROUP_CHAT_ENABLED) {
+                navController.navigate(Screen.GroupChatDetail.createRoute(target.param))
+            }
+            else -> Unit // like/comment/follow: land on Home
+        }
+        onDeepLinkConsumed()
     }
 
     NavHost(

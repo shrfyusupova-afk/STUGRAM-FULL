@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -30,18 +31,26 @@ import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.SessionManager
 import com.example.myapplication.data.remote.chat.ChatSocketManager
 import com.example.myapplication.navigation.AuthNavGraph
+import com.example.myapplication.navigation.DeepLinkTarget
 import com.example.myapplication.navigation.Screen
+import com.example.myapplication.push.StugramFirebaseMessagingService
 import com.example.myapplication.ui.theme.MyApplicationTheme
 import java.security.MessageDigest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    // Set from the launch intent (notification tap) and consumed by the nav graph.
+    private val pendingDeepLink = mutableStateOf<DeepLinkTarget?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Must run before any authenticated request so the Authenticator can
         // reach the encrypted token store.
         RetrofitClient.initialize(applicationContext)
+        StugramFirebaseMessagingService.ensureNotificationChannel(applicationContext)
+        pendingDeepLink.value = parseDeepLink(intent)
 
         printSHA1()
         enableEdgeToEdge()
@@ -75,12 +84,36 @@ class MainActivity : ComponentActivity() {
                         AuthNavGraph(
                             startDestination = start,
                             isDarkMode = isDarkMode.value,
-                            onThemeChange = { isDarkMode.value = it }
+                            onThemeChange = { isDarkMode.value = it },
+                            pendingDeepLink = pendingDeepLink.value,
+                            onDeepLinkConsumed = { pendingDeepLink.value = null }
                         )
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop: a notification tap while the app is alive lands here.
+        parseDeepLink(intent)?.let { pendingDeepLink.value = it }
+    }
+
+    /**
+     * Reads a deep-link target either from our own extras (foreground-built
+     * notifications) or from raw FCM data keys (system-tray notifications
+     * attach the data payload to the launch intent).
+     */
+    private fun parseDeepLink(intent: Intent?): DeepLinkTarget? {
+        if (intent == null) return null
+        val type = intent.getStringExtra(StugramFirebaseMessagingService.EXTRA_DEEPLINK_TYPE)
+            ?: intent.getStringExtra("type")
+            ?: return null
+        val param = intent.getStringExtra(StugramFirebaseMessagingService.EXTRA_DEEPLINK_PARAM)
+            ?: intent.getStringExtra("senderName")
+            ?: ""
+        return DeepLinkTarget(type = type, param = param)
     }
 
     override fun onStart() {

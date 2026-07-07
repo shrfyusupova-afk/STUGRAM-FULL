@@ -17,7 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class CreateType { POST, STORY }
+// REEL is a video post server-side (same /posts endpoint, video media).
+enum class CreateType { POST, STORY, REEL }
 
 sealed class UploadUiState {
     object Idle : UploadUiState()
@@ -52,7 +53,10 @@ class CreatePostViewModel(
     }
 
     fun setMedia(uris: List<Uri>, isVideo: Boolean) {
-        mediaUris = if (type == CreateType.STORY) uris.take(1) else uris.take(10)
+        mediaUris = when {
+            type == CreateType.STORY || isVideo -> uris.take(1)
+            else -> uris.take(10)
+        }
         this.isVideo = isVideo
     }
 
