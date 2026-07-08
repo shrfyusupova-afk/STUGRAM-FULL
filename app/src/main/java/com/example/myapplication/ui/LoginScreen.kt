@@ -22,9 +22,9 @@ import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.PremiumButton
 import com.example.myapplication.ui.auth.components.PremiumTextField
 import com.example.myapplication.ui.auth.components.PremiumSocialButton
+import com.example.myapplication.ui.theme.AuthBlue
 import com.example.myapplication.ui.theme.AuthError
-import com.example.myapplication.ui.theme.AuthYellowDeep
-import com.example.myapplication.ui.theme.AuthTextSecondary
+import com.example.myapplication.ui.theme.authTextSecondary
 
 @Composable
 fun LoginContent(
@@ -36,6 +36,7 @@ fun LoginContent(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val textSecondary = authTextSecondary(isDarkMode)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -47,7 +48,8 @@ fun LoginContent(
             label = "Username yoki Email",
             placeholder = "example@gmail.com",
             leadingIcon = Icons.Default.AlternateEmail,
-            isError = uiState.error != null
+            isError = uiState.error != null,
+            isDarkMode = isDarkMode
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -64,10 +66,11 @@ fun LoginContent(
                     Icon(
                         imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                         contentDescription = null,
-                        tint = AuthTextSecondary.copy(0.6f)
+                        tint = textSecondary.copy(0.6f)
                     )
                 }
-            }
+            },
+            isDarkMode = isDarkMode
         )
 
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
@@ -76,9 +79,9 @@ fun LoginContent(
             ) {
                 Text(
                     "Parolni unutdingizmi?",
-                    color = AuthYellowDeep,
+                    color = AuthBlue,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
@@ -97,14 +100,14 @@ fun LoginContent(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.15f))
+            HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.15f))
             Text(
                 text = "yoki",
                 modifier = Modifier.padding(horizontal = 16.dp),
-                color = AuthTextSecondary,
+                color = textSecondary,
                 fontSize = 12.sp
             )
-            HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.15f))
+            HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.15f))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -112,7 +115,8 @@ fun LoginContent(
         PremiumSocialButton(
             painter = painterResource(id = R.drawable.ic_google_g),
             text = "Google orqali kirish",
-            onClick = { viewModel.loginWithGoogle(context) }
+            onClick = { viewModel.loginWithGoogle(context) },
+            isDarkMode = isDarkMode
         )
 
         uiState.error?.let {

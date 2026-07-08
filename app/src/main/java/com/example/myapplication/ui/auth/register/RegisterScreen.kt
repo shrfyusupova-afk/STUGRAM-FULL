@@ -18,17 +18,19 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.*
 import com.example.myapplication.ui.theme.AuthError
-import com.example.myapplication.ui.theme.AuthTextSecondary
+import com.example.myapplication.ui.theme.authTextSecondary
 
 @Composable
 fun RegisterContent(
     viewModel: RegisterViewModel,
     uiState: RegisterUiState,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    isDarkMode: Boolean
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val textSecondary = authTextSecondary(isDarkMode)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -42,11 +44,12 @@ fun RegisterContent(
                 label = "Email yoki Telefon",
                 placeholder = "example@gmail.com / +998...",
                 leadingIcon = Icons.Default.Email,
-                isError = uiState.error != null
+                isError = uiState.error != null,
+                isDarkMode = isDarkMode
             )
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             PremiumButton(
                 text = "Kodni yuborish",
                 onClick = viewModel::sendOtp,
@@ -56,9 +59,9 @@ fun RegisterContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.1f))
-                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = AuthTextSecondary, fontSize = 12.sp)
-                HorizontalDivider(modifier = Modifier.weight(1f), color = AuthTextSecondary.copy(0.1f))
+                HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.1f))
+                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = textSecondary, fontSize = 12.sp)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.1f))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -66,7 +69,8 @@ fun RegisterContent(
             PremiumSocialButton(
                 painter = painterResource(id = R.drawable.ic_google_g),
                 text = "Google orqali ro'yxatdan o'tish",
-                onClick = { viewModel.loginWithGoogle(context) }
+                onClick = { viewModel.loginWithGoogle(context) },
+                isDarkMode = isDarkMode
             )
         }
 
@@ -74,14 +78,15 @@ fun RegisterContent(
         if (uiState.currentStep == 2) {
             Text(
                 text = "${uiState.identity} ga yuborilgan kodni kiriting",
-                color = AuthTextSecondary,
+                color = textSecondary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
-            
+
             OtpInputField(
                 otpText = uiState.otp,
-                onOtpTextChange = { code, _ -> viewModel.onOtpChange(code) }
+                onOtpTextChange = { code, _ -> viewModel.onOtpChange(code) },
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -91,9 +96,9 @@ fun RegisterContent(
                 onClick = viewModel::verifyOtp,
                 isLoading = uiState.isLoading
             )
-            
+
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga qaytish", color = AuthTextSecondary, fontSize = 13.sp)
+                Text("Orqaga qaytish", color = textSecondary, fontSize = 13.sp)
             }
         }
 
@@ -104,26 +109,29 @@ fun RegisterContent(
                 onValueChange = { viewModel.updateField(RegisterField.FullName(it)) },
                 label = "Ism Familiya",
                 placeholder = "To'liq ismingiz",
-                leadingIcon = Icons.Default.Person
+                leadingIcon = Icons.Default.Person,
+                isDarkMode = isDarkMode
             )
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             PremiumTextField(
                 value = uiState.username,
                 onValueChange = { viewModel.updateField(RegisterField.Username(it)) },
                 label = "Username",
                 placeholder = "@username",
-                leadingIcon = Icons.Default.AlternateEmail
+                leadingIcon = Icons.Default.AlternateEmail,
+                isDarkMode = isDarkMode
             )
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
                     AuthDropdownField(
                         value = uiState.selectedRegion,
                         onValueChange = { viewModel.updateField(RegisterField.Region(it)) },
                         label = "Viloyat",
-                        options = viewModel.regions
+                        options = viewModel.regions,
+                        isDarkMode = isDarkMode
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -131,11 +139,12 @@ fun RegisterContent(
                         value = uiState.selectedDistrict,
                         onValueChange = { viewModel.updateField(RegisterField.District(it)) },
                         label = "Tuman",
-                        options = viewModel.getDistricts(uiState.selectedRegion)
+                        options = viewModel.getDistricts(uiState.selectedRegion),
+                        isDarkMode = isDarkMode
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
 
             AuthDropdownField(
@@ -143,7 +152,8 @@ fun RegisterContent(
                 onValueChange = { viewModel.updateField(RegisterField.School(it)) },
                 label = "Maktab / OTM",
                 options = listOf("1-maktab", "2-maktab", "Prezident maktabi", "TATU", "TDPU"),
-                leadingIcon = Icons.Default.School
+                leadingIcon = Icons.Default.School,
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -160,14 +170,15 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = AuthTextSecondary.copy(0.6f)
+                            tint = textSecondary.copy(0.6f)
                         )
                     }
-                }
+                },
+                isDarkMode = isDarkMode
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             PremiumTextField(
                 value = uiState.confirmPassword,
                 onValueChange = { viewModel.updateField(RegisterField.ConfirmPassword(it)) },
@@ -180,10 +191,11 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = AuthTextSecondary.copy(0.6f)
+                            tint = textSecondary.copy(0.6f)
                         )
                     }
-                }
+                },
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -193,9 +205,9 @@ fun RegisterContent(
                 onClick = { viewModel.register(context) },
                 isLoading = uiState.isLoading
             )
-            
+
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga", color = AuthTextSecondary, fontSize = 13.sp)
+                Text("Orqaga", color = textSecondary, fontSize = 13.sp)
             }
         }
 

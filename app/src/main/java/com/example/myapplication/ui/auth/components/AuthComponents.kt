@@ -52,67 +52,23 @@ import kotlin.math.roundToInt
 
 @Composable
 fun PremiumLogo(modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "logo_glow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
-    )
-
     // One-shot entrance: soft pop-in instead of appearing abruptly.
     val entrance = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         entrance.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
     }
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Image(
+        painter = painterResource(id = R.drawable.logo),
+        contentDescription = "App Logo",
         modifier = modifier
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .padding(10.dp)
-                .graphicsLayer {
-                    scaleX = entrance.value
-                    scaleY = entrance.value
-                    alpha = entrance.value
-                }
-        ) {
-            // Soft amber glow behind the badge
-            Box(
-                modifier = Modifier
-                    .size(84.dp)
-                    .blur(28.dp)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(AuthYellowDeep.copy(alpha = glowAlpha), Color.Transparent),
-                            radius = 170f
-                        ),
-                        shape = CircleShape
-                    )
-            )
-
-            // White badge so the logo reads clearly on any background
-            Box(
-                modifier = Modifier
-                    .size(78.dp)
-                    .shadow(elevation = 10.dp, shape = CircleShape, spotColor = AuthYellowDeep.copy(alpha = 0.35f))
-                    .background(AuthCard, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo),
-                    contentDescription = "App Logo",
-                    modifier = Modifier.size(52.dp)
-                )
+            .size(96.dp)
+            .graphicsLayer {
+                scaleX = entrance.value
+                scaleY = entrance.value
+                alpha = entrance.value
             }
-        }
-    }
+    )
 }
 
 @Composable
@@ -126,13 +82,18 @@ fun PremiumTextField(
     errorMessage: String? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: @Composable (() -> Unit)? = null,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    isDarkMode: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+
     val fillColor by animateColorAsState(
-        targetValue = if (isFocused) AuthYellowSoft.copy(0.35f) else AuthInputFill,
+        targetValue = if (isFocused) AuthBlue.copy(0.12f) else inputFill,
         animationSpec = tween(220),
         label = "fill"
     )
@@ -144,14 +105,14 @@ fun PremiumTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp),
-            textStyle = TextStyle(color = AuthTextPrimary, fontSize = 16.sp),
-            label = if (label.isNotEmpty()) { { Text(label, color = AuthTextSecondary, fontSize = 12.sp) } } else null,
-            placeholder = { Text(placeholder, color = AuthTextSecondary.copy(0.6f), fontSize = 15.sp) },
+            textStyle = TextStyle(color = textPrimary, fontSize = 16.sp),
+            label = if (label.isNotEmpty()) { { Text(label, color = textSecondary, fontSize = 12.sp) } } else null,
+            placeholder = { Text(placeholder, color = textSecondary.copy(0.6f), fontSize = 15.sp) },
             leadingIcon = {
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,
-                    tint = if (isFocused) AuthYellowDeep else AuthTextSecondary,
+                    tint = if (isFocused) AuthBlue else textSecondary,
                     modifier = Modifier.size(22.dp)
                 )
             },
@@ -167,7 +128,7 @@ fun PremiumTextField(
                 unfocusedBorderColor = if (isError) AuthError.copy(0.4f) else Color.Transparent,
                 focusedContainerColor = fillColor,
                 unfocusedContainerColor = fillColor,
-                cursorColor = AuthYellowDeep,
+                cursorColor = AuthBlue,
                 errorBorderColor = AuthError
             )
         )
@@ -209,7 +170,7 @@ fun PremiumButton(
                 shape = RoundedCornerShape(28.dp)
                 clip = true
             }
-            .background(AuthButtonBlack, RoundedCornerShape(28.dp))
+            .background(AuthBlue, RoundedCornerShape(28.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -243,7 +204,8 @@ fun PremiumSocialButton(
     painter: androidx.compose.ui.graphics.painter.Painter,
     text: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -253,6 +215,11 @@ fun PremiumSocialButton(
         label = "social_scale"
     )
 
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val cardColor = authCard(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+
     OutlinedButton(
         onClick = onClick,
         modifier = modifier
@@ -260,10 +227,10 @@ fun PremiumSocialButton(
             .height(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale },
         shape = RoundedCornerShape(28.dp),
-        border = BorderStroke(1.dp, AuthTextSecondary.copy(0.25f)),
+        border = BorderStroke(1.dp, textSecondary.copy(0.25f)),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = AuthCard,
-            contentColor = AuthTextPrimary
+            containerColor = cardColor,
+            contentColor = textPrimary
         ),
         interactionSource = interactionSource,
         contentPadding = PaddingValues(horizontal = 16.dp)
@@ -277,7 +244,7 @@ fun PremiumSocialButton(
                 Box(
                     modifier = Modifier
                         .size(30.dp)
-                        .background(AuthInputFill, CircleShape),
+                        .background(inputFill, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
@@ -299,7 +266,7 @@ fun PremiumSocialButton(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
-                tint = AuthTextSecondary,
+                tint = textSecondary,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -310,13 +277,17 @@ fun PremiumSocialButton(
 fun TabSwitch(
     selectedIndex: Int,
     onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = false
 ) {
+    val inputFill = authInputFill(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
-            .background(AuthInputFill, RoundedCornerShape(26.dp))
+            .background(inputFill, RoundedCornerShape(26.dp))
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -324,12 +295,12 @@ fun TabSwitch(
         tabs.forEachIndexed { index, title ->
             val isSelected = selectedIndex == index
             val animatedBgColor by animateColorAsState(
-                targetValue = if (isSelected) AuthButtonBlack else Color.Transparent,
+                targetValue = if (isSelected) AuthBlue else Color.Transparent,
                 animationSpec = tween(220),
                 label = "tab_bg"
             )
             val animatedTextColor by animateColorAsState(
-                targetValue = if (isSelected) Color.White else AuthTextSecondary,
+                targetValue = if (isSelected) Color.White else textSecondary,
                 animationSpec = tween(220),
                 label = "tab_text"
             )
@@ -355,7 +326,10 @@ fun TabSwitch(
 }
 
 @Composable
-fun LoadingOverlay() {
+fun LoadingOverlay(isDarkMode: Boolean = false) {
+    val cardColor = authCard(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+
     Dialog(
         onDismissRequest = { },
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
@@ -363,13 +337,13 @@ fun LoadingOverlay() {
         Box(
             modifier = Modifier
                 .size(100.dp)
-                .background(AuthCard, RoundedCornerShape(26.dp))
-                .border(1.dp, AuthTextSecondary.copy(0.12f), RoundedCornerShape(26.dp)),
+                .background(cardColor, RoundedCornerShape(26.dp))
+                .border(1.dp, textSecondary.copy(0.12f), RoundedCornerShape(26.dp)),
             contentAlignment = Alignment.Center
         ) {
             CircularProgressIndicator(
                 modifier = Modifier.size(40.dp),
-                color = AuthYellowDeep,
+                color = AuthBlue,
                 strokeWidth = 4.dp
             )
         }
@@ -383,9 +357,15 @@ fun AuthDropdownField(
     onValueChange: (String) -> Unit,
     label: String,
     options: List<String>,
-    leadingIcon: ImageVector? = null
+    leadingIcon: ImageVector? = null,
+    isDarkMode: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
+
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+    val cardColor = authCard(isDarkMode)
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -396,8 +376,8 @@ fun AuthDropdownField(
             value = value,
             onValueChange = {},
             readOnly = true,
-            label = { Text(label, color = AuthTextSecondary, fontSize = 12.sp) },
-            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null, tint = AuthYellowDeep, modifier = Modifier.size(20.dp)) } },
+            label = { Text(label, color = textSecondary, fontSize = 12.sp) },
+            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null, tint = AuthBlue, modifier = Modifier.size(20.dp)) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
@@ -406,20 +386,20 @@ fun AuthDropdownField(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Color.Transparent,
                 unfocusedBorderColor = Color.Transparent,
-                focusedContainerColor = AuthInputFill,
-                unfocusedContainerColor = AuthInputFill,
-                cursorColor = AuthYellowDeep
+                focusedContainerColor = inputFill,
+                unfocusedContainerColor = inputFill,
+                cursorColor = AuthBlue
             )
         )
 
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(AuthCard)
+            modifier = Modifier.background(cardColor)
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option, color = AuthTextPrimary) },
+                    text = { Text(option, color = textPrimary) },
                     onClick = {
                         onValueChange(option)
                         expanded = false
@@ -501,9 +481,13 @@ fun OtpInputField(
     otpText: String,
     onOtpTextChange: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    otpCount: Int = 4
+    otpCount: Int = 4,
+    isDarkMode: Boolean = false
 ) {
     val focusRequesters = remember { List(otpCount) { FocusRequester() } }
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -519,12 +503,12 @@ fun OtpInputField(
                     .size(60.dp)
                     .padding(4.dp)
                     .background(
-                        if (char.isNotEmpty() || isFocused) AuthYellowSoft.copy(alpha = 0.5f) else AuthInputFill,
+                        if (char.isNotEmpty() || isFocused) AuthBlue.copy(alpha = 0.12f) else inputFill,
                         RoundedCornerShape(16.dp)
                     )
                     .border(
                         1.dp,
-                        if (isFocused) AuthYellowDeep else Color.Transparent,
+                        if (isFocused) AuthBlue else Color.Transparent,
                         RoundedCornerShape(16.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -559,7 +543,7 @@ fun OtpInputField(
                             }
                         },
                     textStyle = TextStyle(
-                        color = AuthTextPrimary,
+                        color = textPrimary,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
@@ -572,7 +556,7 @@ fun OtpInputField(
                     Box(
                         modifier = Modifier
                             .size(8.dp)
-                            .background(AuthTextSecondary.copy(alpha = 0.3f), CircleShape)
+                            .background(textSecondary.copy(alpha = 0.3f), CircleShape)
                     )
                 }
             }

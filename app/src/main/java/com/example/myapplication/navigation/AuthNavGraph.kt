@@ -96,7 +96,7 @@ fun AuthNavGraph(
         startDestination = startDestination
     ) {
         composable(route = Screen.Auth.route) {
-            AuthScreen(onNavigateToHome = {
+            AuthScreen(isDarkMode = isDarkMode, onNavigateToHome = {
                 navController.navigate(Screen.Home.route) {
                     popUpTo(Screen.Auth.route) { inclusive = true }
                 }
