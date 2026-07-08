@@ -4,7 +4,7 @@ const { objectIdSchema } = require("./commonValidators");
 const identitySchema = z
   .string()
   .trim()
-  .refine((value) => /(^\+998\d{9}$)|(^[^\s@]+@[^\s@]+\.[^\s@]+$)/.test(value), "Invalid identity");
+  .refine((value) => /(^\+998\d{9}$)|(^[^\s@]+@[^\s@]+\.[^\s@]+$)|(^tg:\d+$)/.test(value), "Invalid identity");
 
 const sendOtpSchema = {
   body: z.object({
@@ -95,6 +95,12 @@ const sessionIdParamSchema = {
   }),
 };
 
+const telegramLinkCodeParamSchema = {
+  params: z.object({
+    code: z.string().min(8).max(64),
+  }),
+};
+
 const switchProfileSchema = {
   body: z.object({
     profileId: objectIdSchema,
@@ -113,5 +119,6 @@ module.exports = {
   resetPasswordSchema,
   changePasswordSchema,
   sessionIdParamSchema,
+  telegramLinkCodeParamSchema,
   switchProfileSchema,
 };
