@@ -20,6 +20,15 @@ interface AuthApi {
     @POST("api/v1/auth/google")
     suspend fun googleLogin(@Body request: GoogleLoginRequest): Response<JsonObject>
 
+    @POST("api/v1/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<JsonObject>
+
+    @POST("api/v1/auth/telegram/link-code")
+    suspend fun createTelegramLinkCode(): Response<JsonObject>
+
+    @GET("api/v1/auth/telegram/link-status/{code}")
+    suspend fun getTelegramLinkStatus(@Path("code") code: String): Response<JsonObject>
+
     @GET("api/v1/posts/feed/me")
     suspend fun getPostFeed(
         @Query("page") page: Int = 1,
@@ -78,6 +87,13 @@ data class OtpRequest(val identity: String, val purpose: String = "register")
 data class VerifyOtpRequest(val identity: String, val otp: String, val purpose: String = "register")
 
 data class LoginRequest(val identityOrUsername: String, val password: String)
+
+data class ResetPasswordRequest(
+    val identity: String,
+    val otp: String,
+    val password: String,
+    val confirmPassword: String
+)
 
 data class AuthResponse(
     val token: String,

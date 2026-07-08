@@ -1,7 +1,9 @@
 package com.example.myapplication.ui.auth.register
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -13,11 +15,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.*
+import com.example.myapplication.ui.theme.AuthBlue
 import com.example.myapplication.ui.theme.AuthError
+import com.example.myapplication.ui.theme.authInputFill
+import com.example.myapplication.ui.theme.authTextPrimary
 import com.example.myapplication.ui.theme.authTextSecondary
 
 @Composable
@@ -36,8 +42,17 @@ fun RegisterContent(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Telegramda tasdiqlashni kutish holati
+        if (uiState.telegramWaiting) {
+            TelegramWaitingCard(
+                onReopenTelegram = { viewModel.reopenTelegram(context) },
+                onCancel = viewModel::cancelTelegramRegistration,
+                isDarkMode = isDarkMode
+            )
+        }
+
         // Step 1: Identity
-        if (uiState.currentStep == 1) {
+        if (uiState.currentStep == 1 && !uiState.telegramWaiting) {
             PremiumTextField(
                 value = uiState.identity,
                 onValueChange = viewModel::onIdentityChange,
@@ -72,6 +87,15 @@ fun RegisterContent(
                 onClick = { viewModel.loginWithGoogle(context) },
                 isDarkMode = isDarkMode
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PremiumSocialButton(
+                painter = painterResource(id = R.drawable.ic_telegram),
+                text = "Telegram orqali ro'yxatdan o'tish",
+                onClick = { viewModel.startTelegramRegistration(context) },
+                isDarkMode = isDarkMode
+            )
         }
 
         // Step 2: OTP
@@ -104,6 +128,11 @@ fun RegisterContent(
 
         // Step 3: Full Registration
         if (uiState.currentStep == 3) {
+            if (uiState.telegramLinked) {
+                TelegramLinkedBadge(phone = uiState.telegramPhone, isDarkMode = isDarkMode)
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             PremiumTextField(
                 value = uiState.fullName,
                 onValueChange = { viewModel.updateField(RegisterField.FullName(it)) },
@@ -219,5 +248,85 @@ fun RegisterContent(
                 modifier = Modifier.padding(top = 16.dp)
             )
         }
+    }
+}
+
+/**
+ * Foydalanuvchi Telegram botda raqamini tasdiqlashini kutish holati.
+ * Poll fonida ishlaydi; tasdiqlangach ViewModel avtomatik 3-bosqichga o'tadi.
+ */
+@Composable
+private fun TelegramWaitingCard(
+    onReopenTelegram: () -> Unit,
+    onCancel: () -> Unit,
+    isDarkMode: Boolean
+) {
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(inputFill, RoundedCornerShape(20.dp))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(36.dp),
+            color = AuthBlue,
+            strokeWidth = 3.dp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Telegramda tasdiqlang",
+            color = textPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "Botdagi \"📱 Telefon raqamni yuborish\" tugmasini bosing.\nTasdiqlangach bu yerda avtomatik davom etadi.",
+            color = textSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        PremiumButton(
+            text = "Telegramni qayta ochish",
+            onClick = onReopenTelegram
+        )
+        TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+            Text("Bekor qilish", color = textSecondary, fontSize = 13.sp)
+        }
+    }
+}
+
+/** 3-bosqichda ko'rinadigan "Telegram tasdiqlandi" belgisi. */
+@Composable
+private fun TelegramLinkedBadge(phone: String, isDarkMode: Boolean) {
+    val textPrimary = authTextPrimary(isDarkMode)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AuthBlue.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = AuthBlue,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = "Telegram orqali tasdiqlandi" + (if (phone.isNotBlank()) " · $phone" else ""),
+            color = textPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

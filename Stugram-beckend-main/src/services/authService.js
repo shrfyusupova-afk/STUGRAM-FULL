@@ -19,7 +19,7 @@ const { getOrCreateSettings } = require("./settingsService");
 const { createAuditLog } = require("./auditLogService");
 const logger = require("../utils/logger");
 const { denylistToken, isTokenDenied } = require("./redisSecurityService");
-const { sendOtpForIdentity, maskIdentity } = require("./otpDeliveryService");
+const { sendOtpForIdentity, maskIdentity, getIdentityChannel } = require("./otpDeliveryService");
 const { sendPasswordResetEmail } = require("./passwordResetDeliveryService");
 
 const googleClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
@@ -28,6 +28,29 @@ const shouldExposeNonProductionSecrets = () => env.nodeEnv !== "production";
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
 const normalizeIdentity = (identity) => String(identity || "").trim().toLowerCase();
+
+const IDENTITY_FORMAT_REGEX = /(^\+998\d{9}$)|(^[^\s@]+@[^\s@]+\.[^\s@]+$)|(^tg:\d+$)/;
+
+// The forgot-password flow lets users type their username instead of the raw
+// identity (which for Telegram accounts is an internal "tg:<chatId>" value
+// they never see). Resolve it to the stored identity; other purposes still
+// require a real identity format.
+const resolveOtpIdentity = async (identity, purpose) => {
+  const normalized = normalizeIdentity(identity);
+  if (IDENTITY_FORMAT_REGEX.test(normalized)) {
+    return normalized;
+  }
+
+  if (purpose === "forgot_password") {
+    const user = await User.findOne({ username: normalized }).select("identity");
+    if (user?.identity) {
+      return user.identity;
+    }
+    throw new ApiError(404, "Bunday foydalanuvchi topilmadi");
+  }
+
+  throw new ApiError(400, "Invalid identity");
+};
 
 const buildOtpSendMeta = (meta = {}) => ({
   ipAddress: meta.ipAddress || null,
@@ -138,7 +161,7 @@ const sanitizeUser = (user) => ({
 });
 
 const sendOtp = async ({ identity, purpose }, meta = {}) => {
-  const normalizedIdentity = normalizeIdentity(identity);
+  const normalizedIdentity = await resolveOtpIdentity(identity, purpose);
   const safeMeta = buildOtpSendMeta(meta);
 
   if (purpose === "register") {
@@ -188,20 +211,26 @@ const sendOtp = async ({ identity, purpose }, meta = {}) => {
   }
 
   return {
-    identity: normalizedIdentity,
+    // For username-based forgot-password requests, echo back what the caller
+    // sent (they keep using it in verify/reset) instead of leaking the
+    // resolved internal identity; expose only a masked destination.
+    identity: purpose === "forgot_password" ? normalizeIdentity(identity) : normalizedIdentity,
     purpose,
     expiresAt,
+    channel: getIdentityChannel(normalizedIdentity),
+    maskedDestination: maskIdentity(normalizedIdentity),
     otp: shouldExposeNonProductionSecrets() ? otp : undefined,
   };
 };
 
 const verifyOtp = async ({ identity, otp, purpose }) => {
-  const record = await OtpCode.findOne({ identity, purpose }).sort({ createdAt: -1 });
+  const normalizedIdentity = await resolveOtpIdentity(identity, purpose);
+  const record = await OtpCode.findOne({ identity: normalizedIdentity, purpose }).sort({ createdAt: -1 });
   if (!record || record.expiresAt < new Date()) {
     throw new ApiError(400, "OTP expired or not found");
   }
 
-  if (record.codeHash !== hashOtp(identity, otp)) {
+  if (record.codeHash !== hashOtp(normalizedIdentity, otp)) {
     throw new ApiError(400, "Invalid OTP");
   }
 
@@ -577,7 +606,7 @@ const resetPassword = async (payload, meta = {}) => {
     return { reset: true };
   }
 
-  const normalizedIdentity = normalizeIdentity(identity);
+  const normalizedIdentity = await resolveOtpIdentity(identity, "forgot_password");
   const user = await User.findOne({ identity: normalizedIdentity }).select("_id accountId passwordHash");
   if (!user) {
     await createAuditLog({
