@@ -17,7 +17,9 @@ data class PostData(
     val likes: Int = 0,
     val comments: Int = 0,
     val reposts: Int = 0,
-    val isVideo: Boolean = false
+    val isVideo: Boolean = false,
+    val avatar: String? = null,
+    val videoUrl: String? = null
 )
 
 @Immutable
@@ -45,7 +47,13 @@ data class StoryActivityUser(
 data class TabItem(val name: String, val icon: ImageVector)
 
 @Immutable
-data class RecommendedProfile(val id: Int, val name: String, val image: String, val username: String)
+data class RecommendedProfile(
+    val id: Int,
+    val name: String,
+    val image: String,
+    val username: String,
+    val userId: String = ""
+)
 
 @Immutable
 data class CommentData(

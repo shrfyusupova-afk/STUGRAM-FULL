@@ -2,8 +2,12 @@ package com.example.myapplication.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.core.ui.UiState
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.RetrofitClient
+import com.example.myapplication.data.remote.post.PostRepository
+import com.example.myapplication.data.remote.post.PostResult
+import com.example.myapplication.data.remote.post.SearchUserDto
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,91 +21,131 @@ data class SearchUserItem(
     val id: String,
     val username: String,
     val fullName: String,
+    val avatar: String,
     val bio: String,
     val followStatus: String
 )
 
 data class SearchUiState(
     val query: String = "",
-    val isLoading: Boolean = false,
-    val error: String? = null,
-    val users: List<SearchUserItem> = emptyList(),
-    val followActionUserId: String? = null
+    // Empty query -> discovery (explore/creators); >=2 chars -> server search.
+    val searchState: UiState<List<SearchUserItem>> = UiState.Empty,
+    val discoverState: UiState<List<SearchUserItem>> = UiState.Loading,
+    val followActionUserId: String? = null,
+    val followError: String? = null
 )
 
 class SearchViewModel(
+    private val repository: PostRepository = PostRepository(),
     private val authApi: AuthApi = RetrofitClient.instance,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    init {
+        loadDiscover()
+    }
+
     fun onQueryChange(value: String) {
-        _uiState.update { it.copy(query = value, error = null) }
+        _uiState.update { it.copy(query = value, followError = null) }
+        if (value.trim().length < 2) {
+            _uiState.update { it.copy(searchState = UiState.Empty) }
+        }
+    }
+
+    fun loadDiscover() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(discoverState = UiState.Loading) }
+            val result = withContext(ioDispatcher) { repository.getCreatorSuggestions(page = 1, limit = 20) }
+            when (result) {
+                is PostResult.Success -> {
+                    val items = result.value.mapNotNull { user ->
+                        val username = user.username ?: return@mapNotNull null
+                        SearchUserItem(
+                            id = user.id.orEmpty(),
+                            username = username,
+                            fullName = user.fullName.orEmpty(),
+                            avatar = user.avatar.orEmpty(),
+                            bio = "",
+                            followStatus = "not_following"
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(discoverState = if (items.isEmpty()) UiState.Empty else UiState.Success(items))
+                    }
+                }
+                is PostResult.Error -> _uiState.update { it.copy(discoverState = UiState.Error(result.message)) }
+            }
+        }
     }
 
     fun search() {
         val query = _uiState.value.query.trim()
-        if (query.length < 2) {
-            _uiState.update { it.copy(users = emptyList(), isLoading = false, error = null) }
-            return
-        }
+        if (query.length < 2) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val response = withContext(ioDispatcher) { authApi.searchUsers(query = query, page = 1, limit = 20) }
-                if (!response.isSuccessful) {
-                    _uiState.update { it.copy(isLoading = false, error = "Search failed (${response.code()})") }
-                    return@launch
-                }
-
-                val items = response.body()?.getAsJsonArray("data")
-                val mapped = buildList {
-                    items?.forEach { el ->
-                        val obj = el.asJsonObject
-                        add(
-                            SearchUserItem(
-                                id = obj.get("_id")?.asString.orEmpty(),
-                                username = obj.get("username")?.asString.orEmpty(),
-                                fullName = obj.get("fullName")?.asString.orEmpty(),
-                                bio = obj.get("bio")?.asString.orEmpty(),
-                                followStatus = obj.get("followStatus")?.asString ?: "not_following"
-                            )
-                        )
+            _uiState.update { it.copy(searchState = UiState.Loading) }
+            val result = withContext(ioDispatcher) { repository.searchUsers(query = query, page = 1, limit = 20) }
+            when (result) {
+                is PostResult.Success -> {
+                    val items = result.value.mapNotNull { it.toItemOrNull() }
+                    _uiState.update {
+                        it.copy(searchState = if (items.isEmpty()) UiState.Empty else UiState.Success(items))
                     }
                 }
-                _uiState.update { it.copy(isLoading = false, users = mapped, error = null) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Network error: ${e.message}") }
+                is PostResult.Error -> _uiState.update { it.copy(searchState = UiState.Error(result.message)) }
             }
         }
+    }
+
+    private fun SearchUserDto.toItemOrNull(): SearchUserItem? {
+        val name = username ?: return null
+        return SearchUserItem(
+            id = id.orEmpty(),
+            username = name,
+            fullName = fullName.orEmpty(),
+            avatar = avatar.orEmpty(),
+            bio = bio.orEmpty(),
+            followStatus = followStatus ?: "not_following"
+        )
     }
 
     fun followOrUnfollow(user: SearchUserItem) {
         if (user.id.isBlank()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(followActionUserId = user.id, error = null) }
-            try {
-                val response = withContext(ioDispatcher) {
+            _uiState.update { it.copy(followActionUserId = user.id, followError = null) }
+            val response = withContext(ioDispatcher) {
+                runCatching {
                     if (user.followStatus == "following") authApi.unfollowUser(user.id) else authApi.followUser(user.id)
                 }
-                if (!response.isSuccessful) {
-                    _uiState.update { it.copy(followActionUserId = null, error = "Follow action failed (${response.code()})") }
+            }
+            response.onFailure { e ->
+                _uiState.update { it.copy(followActionUserId = null, followError = "Tarmoq xatosi: ${e.message}") }
+                return@launch
+            }
+            response.onSuccess { resp ->
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(followActionUserId = null, followError = "Follow amal bajarilmadi (${resp.code()})") }
                     return@launch
+                }
+                val toggle = { item: SearchUserItem ->
+                    if (item.id != user.id) item
+                    else item.copy(followStatus = if (item.followStatus == "following") "not_following" else "following")
                 }
                 _uiState.update { state ->
                     state.copy(
                         followActionUserId = null,
-                        users = state.users.map {
-                            if (it.id != user.id) it
-                            else it.copy(followStatus = if (it.followStatus == "following") "not_following" else "following")
-                        }
+                        searchState = state.searchState.mapItems(toggle),
+                        discoverState = state.discoverState.mapItems(toggle)
                     )
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(followActionUserId = null, error = "Network error: ${e.message}") }
             }
         }
     }
+
+    private fun UiState<List<SearchUserItem>>.mapItems(
+        transform: (SearchUserItem) -> SearchUserItem
+    ): UiState<List<SearchUserItem>> =
+        if (this is UiState.Success) UiState.Success(data.map(transform)) else this
 }

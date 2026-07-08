@@ -28,3 +28,19 @@ val AccentBlue = Color(0xFF00B0FF)
 
 val BrandBlue = Color(0xFF1332DE)
 val PremiumBlueDark = Color(0xFF1332DE)
+
+// --- Auth screen palette ---
+// Scoped to the Auth flow only (login/register); the Premium* tokens above
+// stay untouched since they're also used for chat bubble tint elsewhere.
+// These follow the same day/night colors as the main app (Home) instead of a
+// fixed palette, so functions (parameterized by isDarkMode) are used instead
+// of plain vals -- matching the per-screen isDarkMode convention used
+// throughout the rest of the app.
+val AuthBlue = Color(0xFF00A3FF)
+val AuthError = Color(0xFFE2483A)
+
+fun authBackground(isDarkMode: Boolean) = if (isDarkMode) Color(0xFF0F0F0F) else Color(0xFFF2F2F2)
+fun authCard(isDarkMode: Boolean) = if (isDarkMode) Color(0xFF1A1A1A) else Color.White
+fun authInputFill(isDarkMode: Boolean) = if (isDarkMode) Color(0xFF262626) else Color(0xFFF5F5F5)
+fun authTextPrimary(isDarkMode: Boolean) = if (isDarkMode) Color.White else Color(0xFF17140D)
+fun authTextSecondary(isDarkMode: Boolean) = if (isDarkMode) Color(0xFFAAAAAA) else Color(0xFF8B8A85)

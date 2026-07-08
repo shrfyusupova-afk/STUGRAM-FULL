@@ -2,19 +2,32 @@ package com.example.myapplication.core.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Looper
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.example.myapplication.BuildConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 private val Context.dataStore by preferencesDataStore(name = "auth_prefs")
 
+/**
+ * Encrypted token storage.
+ *
+ * NOTE (Phase 0): construction is cheap and does NO blocking I/O. Callers must
+ * invoke [initialize] once from a coroutine (Dispatchers.IO) before relying on
+ * the cached [accessToken]/[refreshToken] state. Background threads (e.g. the
+ * OkHttp Authenticator) may use the synchronous peek-, save- and clear-prefixed
+ * helpers, which never touch the main thread.
+ */
 class TokenManager(private val context: Context) {
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
@@ -38,22 +51,25 @@ class TokenManager(private val context: Context) {
     val accessToken: Flow<String?> = accessState.asStateFlow()
     val refreshToken: Flow<String?> = refreshState.asStateFlow()
 
-    init {
-        runBlocking {
-            migrateLegacyTokensIfNeeded()
-            syncStateFromSecureStorage()
-        }
-    }
-
-    suspend fun saveTokens(access: String, refresh: String) {
-        securePrefs.edit()
-            .putString("access_token", access)
-            .putString("refresh_token", refresh)
-            .apply()
+    /**
+     * Loads (and migrates) persisted tokens off the main thread. This is also
+     * where the keystore-backed [securePrefs] is first materialized (its lazy
+     * init does the expensive AES/keystore work), guaranteeing that cost lands
+     * on Dispatchers.IO rather than on the main thread. Idempotent — safe to
+     * call on every cold start.
+     */
+    suspend fun initialize() = withContext(Dispatchers.IO) {
+        // Force keystore initialization here, on IO.
+        securePrefs
+        migrateLegacyTokensIfNeeded()
         syncStateFromSecureStorage()
     }
 
-    suspend fun clearTokens() {
+    suspend fun saveTokens(access: String, refresh: String) = withContext(Dispatchers.IO) {
+        persistTokens(access, refresh)
+    }
+
+    suspend fun clearTokens() = withContext(Dispatchers.IO) {
         securePrefs.edit()
             .remove("access_token")
             .remove("refresh_token")
@@ -63,6 +79,64 @@ class TokenManager(private val context: Context) {
             prefs.remove(refreshTokenKey)
         }
         syncStateFromSecureStorage()
+    }
+
+    // --- Synchronous helpers (safe on background threads only, e.g. Authenticator) ---
+
+    /** Reads the access token directly from encrypted storage. Never call on the main thread. */
+    fun peekAccessToken(): String? {
+        assertNotMainThread("peekAccessToken")
+        return securePrefs.getString("access_token", null)
+    }
+
+    /** Reads the refresh token directly from encrypted storage. Never call on the main thread. */
+    fun peekRefreshToken(): String? {
+        assertNotMainThread("peekRefreshToken")
+        return securePrefs.getString("refresh_token", null)
+    }
+
+    /** Blocking, atomic token write for use from a background thread (Authenticator/splash). */
+    fun saveTokensSync(access: String, refresh: String) {
+        assertNotMainThread("saveTokensSync")
+        securePrefs.edit()
+            .putString("access_token", access)
+            .putString("refresh_token", refresh)
+            .commit()
+        accessState.value = access
+        refreshState.value = refresh
+    }
+
+    /** Blocking token wipe for use from a background thread (Authenticator). */
+    fun clearTokensSync() {
+        assertNotMainThread("clearTokensSync")
+        securePrefs.edit()
+            .remove("access_token")
+            .remove("refresh_token")
+            .commit()
+        accessState.value = null
+        refreshState.value = null
+    }
+
+    // Guards against a regression that would do keystore/disk I/O on the UI
+    // thread (ANR risk). Throws in debug so it fails loudly in development;
+    // logs a warning in release. Never logs token values.
+    private fun assertNotMainThread(op: String) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            val message = "TokenManager.$op must run off the main thread"
+            if (BuildConfig.DEBUG) {
+                throw IllegalStateException(message)
+            }
+            Log.w("TokenManager", message)
+        }
+    }
+
+    private fun persistTokens(access: String, refresh: String) {
+        securePrefs.edit()
+            .putString("access_token", access)
+            .putString("refresh_token", refresh)
+            .apply()
+        accessState.value = access
+        refreshState.value = refresh
     }
 
     private suspend fun migrateLegacyTokensIfNeeded() {

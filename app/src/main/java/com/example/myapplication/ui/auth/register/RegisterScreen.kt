@@ -1,52 +1,70 @@
 package com.example.myapplication.ui.auth.register
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.*
-import com.example.myapplication.ui.theme.PremiumTextSecondary
+import com.example.myapplication.ui.theme.AuthBlue
+import com.example.myapplication.ui.theme.AuthError
+import com.example.myapplication.ui.theme.authInputFill
+import com.example.myapplication.ui.theme.authTextPrimary
+import com.example.myapplication.ui.theme.authTextSecondary
 
 @Composable
 fun RegisterContent(
     viewModel: RegisterViewModel,
     uiState: RegisterUiState,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    isDarkMode: Boolean
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val textSecondary = authTextSecondary(isDarkMode)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Telegramda tasdiqlashni kutish holati
+        if (uiState.telegramWaiting) {
+            TelegramWaitingCard(
+                onReopenTelegram = { viewModel.reopenTelegram(context) },
+                onCancel = viewModel::cancelTelegramRegistration,
+                isDarkMode = isDarkMode
+            )
+        }
+
         // Step 1: Identity
-        if (uiState.currentStep == 1) {
+        if (uiState.currentStep == 1 && !uiState.telegramWaiting) {
             PremiumTextField(
                 value = uiState.identity,
                 onValueChange = viewModel::onIdentityChange,
                 label = "Email yoki Telefon",
                 placeholder = "example@gmail.com / +998...",
                 leadingIcon = Icons.Default.Email,
-                isError = uiState.error != null
+                isError = uiState.error != null,
+                isDarkMode = isDarkMode
             )
-            
+
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             PremiumButton(
                 text = "Kodni yuborish",
                 onClick = viewModel::sendOtp,
@@ -56,9 +74,9 @@ fun RegisterContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
-                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = PremiumTextSecondary, fontSize = 12.sp)
-                HorizontalDivider(modifier = Modifier.weight(1f), color = PremiumTextSecondary.copy(0.1f))
+                HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.1f))
+                Text("yoki", modifier = Modifier.padding(horizontal = 16.dp), color = textSecondary, fontSize = 12.sp)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = textSecondary.copy(0.1f))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -66,7 +84,17 @@ fun RegisterContent(
             PremiumSocialButton(
                 painter = painterResource(id = R.drawable.ic_google_g),
                 text = "Google orqali ro'yxatdan o'tish",
-                onClick = { viewModel.loginWithGoogle(context) }
+                onClick = { viewModel.loginWithGoogle(context) },
+                isDarkMode = isDarkMode
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PremiumSocialButton(
+                painter = painterResource(id = R.drawable.ic_telegram),
+                text = "Telegram orqali ro'yxatdan o'tish",
+                onClick = { viewModel.startTelegramRegistration(context) },
+                isDarkMode = isDarkMode
             )
         }
 
@@ -74,14 +102,15 @@ fun RegisterContent(
         if (uiState.currentStep == 2) {
             Text(
                 text = "${uiState.identity} ga yuborilgan kodni kiriting",
-                color = PremiumTextSecondary,
+                color = textSecondary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
-            
+
             OtpInputField(
                 otpText = uiState.otp,
-                onOtpTextChange = { code, _ -> viewModel.onOtpChange(code) }
+                onOtpTextChange = { code, _ -> viewModel.onOtpChange(code) },
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -91,39 +120,47 @@ fun RegisterContent(
                 onClick = viewModel::verifyOtp,
                 isLoading = uiState.isLoading
             )
-            
+
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga qaytish", color = PremiumTextSecondary, fontSize = 13.sp)
+                Text("Orqaga qaytish", color = textSecondary, fontSize = 13.sp)
             }
         }
 
         // Step 3: Full Registration
         if (uiState.currentStep == 3) {
+            if (uiState.telegramLinked) {
+                TelegramLinkedBadge(phone = uiState.telegramPhone, isDarkMode = isDarkMode)
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             PremiumTextField(
                 value = uiState.fullName,
                 onValueChange = { viewModel.updateField(RegisterField.FullName(it)) },
                 label = "Ism Familiya",
                 placeholder = "To'liq ismingiz",
-                leadingIcon = Icons.Default.Person
+                leadingIcon = Icons.Default.Person,
+                isDarkMode = isDarkMode
             )
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             PremiumTextField(
                 value = uiState.username,
                 onValueChange = { viewModel.updateField(RegisterField.Username(it)) },
                 label = "Username",
                 placeholder = "@username",
-                leadingIcon = Icons.Default.AlternateEmail
+                leadingIcon = Icons.Default.AlternateEmail,
+                isDarkMode = isDarkMode
             )
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(modifier = Modifier.weight(1f)) {
                     AuthDropdownField(
                         value = uiState.selectedRegion,
                         onValueChange = { viewModel.updateField(RegisterField.Region(it)) },
                         label = "Viloyat",
-                        options = viewModel.regions
+                        options = viewModel.regions,
+                        isDarkMode = isDarkMode
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -131,11 +168,12 @@ fun RegisterContent(
                         value = uiState.selectedDistrict,
                         onValueChange = { viewModel.updateField(RegisterField.District(it)) },
                         label = "Tuman",
-                        options = viewModel.getDistricts(uiState.selectedRegion)
+                        options = viewModel.getDistricts(uiState.selectedRegion),
+                        isDarkMode = isDarkMode
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
 
             AuthDropdownField(
@@ -143,7 +181,8 @@ fun RegisterContent(
                 onValueChange = { viewModel.updateField(RegisterField.School(it)) },
                 label = "Maktab / OTM",
                 options = listOf("1-maktab", "2-maktab", "Prezident maktabi", "TATU", "TDPU"),
-                leadingIcon = Icons.Default.School
+                leadingIcon = Icons.Default.School,
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -160,14 +199,15 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = PremiumTextSecondary.copy(0.6f)
+                            tint = textSecondary.copy(0.6f)
                         )
                     }
-                }
+                },
+                isDarkMode = isDarkMode
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             PremiumTextField(
                 value = uiState.confirmPassword,
                 onValueChange = { viewModel.updateField(RegisterField.ConfirmPassword(it)) },
@@ -180,10 +220,11 @@ fun RegisterContent(
                         Icon(
                             imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = null,
-                            tint = PremiumTextSecondary.copy(0.6f)
+                            tint = textSecondary.copy(0.6f)
                         )
                     }
-                }
+                },
+                isDarkMode = isDarkMode
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -193,19 +234,99 @@ fun RegisterContent(
                 onClick = { viewModel.register(context) },
                 isLoading = uiState.isLoading
             )
-            
+
             TextButton(onClick = { viewModel.prevStep() }, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Orqaga", color = PremiumTextSecondary, fontSize = 13.sp)
+                Text("Orqaga", color = textSecondary, fontSize = 13.sp)
             }
         }
 
         uiState.error?.let {
             Text(
                 text = it,
-                color = Color.Red,
+                color = AuthError,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 16.dp)
             )
         }
+    }
+}
+
+/**
+ * Foydalanuvchi Telegram botda raqamini tasdiqlashini kutish holati.
+ * Poll fonida ishlaydi; tasdiqlangach ViewModel avtomatik 3-bosqichga o'tadi.
+ */
+@Composable
+private fun TelegramWaitingCard(
+    onReopenTelegram: () -> Unit,
+    onCancel: () -> Unit,
+    isDarkMode: Boolean
+) {
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(inputFill, RoundedCornerShape(20.dp))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(36.dp),
+            color = AuthBlue,
+            strokeWidth = 3.dp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Telegramda tasdiqlang",
+            color = textPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "Botdagi \"📱 Telefon raqamni yuborish\" tugmasini bosing.\nTasdiqlangach bu yerda avtomatik davom etadi.",
+            color = textSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        PremiumButton(
+            text = "Telegramni qayta ochish",
+            onClick = onReopenTelegram
+        )
+        TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+            Text("Bekor qilish", color = textSecondary, fontSize = 13.sp)
+        }
+    }
+}
+
+/** 3-bosqichda ko'rinadigan "Telegram tasdiqlandi" belgisi. */
+@Composable
+private fun TelegramLinkedBadge(phone: String, isDarkMode: Boolean) {
+    val textPrimary = authTextPrimary(isDarkMode)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AuthBlue.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = AuthBlue,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = "Telegram orqali tasdiqlandi" + (if (phone.isNotBlank()) " · $phone" else ""),
+            color = textPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

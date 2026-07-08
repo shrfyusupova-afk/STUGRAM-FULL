@@ -1,21 +1,35 @@
 const { z } = require("zod");
 const { objectIdSchema } = require("./commonValidators");
 
+const IDENTITY_FORMAT_REGEX = /(^\+998\d{9}$)|(^[^\s@]+@[^\s@]+\.[^\s@]+$)|(^tg:\d+$)/;
+const USERNAME_FORMAT_REGEX = /^[a-zA-Z0-9._]{3,30}$/;
+
 const identitySchema = z
   .string()
   .trim()
-  .refine((value) => /(^\+998\d{9}$)|(^[^\s@]+@[^\s@]+\.[^\s@]+$)/.test(value), "Invalid identity");
+  .refine((value) => IDENTITY_FORMAT_REGEX.test(value), "Invalid identity");
+
+// The OTP endpoints also accept a bare username for the forgot-password flow
+// (the service resolves it to the user's real identity); strict identity
+// format is still enforced service-side for the register purpose.
+const identityOrUsernameSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => IDENTITY_FORMAT_REGEX.test(value) || USERNAME_FORMAT_REGEX.test(value),
+    "Invalid identity"
+  );
 
 const sendOtpSchema = {
   body: z.object({
-    identity: identitySchema,
+    identity: identityOrUsernameSchema,
     purpose: z.enum(["register", "login", "forgot_password"]).default("register"),
   }),
 };
 
 const verifyOtpSchema = {
   body: z.object({
-    identity: identitySchema,
+    identity: identityOrUsernameSchema,
     otp: z.string().length(6),
     purpose: z.enum(["register", "login", "forgot_password"]).default("register"),
   }),
@@ -70,7 +84,7 @@ const forgotPasswordSchema = {
 const resetPasswordSchema = {
   body: z.union([
     z.object({
-      identity: identitySchema,
+      identity: identityOrUsernameSchema,
       otp: z.string().length(6),
       password: z.string().min(8).max(64),
       confirmPassword: z.string().min(8).max(64),
@@ -95,6 +109,12 @@ const sessionIdParamSchema = {
   }),
 };
 
+const telegramLinkCodeParamSchema = {
+  params: z.object({
+    code: z.string().min(8).max(64),
+  }),
+};
+
 const switchProfileSchema = {
   body: z.object({
     profileId: objectIdSchema,
@@ -113,5 +133,6 @@ module.exports = {
   resetPasswordSchema,
   changePasswordSchema,
   sessionIdParamSchema,
+  telegramLinkCodeParamSchema,
   switchProfileSchema,
 };

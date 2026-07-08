@@ -4,10 +4,10 @@ object AlphaFeatureFlags {
     const val ALPHA_MODE: Boolean = true
 
     const val FEED_INTERACTIONS_ENABLED: Boolean = false
-    const val STORIES_ENABLED: Boolean = false
-    const val REELS_ENABLED: Boolean = false
-    const val SEARCH_DISCOVERY_ENABLED: Boolean = false
-    const val CAMERA_CREATE_ENABLED: Boolean = false
+    const val STORIES_ENABLED: Boolean = true
+    const val REELS_ENABLED: Boolean = true
+    const val SEARCH_DISCOVERY_ENABLED: Boolean = true
+    const val CAMERA_CREATE_ENABLED: Boolean = true
     const val GROUP_CHAT_ENABLED: Boolean = false
     const val ADVANCED_SETTINGS_ENABLED: Boolean = false
 

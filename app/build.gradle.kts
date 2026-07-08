@@ -2,7 +2,16 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services) apply false
     kotlin("kapt")
+}
+
+// google-services.json is developer-provided (Firebase Console) and is not
+// committed to the repo. Only apply the plugin when the file is present so
+// CI / fresh checkouts without it still build (FCM registration simply stays
+// inert at runtime — see PushTokenManager's guarded Firebase access).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {
@@ -69,6 +78,15 @@ dependencies {
     implementation(libs.socket.io.client) {
         exclude(group = "org.json", module = "json")
     }
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.video)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.analytics)
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

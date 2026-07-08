@@ -13,6 +13,15 @@ const parseBooleanEnv = (value, fallback = undefined) => {
   return fallback;
 };
 
+// CLIENT_URL is a comma-separated allowlist of browser origins. The wildcard
+// "*" is stripped out here so it can only ever act as a permissive dev flag,
+// never as a credentialed-CORS origin.
+const parseClientOrigins = (value) =>
+  String(value || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0 && origin !== "*");
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(5001),
@@ -30,6 +39,9 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
   FIREBASE_PROJECT_ID: z.string().optional(),
   FIREBASE_CLIENT_EMAIL: z.string().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
@@ -241,6 +253,13 @@ if (parsedEnv.NODE_ENV === "production") {
         : "Password reset email delivery requires RESEND_API_KEY and RESEND_FROM_EMAIL in production"
     );
   }
+
+  const productionOrigins = parseClientOrigins(parsedEnv.CLIENT_URL);
+  if (productionOrigins.length === 0) {
+    providerValidationErrors.push(
+      "CLIENT_URL must be an explicit comma-separated origin allowlist in production; wildcard '*' is not allowed because CORS runs with credentials"
+    );
+  }
 }
 
 if (providerValidationErrors.length) {
@@ -320,11 +339,17 @@ const env = {
   bootstrapUserFullName: parsedEnv.BOOTSTRAP_USER_FULL_NAME || null,
   bootstrapUserRole: parsedEnv.BOOTSTRAP_USER_ROLE || "user",
   clientUrl: parsedEnv.CLIENT_URL === "*" ? true : parsedEnv.CLIENT_URL,
+  clientOrigins: parseClientOrigins(parsedEnv.CLIENT_URL),
+  // Reflect any origin only in non-production when CLIENT_URL is left as "*".
+  allowAllOrigins: parsedEnv.NODE_ENV !== "production" && String(parsedEnv.CLIENT_URL).trim() === "*",
   jwtAccessSecret: parsedEnv.JWT_ACCESS_SECRET,
   jwtRefreshSecret: parsedEnv.JWT_REFRESH_SECRET,
   jwtAccessExpiresIn: parsedEnv.JWT_ACCESS_EXPIRES_IN,
   jwtRefreshExpiresIn: parsedEnv.JWT_REFRESH_EXPIRES_IN,
   googleClientId: parsedEnv.GOOGLE_CLIENT_ID || null,
+  telegramBotToken: parsedEnv.TELEGRAM_BOT_TOKEN || null,
+  telegramBotUsername: parsedEnv.TELEGRAM_BOT_USERNAME || null,
+  telegramWebhookSecret: parsedEnv.TELEGRAM_WEBHOOK_SECRET || null,
   firebaseProjectId: parsedEnv.FIREBASE_PROJECT_ID || null,
   firebaseClientEmail: parsedEnv.FIREBASE_CLIENT_EMAIL || null,
   firebasePrivateKey: parsedEnv.FIREBASE_PRIVATE_KEY || null,

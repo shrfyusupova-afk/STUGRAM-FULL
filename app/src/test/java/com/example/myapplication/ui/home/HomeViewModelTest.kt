@@ -1,15 +1,13 @@
 package com.example.myapplication.ui.home
 
-import com.example.myapplication.data.remote.AuthApi
-import com.example.myapplication.data.remote.CreatePostRequest
-import com.example.myapplication.data.remote.FullRegisterRequest
-import com.example.myapplication.data.remote.GoogleLoginRequest
-import com.example.myapplication.data.remote.LoginRequest
-import com.example.myapplication.data.remote.OtpRequest
-import com.example.myapplication.data.remote.UpdateProfileRequest
-import com.example.myapplication.data.remote.VerifyOtpRequest
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
+import com.example.myapplication.core.ui.UiState
+import com.example.myapplication.data.remote.post.ApiEnvelope
+import com.example.myapplication.data.remote.post.PaginationMeta
+import com.example.myapplication.data.remote.post.PostDto
+import com.example.myapplication.data.remote.post.PostRepository
+import com.example.myapplication.data.remote.post.UserPreviewDto
+import com.example.myapplication.testutil.FakeAuthApi
+import com.example.myapplication.testutil.FakePostApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestDispatcher
@@ -20,7 +18,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -42,43 +39,36 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun feedEmpty_keepsRealEmptyStateWithoutFakePosts() = runTest {
+    fun feedEmpty_showsEmptyState() = runTest {
         val vm = HomeViewModel(
-            authApi = FakeAuthApi(
-                feedResponse = Response.success(JsonObject().apply { add("data", JsonArray()) })
-            ),
+            repository = PostRepository(api = FakePostApi()),
+            authApi = FakeAuthApi(),
             ioDispatcher = dispatcher
         )
         advanceUntilIdle()
-        assertTrue(vm.posts.isEmpty())
+        assertTrue(vm.feedState is UiState.Empty)
     }
 
     @Test
-    fun createTextPost_blankCaption_setsValidationError() = runTest {
-        val vm = HomeViewModel(authApi = FakeAuthApi(), ioDispatcher = dispatcher)
-        vm.createTextPost("   ")
-        assertEquals("Caption is required", vm.createPostError)
-        assertFalse(vm.isCreatingPost)
-    }
-
-    private class FakeAuthApi(
-        private val feedResponse: Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
-    ) : AuthApi {
-        override suspend fun sendOtp(request: OtpRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun verifyOtp(request: VerifyOtpRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun register(request: FullRegisterRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun login(request: LoginRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun googleLogin(request: GoogleLoginRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getPostFeed(page: Int, limit: Int): Response<JsonObject> = feedResponse
-        override suspend fun getStoryFeed(page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
-        override suspend fun getMyProfile(): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun updateMyProfile(request: UpdateProfileRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getProfileByUsername(username: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun searchUsers(query: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun followUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun unfollowUser(userId: String): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun createPost(request: CreatePostRequest): Response<JsonObject> = Response.success(JsonObject())
-        override suspend fun getUserPosts(username: String, page: Int, limit: Int): Response<JsonObject> = Response.success(JsonObject().apply { add("data", JsonArray()) })
+    fun feedWithPosts_showsSuccessWithMappedData() = runTest {
+        val api = object : FakePostApi() {
+            override suspend fun getFeed(page: Int, limit: Int): Response<ApiEnvelope<List<PostDto>>> =
+                Response.success(
+                    ApiEnvelope(
+                        data = listOf(PostDto(id = "1", author = UserPreviewDto(username = "ali"), caption = "salom")),
+                        meta = PaginationMeta(page = 1, totalPages = 1)
+                    )
+                )
+        }
+        val vm = HomeViewModel(
+            repository = PostRepository(api = api),
+            authApi = FakeAuthApi(),
+            ioDispatcher = dispatcher
+        )
+        advanceUntilIdle()
+        val state = vm.feedState
+        assertTrue(state is UiState.Success)
+        assertEquals(1, (state as UiState.Success).data.size)
+        assertEquals("salom", state.data.first().caption)
     }
 }
-

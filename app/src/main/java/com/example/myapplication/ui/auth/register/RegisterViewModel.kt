@@ -1,6 +1,8 @@
 package com.example.myapplication.ui.auth.register
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import com.example.myapplication.core.storage.TokenManager
 import com.example.myapplication.data.remote.AuthSession
 import com.example.myapplication.data.remote.FullRegisterRequest
@@ -11,9 +13,12 @@ import com.example.myapplication.data.remote.chat.ChatSocketManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -88,6 +93,117 @@ class RegisterViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             _uiState.update { it.copy(isLoading = false, error = "Google ro'yxatdan o'tish login bo'limidan ishlatiladi") }
+        }
+    }
+
+    // --- Telegram orqali ro'yxatdan o'tish ---
+    // 1) Backend link-kod yaratadi; 2) foydalanuvchi Telegram botga o'tib
+    // raqamini ulashadi; 3) shu vaqtda app link-status'ni kuzatib turadi va
+    // bog'langach avtomatik 3-bosqichga (profil ma'lumotlari) o'tadi.
+
+    private var telegramPollJob: Job? = null
+
+    fun startTelegramRegistration(context: Context) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.createTelegramLinkCode()
+                }
+                if (!response.isSuccessful) {
+                    val body = response.errorBody()?.string()?.take(200)
+                    _uiState.update { it.copy(isLoading = false, error = "Telegram bilan ulanib bo'lmadi (${response.code()}): ${body ?: ""}") }
+                    return@launch
+                }
+                val data = response.body()?.getAsJsonObject("data")
+                val code = data?.get("code")?.takeIf { !it.isJsonNull }?.asString
+                val deepLink = data?.get("deepLink")?.takeIf { !it.isJsonNull }?.asString
+                if (code.isNullOrBlank() || deepLink.isNullOrBlank()) {
+                    _uiState.update { it.copy(isLoading = false, error = "Telegram ro'yxatdan o'tish hozircha sozlanmagan") }
+                    return@launch
+                }
+                _uiState.update { it.copy(isLoading = false, telegramWaiting = true, telegramDeepLink = deepLink) }
+                openTelegramLink(context, deepLink)
+                startTelegramPolling(code)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
+    }
+
+    fun reopenTelegram(context: Context) {
+        _uiState.value.telegramDeepLink?.let { openTelegramLink(context, it) }
+    }
+
+    fun cancelTelegramRegistration() {
+        telegramPollJob?.cancel()
+        telegramPollJob = null
+        _uiState.update { it.copy(telegramWaiting = false, error = null) }
+    }
+
+    private fun openTelegramLink(context: Context, link: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            _uiState.update { it.copy(error = "Telegram ilovasi ochilmadi. Telegram o'rnatilganini tekshiring.") }
+        }
+    }
+
+    private fun startTelegramPolling(code: String) {
+        telegramPollJob?.cancel()
+        telegramPollJob = viewModelScope.launch {
+            val deadline = System.currentTimeMillis() + 10 * 60 * 1000L
+            while (isActive && System.currentTimeMillis() < deadline) {
+                delay(2500)
+                try {
+                    val response = withContext(Dispatchers.IO) {
+                        RetrofitClient.instance.getTelegramLinkStatus(code)
+                    }
+                    if (response.code() == 404) {
+                        _uiState.update { it.copy(telegramWaiting = false, error = "Havola muddati o'tdi. Qaytadan urinib ko'ring.") }
+                        return@launch
+                    }
+                    val data = response.body()?.getAsJsonObject("data") ?: continue
+                    if (data.get("linked")?.asBoolean != true) continue
+
+                    if (data.get("alreadyRegistered")?.asBoolean == true) {
+                        val existing = data.get("existingUsername")?.takeIf { !it.isJsonNull }?.asString
+                        _uiState.update {
+                            it.copy(
+                                telegramWaiting = false,
+                                error = "Siz allaqachon ro'yxatdan o'tgansiz" +
+                                    (if (!existing.isNullOrBlank()) " (@$existing)" else "") +
+                                    ". \"Kirish\" bo'limidan kiring."
+                            )
+                        }
+                    } else {
+                        val identity = data.get("identity")?.takeIf { !it.isJsonNull }?.asString
+                        val otp = data.get("otp")?.takeIf { !it.isJsonNull }?.asString
+                        val phone = data.get("phoneNumber")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                        if (identity.isNullOrBlank() || otp.isNullOrBlank()) continue
+                        _uiState.update {
+                            it.copy(
+                                telegramWaiting = false,
+                                telegramLinked = true,
+                                telegramPhone = phone,
+                                identity = identity,
+                                otp = otp,
+                                currentStep = 3,
+                                error = null
+                            )
+                        }
+                    }
+                    return@launch
+                } catch (_: Exception) {
+                    // Vaqtinchalik tarmoq xatosi — kuzatishni davom ettiramiz
+                }
+            }
+            if (_uiState.value.telegramWaiting) {
+                _uiState.update { it.copy(telegramWaiting = false, error = "Kutish vaqti tugadi. Qaytadan urinib ko'ring.") }
+            }
         }
     }
 
@@ -190,9 +306,29 @@ class RegisterViewModel : ViewModel() {
     }
 
     fun prevStep() {
-        if (_uiState.value.currentStep > 1) {
+        val state = _uiState.value
+        if (state.telegramLinked && state.currentStep == 3) {
+            // Telegram oqimida OTP bosqichi yo'q — to'g'ridan-to'g'ri boshiga qaytamiz
+            _uiState.update {
+                it.copy(
+                    currentStep = 1,
+                    telegramLinked = false,
+                    telegramPhone = "",
+                    identity = "",
+                    otp = "",
+                    error = null
+                )
+            }
+            return
+        }
+        if (state.currentStep > 1) {
             _uiState.update { it.copy(currentStep = it.currentStep - 1, error = null) }
         }
+    }
+
+    override fun onCleared() {
+        telegramPollJob?.cancel()
+        super.onCleared()
     }
 }
 
@@ -229,5 +365,9 @@ data class RegisterUiState(
     val confirmPassword: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    val telegramWaiting: Boolean = false,
+    val telegramLinked: Boolean = false,
+    val telegramPhone: String = "",
+    val telegramDeepLink: String? = null
 )

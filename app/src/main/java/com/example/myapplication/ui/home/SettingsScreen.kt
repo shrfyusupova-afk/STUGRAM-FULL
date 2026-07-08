@@ -16,9 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myapplication.core.storage.TokenManager
-import com.example.myapplication.data.remote.AuthSession
-import com.example.myapplication.data.remote.chat.ChatSocketManager
+import com.example.myapplication.data.remote.SessionManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,11 +82,11 @@ fun SettingsScreen(isDarkMode: Boolean, onBack: () -> Unit) {
                     if (isLoggingOut) return@Button
                     scope.launch {
                         isLoggingOut = true
-                        runCatching { TokenManager(context).clearTokens() }
-                        AuthSession.accessToken = null
-                        ChatSocketManager.disconnect()
+                        // Clears TokenManager + AuthSession, disconnects the chat
+                        // socket, and emits forceLogout so the nav graph returns
+                        // to the Auth screen (which resets Login/Register state).
+                        SessionManager.logout(context)
                         isLoggingOut = false
-                        onBack()
                     }
                 },
                 enabled = !isLoggingOut,

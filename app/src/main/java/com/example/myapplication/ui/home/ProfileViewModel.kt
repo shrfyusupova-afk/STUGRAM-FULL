@@ -1,10 +1,14 @@
-﻿package com.example.myapplication.ui.home
+package com.example.myapplication.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.core.ui.UiState
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.UpdateProfileRequest
+import com.example.myapplication.data.remote.post.PostDto
+import com.example.myapplication.data.remote.post.PostRepository
+import com.example.myapplication.data.remote.post.PostResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,141 +32,154 @@ data class AlphaProfileUiState(
     val followingCount: Int = 0,
     val postsCount: Int = 0,
     val targetUsername: String? = null,
+    val userId: String? = null,
     val isSelf: Boolean = true,
     val followStatus: String = "self",
-    val posts: List<ProfilePostItem> = emptyList()
+    val postsState: UiState<List<ProfilePostItem>> = UiState.Loading,
+    val isLoadingMorePosts: Boolean = false
 )
 
 data class ProfilePostItem(
     val id: String,
     val caption: String,
-    val mediaUrl: String?
+    val mediaUrl: String?,
+    val isVideo: Boolean = false
 )
 
 class ProfileViewModel(
+    private val repository: PostRepository = PostRepository(),
     private val authApi: AuthApi = RetrofitClient.instance,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AlphaProfileUiState())
     val uiState: StateFlow<AlphaProfileUiState> = _uiState.asStateFlow()
 
+    private val loadedPosts = mutableListOf<ProfilePostItem>()
+    private var postsPage = 1
+    private var postsTotalPages = 1
+
     init {
         refresh()
     }
 
     fun setProfileTarget(username: String?) {
-        _uiState.update {
-            it.copy(targetUsername = username?.trim()?.ifBlank { null })
-        }
+        _uiState.update { it.copy(targetUsername = username?.trim()?.ifBlank { null }) }
         refresh()
     }
 
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val target = _uiState.value.targetUsername
-                val response = withContext(ioDispatcher) {
-                    if (target.isNullOrBlank()) authApi.getMyProfile() else authApi.getProfileByUsername(target)
-                }
-                if (!response.isSuccessful) {
+            val target = _uiState.value.targetUsername
+            val result = withContext(ioDispatcher) {
+                if (target.isNullOrBlank()) repository.getMyProfile() else repository.getProfileByUsername(target)
+            }
+            when (result) {
+                is PostResult.Error -> _uiState.update { it.copy(isLoading = false, error = result.message) }
+                is PostResult.Success -> {
+                    val dto = result.value
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Profile yuklanmadi (${response.code()})"
+                            error = null,
+                            saveError = null,
+                            fullName = dto.fullName.orEmpty(),
+                            username = dto.username.orEmpty(),
+                            bio = dto.bio.orEmpty(),
+                            location = dto.location.orEmpty(),
+                            school = dto.school.orEmpty(),
+                            followersCount = dto.followersCount ?: 0,
+                            followingCount = dto.followingCount ?: 0,
+                            postsCount = dto.postsCount ?: 0,
+                            userId = dto.id,
+                            isSelf = target.isNullOrBlank() || dto.followStatus == "self",
+                            followStatus = dto.followStatus ?: if (target.isNullOrBlank()) "self" else "not_following"
                         )
                     }
-                    return@launch
+                    loadPosts(reset = true)
                 }
+            }
+        }
+    }
 
-                val data = response.body()?.getAsJsonObject("data")
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        fullName = data?.get("fullName")?.asString.orEmpty(),
-                        username = data?.get("username")?.asString.orEmpty(),
-                        bio = data?.get("bio")?.asString.orEmpty(),
-                        location = data?.get("location")?.asString.orEmpty(),
-                        school = data?.get("school")?.asString.orEmpty(),
-                        followersCount = data?.get("followersCount")?.asInt ?: 0,
-                        followingCount = data?.get("followingCount")?.asInt ?: 0,
-                        postsCount = data?.get("postsCount")?.asInt ?: 0,
-                        isSelf = data?.get("followStatus")?.asString == "self",
-                        followStatus = data?.get("followStatus")?.asString ?: if (target.isNullOrBlank()) "self" else "not_following",
-                        error = null,
-                        saveError = null,
-                        posts = emptyList()
-                    )
+    private fun PostDto.toProfilePostItem(): ProfilePostItem? {
+        val postId = id ?: return null
+        val first = media?.firstOrNull()
+        val isVideo = first?.type == "video"
+        val url = if (isVideo) (first?.thumbnailUrl ?: first?.url) else first?.url
+        return ProfilePostItem(id = postId, caption = caption.orEmpty(), mediaUrl = url, isVideo = isVideo)
+    }
+
+    private fun loadPosts(reset: Boolean) {
+        val username = _uiState.value.username
+        if (username.isBlank()) {
+            _uiState.update { it.copy(postsState = UiState.Empty) }
+            return
+        }
+        viewModelScope.launch {
+            if (reset) {
+                postsPage = 1
+                postsTotalPages = 1
+                loadedPosts.clear()
+                _uiState.update { it.copy(postsState = UiState.Loading) }
+            }
+            val result = withContext(ioDispatcher) { repository.getUserPosts(username, postsPage, PAGE_SIZE) }
+            when (result) {
+                is PostResult.Success -> {
+                    loadedPosts += result.value.items.mapNotNull { it.toProfilePostItem() }
+                    postsTotalPages = result.value.totalPages
+                    _uiState.update {
+                        it.copy(
+                            postsState = if (loadedPosts.isEmpty()) UiState.Empty else UiState.Success(loadedPosts.toList()),
+                            isLoadingMorePosts = false
+                        )
+                    }
                 }
-                loadProfilePosts()
-            } catch (e: Exception) {
-                _uiState.update {
+                is PostResult.Error -> _uiState.update {
                     it.copy(
-                        isLoading = false,
-                        error = "Tarmoq xatosi: ${e.message}"
+                        postsState = if (loadedPosts.isEmpty()) UiState.Error(result.message) else it.postsState,
+                        isLoadingMorePosts = false
                     )
                 }
             }
         }
     }
 
-    private suspend fun fetchPostsFor(username: String): List<ProfilePostItem> {
-        val response = withContext(ioDispatcher) { authApi.getUserPosts(username = username, page = 1, limit = 20) }
-        if (!response.isSuccessful) return emptyList()
-        val array = response.body()?.getAsJsonArray("data") ?: return emptyList()
-        return array.mapNotNull { element ->
-            runCatching {
-                val obj = element.asJsonObject
-                val mediaArray = if (obj.has("media") && obj.get("media").isJsonArray) obj.getAsJsonArray("media") else null
-                val mediaUrl = mediaArray?.firstOrNull()?.asJsonObject?.get("url")?.asString
-                ProfilePostItem(
-                    id = obj.get("_id")?.asString ?: return@runCatching null,
-                    caption = obj.get("caption")?.asString.orEmpty(),
-                    mediaUrl = mediaUrl
-                )
-            }.getOrNull()
-        }
-    }
-
-    private fun loadProfilePosts() {
-        val username = _uiState.value.username
-        if (username.isBlank()) return
-        viewModelScope.launch {
-            val items = fetchPostsFor(username)
-            _uiState.update { it.copy(posts = items) }
-        }
+    fun loadMorePosts() {
+        if (_uiState.value.isLoadingMorePosts || postsPage >= postsTotalPages) return
+        if (_uiState.value.postsState !is UiState.Success) return
+        postsPage += 1
+        _uiState.update { it.copy(isLoadingMorePosts = true) }
+        loadPosts(reset = false)
     }
 
     fun followOrUnfollow() {
         val state = _uiState.value
-        val target = state.targetUsername ?: return
         if (state.isSelf) return
-
+        val userId = state.userId
+        if (userId.isNullOrBlank()) {
+            _uiState.update { it.copy(saveError = "User ID topilmadi") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, saveError = null) }
-            try {
-                val profileResponse = withContext(ioDispatcher) { authApi.getProfileByUsername(target) }
-                if (!profileResponse.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Follow holati aniqlanmadi (${profileResponse.code()})") }
-                    return@launch
+            val response = withContext(ioDispatcher) {
+                runCatching {
+                    if (state.followStatus == "following") authApi.unfollowUser(userId)
+                    else authApi.followUser(userId)
                 }
-                val userId = profileResponse.body()?.getAsJsonObject("data")?.get("_id")?.asString
-                if (userId.isNullOrBlank()) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "User ID topilmadi") }
-                    return@launch
+            }
+            _uiState.update { it.copy(isSaving = false) }
+            response.onFailure { e ->
+                _uiState.update { it.copy(saveError = "Tarmoq xatosi: ${e.message}") }
+                return@launch
+            }
+            response.onSuccess { resp ->
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(saveError = "Follow amal bajarilmadi (${resp.code()})") }
+                } else {
+                    refresh()
                 }
-
-                val response = withContext(ioDispatcher) {
-                    if (state.followStatus == "following") authApi.unfollowUser(userId) else authApi.followUser(userId)
-                }
-                if (!response.isSuccessful) {
-                    _uiState.update { it.copy(isSaving = false, saveError = "Follow amal bajarilmadi (${response.code()})") }
-                    return@launch
-                }
-                _uiState.update { it.copy(isSaving = false) }
-                refresh()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}") }
             }
         }
     }
@@ -177,40 +194,28 @@ class ProfileViewModel(
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, saveError = null) }
-            try {
-                val request = UpdateProfileRequest(
-                    fullName = fullName.trim().ifBlank { null },
-                    username = username.trim().removePrefix("@").ifBlank { null },
-                    bio = bio.trim(),
-                    location = location.trim(),
-                    school = school.trim()
-                )
-                val response = withContext(ioDispatcher) { authApi.updateMyProfile(request) }
-                if (!response.isSuccessful) {
-                    _uiState.update {
-                        it.copy(isSaving = false, saveError = "Profile saqlanmadi (${response.code()})")
-                    }
-                    return@launch
-                }
-
-                val data = response.body()?.getAsJsonObject("data")
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        saveError = null,
-                        fullName = data?.get("fullName")?.asString.orEmpty(),
-                        username = data?.get("username")?.asString.orEmpty(),
-                        bio = data?.get("bio")?.asString.orEmpty(),
-                        location = data?.get("location")?.asString.orEmpty(),
-                        school = data?.get("school")?.asString.orEmpty()
-                    )
-                }
-                onSuccess()
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isSaving = false, saveError = "Tarmoq xatosi: ${e.message}")
+            val request = UpdateProfileRequest(
+                fullName = fullName.trim().ifBlank { null },
+                username = username.trim().removePrefix("@").ifBlank { null },
+                bio = bio.trim(),
+                location = location.trim(),
+                school = school.trim()
+            )
+            val response = withContext(ioDispatcher) { runCatching { authApi.updateMyProfile(request) } }
+            _uiState.update { it.copy(isSaving = false) }
+            response.onFailure { e -> _uiState.update { it.copy(saveError = "Tarmoq xatosi: ${e.message}") } }
+            response.onSuccess { resp ->
+                if (!resp.isSuccessful) {
+                    _uiState.update { it.copy(saveError = "Profile saqlanmadi (${resp.code()})") }
+                } else {
+                    onSuccess()
+                    refresh() // re-fetch typed profile instead of parsing the response
                 }
             }
         }
+    }
+
+    private companion object {
+        const val PAGE_SIZE = 18
     }
 }

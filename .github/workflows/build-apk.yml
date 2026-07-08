@@ -1,0 +1,67 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - claude/social-app-system-review-8tfgjo
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Optional: restore the Firebase config from a repo secret so FCM works
+      # in the built APK. Without this secret the app still builds and runs —
+      # push-notification registration just stays inert (see PushTokenManager).
+      - name: Restore google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > app/google-services.json
+            echo "google-services.json restored from secret."
+          else
+            echo "GOOGLE_SERVICES_JSON_B64 secret not set — building without Firebase config."
+          fi
+
+      # Provisions the Gradle version pinned in gradle-wrapper.properties via
+      # the action's own downloader (with caching), instead of letting
+      # ./gradlew's built-in bootstrap fetch it — the wrapper's minimal fetch
+      # code hits a JVM SSL trust-store init error on some hosted runners.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+
+      - name: Build debug APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Rename APK for release
+        run: cp app/build/outputs/apk/debug/app-debug.apk stugram-debug.apk
+
+      - name: Publish rolling "android-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f android-latest
+          git push origin android-latest --force
+          gh release delete android-latest --yes || true
+          gh release create android-latest stugram-debug.apk \
+            --repo "${{ github.repository }}" \
+            --title "Stugram (Android) — latest build" \
+            --notes "Automated debug build from commit $(git rev-parse --short HEAD). Install: enable \"install from unknown sources\" for your file manager/browser, then open the downloaded APK."

@@ -1,24 +1,38 @@
 ﻿package com.example.myapplication.ui.home
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import com.example.myapplication.core.ui.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,49 +201,141 @@ fun ProfileScreen(
                         }
 
                         when (selectedTab) {
-                            0 -> {
-                                if (ui.posts.isEmpty()) {
-                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text("No posts yet", color = fg.copy(alpha = 0.6f), fontSize = 14.sp)
-                                    }
-                                } else {
-                                    LazyColumn(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                                    ) {
-                                        items(ui.posts, key = { it.id }) { post ->
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 6.dp),
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF7F7F7)
-                                                )
-                                            ) {
-                                                Column(modifier = Modifier.padding(12.dp)) {
-                                                    Text(
-                                                        text = post.caption.ifBlank { "(No caption)" },
-                                                        color = fg,
-                                                        maxLines = 4,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            1 -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No reels yet", color = fg.copy(alpha = 0.6f), fontSize = 14.sp)
-                            }
-                            else -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No tagged posts yet", color = fg.copy(alpha = 0.6f), fontSize = 14.sp)
-                            }
+                            0 -> ProfilePostsGrid(
+                                state = ui.postsState,
+                                isLoadingMore = ui.isLoadingMorePosts,
+                                isDarkMode = isDarkMode,
+                                accent = accent,
+                                fg = fg,
+                                onRetry = { vm.refresh() },
+                                onLoadMore = { vm.loadMorePosts() }
+                            )
+                            1 -> CenteredHint("Hali reels yo'q", fg)
+                            else -> CenteredHint("Hali belgilangan post yo'q", fg)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfilePostsGrid(
+    state: UiState<List<ProfilePostItem>>,
+    isLoadingMore: Boolean,
+    isDarkMode: Boolean,
+    accent: Color,
+    fg: Color,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit
+) {
+    when (state) {
+        is UiState.Loading -> {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize().padding(2.dp)
+            ) {
+                items(9) { PostCellSkeleton(isDarkMode) }
+            }
+        }
+        is UiState.Error -> {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(state.message, color = fg.copy(alpha = 0.8f), fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onRetry) { Text("Qayta urinish", color = accent) }
+            }
+        }
+        is UiState.Empty -> CenteredHint("Hali post yo'q", fg)
+        is UiState.Success -> {
+            val gridState = rememberLazyGridState()
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize().padding(2.dp)
+            ) {
+                items(state.data, key = { it.id }) { post -> PostCell(post, isDarkMode, fg) }
+                if (isLoadingMore) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        }
+                    }
+                }
+            }
+            LaunchedEffect(gridState, state.data.size) {
+                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                    .collect { last -> if (last != null && last >= state.data.size - 3) onLoadMore() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostCell(post: ProfilePostItem, isDarkMode: Boolean, fg: Color) {
+    Box(
+        modifier = Modifier
+            .padding(2.dp)
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF0F0F0))
+    ) {
+        if (!post.mediaUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = post.mediaUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = post.caption.ifBlank { "(izohsiz)" },
+                color = fg.copy(alpha = 0.8f),
+                fontSize = 11.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center).padding(6.dp)
+            )
+        }
+        if (post.isVideo) {
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PostCellSkeleton(isDarkMode: Boolean) {
+    val transition = rememberInfiniteTransition(label = "cell_skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "cell_alpha"
+    )
+    val base = if (isDarkMode) Color.White else Color.Black
+    Box(
+        modifier = Modifier
+            .padding(2.dp)
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(6.dp))
+            .background(base.copy(alpha = 0.08f * alpha + 0.03f))
+    )
+}
+
+@Composable
+private fun CenteredHint(text: String, fg: Color) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, color = fg.copy(alpha = 0.6f), fontSize = 14.sp)
     }
 }
 

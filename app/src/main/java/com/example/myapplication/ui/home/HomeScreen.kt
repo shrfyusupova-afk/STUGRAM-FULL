@@ -1,5 +1,11 @@
 package com.example.myapplication.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -9,8 +15,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.config.AlphaFeatureFlags
+import com.example.myapplication.push.PushTokenManager
+import com.example.myapplication.ui.comments.CommentsSheet
+import com.example.myapplication.ui.create.CreateFlowHost
+import com.example.myapplication.ui.create.CreateType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -43,14 +55,34 @@ fun HomeScreen(
     val contentColor = if (isDarkMode) Color.White else Color.Black
 
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    // Home is the single post-auth entry point (login, register, cold-start
+    // restore), so registering the FCM token here covers every path.
+    LaunchedEffect(Unit) {
+        PushTokenManager.register(context)
+    }
+
+    // Android 13+ requires runtime opt-in before notifications can be shown.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* denied -> app works without notifications */ }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                // Kamera yoki Story ochiq bo'lsa navigatsiyani yashiramiz
-                if (!viewModel.showCameraView && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
+                // Yaratish oqimi yoki Story ochiq bo'lsa navigatsiyani yashiramiz
+                if (viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
                     GlassSlidingNavigation(
                         selectedTab = viewModel.currentTab,
                         onTabSelected = { viewModel.onTabSelected(it) },
@@ -68,7 +100,7 @@ fun HomeScreen(
                 Crossfade(targetState = viewModel.currentTab, label = "main_nav") { targetTab ->
                     when (targetTab) {
                         0 -> HomeTabScreen(
-                            posts = viewModel.posts,
+                            feedState = viewModel.feedState,
                             storyProfiles = viewModel.storyProfiles,
                             recommendedProfiles = viewModel.recommendedProfiles,
                             paddingValues = paddingValues,
@@ -77,11 +109,16 @@ fun HomeScreen(
                             contentColor = contentColor,
                             onThemeChange = onThemeChange,
                             onStoryClick = { viewModel.openStory(it) },
-                            onCreateClick = { viewModel.openCreatePostModal() },
-                            onCommentsClick = { viewModel.toggleComments(true) },
+                            onCreateClick = { viewModel.openCreateFlow(CreateType.POST) },
+                            onCreateStory = { viewModel.openCreateFlow(CreateType.STORY) },
+                            onComment = { postId -> viewModel.openComments(postId) },
+                            onLike = { postId, like -> viewModel.setLike(postId, like) },
                             isRefreshing = viewModel.isHomeRefreshing,
                             onRefresh = { viewModel.refreshHome() },
-                            listState = listState
+                            listState = listState,
+                            isLoadingMore = viewModel.isLoadingMore,
+                            onLoadMore = { viewModel.loadNextPage() },
+                            onFollowProfile = { viewModel.followSuggestedUser(it) }
                         )
                         1 -> SearchScreen(
                             isDarkMode = isDarkMode,
@@ -89,7 +126,11 @@ fun HomeScreen(
                             onRefresh = { viewModel.refreshSearch() },
                             onOpenProfile = onNavigateToProfile
                         )
-                        2 -> AlphaReelsDisabledScreen(isDarkMode = isDarkMode)
+                        2 -> ReelsScreen(
+                            accentBlue = accentBlue,
+                            isDarkMode = isDarkMode,
+                            onProfileClick = onNavigateToProfile
+                        )
                         3 -> MessagesScreen(
                             isDarkMode = isDarkMode,
                             onBack = { viewModel.onTabSelected(0) },
@@ -110,7 +151,7 @@ fun HomeScreen(
                 }
 
                 // Reels shaffof navigatsiya
-                if (viewModel.currentTab == 2 && !viewModel.showCameraView && viewModel.activeStoryProfileIndex == null) {
+                if (viewModel.currentTab == 2 && viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null) {
                     Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
                         GlassSlidingNavigation(
                             selectedTab = viewModel.currentTab,
@@ -124,14 +165,35 @@ fun HomeScreen(
         }
 
         // --- Overlays ---
-        if (viewModel.showCreatePostModal) {
-            CreatePostDialog(
+        // Real, backend-backed comments sheet for the tapped post.
+        viewModel.activeCommentsPostId?.let { postId ->
+            CommentsSheet(
+                postId = postId,
                 isDarkMode = isDarkMode,
-                isSaving = viewModel.isCreatingPost,
-                error = viewModel.createPostError,
-                onDismiss = { viewModel.closeCreatePostModal() },
-                onSubmit = { viewModel.createTextPost(it) }
+                accentBlue = accentBlue,
+                onDismiss = { viewModel.closeComments() }
             )
+        }
+
+        // Story ochiq bo'lsa, "orqaga" tugmasi uni yopsin (yaratish oqimi o'zi boshqaradi)
+        if (viewModel.createFlowType == null && viewModel.activeStoryProfileIndex != null) {
+            BackHandler { viewModel.closeStory() }
+        }
+
+        // Yaratish oqimi: kamera (foto/video) yoki galereya -> preview -> yuklash
+        AnimatedVisibility(
+            visible = viewModel.createFlowType != null,
+            enter = fadeIn(tween(250)) + slideInVertically(initialOffsetY = { it / 3 }),
+            exit = fadeOut(tween(200)) + slideOutVertically(targetOffsetY = { it / 3 })
+        ) {
+            viewModel.createFlowType?.let { flowType ->
+                CreateFlowHost(
+                    type = flowType,
+                    isDarkMode = isDarkMode,
+                    onClose = { viewModel.closeCreateFlow() },
+                    onPosted = { viewModel.loadHomeFeed() }
+                )
+            }
         }
 
         AnimatedContent(
@@ -207,33 +269,6 @@ private fun CreatePostDialog(
             ) { Text("Cancel") }
         }
     )
-}
-
-@Composable
-private fun AlphaReelsDisabledScreen(isDarkMode: Boolean) {
-    val bg = if (isDarkMode) Color.Black else Color.White
-    val fg = if (isDarkMode) Color.White else Color.Black
-    Box(
-        modifier = Modifier.fillMaxSize().background(bg),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text(
-                text = "Reels is disabled for this alpha",
-                color = fg,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "It will be enabled after backend-backed reels reliability is ready.",
-                color = fg.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
 }
 
 @Composable

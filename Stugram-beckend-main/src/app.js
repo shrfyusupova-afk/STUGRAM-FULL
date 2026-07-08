@@ -112,12 +112,20 @@ const buildPublicHealthData = ({ database, redis, queueHealth, pushStatus }) => 
   cloudinaryConfigured: isCloudinaryConfigured(),
 });
 
-app.use(
-  cors({
-    origin: env.clientUrl,
-    credentials: true,
-  })
-);
+// Credentialed CORS cannot use a wildcard origin. Non-browser clients (the
+// Android app, curl, server-to-server) send no Origin header and are always
+// allowed; browser origins must match the CLIENT_URL allowlist. In development
+// only, CLIENT_URL="*" reflects any origin for convenience.
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (env.allowAllOrigins) return callback(null, true);
+    if (env.clientOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use(assignRequestId);
 app.use(attachResponseMeta);

@@ -21,6 +21,7 @@
 *.db-shm
 *.db-wal
 /local.properties
+/app/google-services.json
 /.idea
 /android app/.idea
 /.idea/caches

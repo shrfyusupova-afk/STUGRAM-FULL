@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -25,108 +24,118 @@ import com.example.myapplication.ui.theme.*
 
 @Composable
 fun AuthScreen(
+    isDarkMode: Boolean,
     onNavigateToHome: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
-    
+
     val loginViewModel: LoginViewModel = viewModel()
     val registerViewModel: RegisterViewModel = viewModel()
-    
+
     val loginState by loginViewModel.uiState.collectAsState()
     val registerState by registerViewModel.uiState.collectAsState()
 
-    // Navigate to home on success
     LaunchedEffect(loginState.isSuccess, registerState.isSuccess) {
         if (loginState.isSuccess || registerState.isSuccess) {
             onNavigateToHome()
         }
     }
 
+    // One-shot entrance only, so it costs nothing after the first frame.
+    var contentVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { contentVisible = true }
+
+    val backgroundColor = authBackground(isDarkMode)
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(PremiumBg)
+            .background(backgroundColor)
     ) {
-        // Global Loading Overlay
-        if (loginState.isLoading || registerState.isLoading) {
-            LoadingOverlay()
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = fadeIn(tween(400)) + slideInVertically(tween(400, easing = FastOutSlowInEasing)) { it / 10 }
         ) {
-            Spacer(modifier = Modifier.height(60.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 20.dp, bottom = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                PremiumLogo()
 
-            // 1. Premium Logo with Glow
-            PremiumLogo()
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Xush kelibsiz",
+                    color = textPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.3.sp
+                )
 
-            // 2. Welcome Header
-            Text(
-                text = "Xush kelibsiz",
-                color = PremiumTextPrimary,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp
-            )
-            
-            Text(
-                text = "Talabalar uchun zamonaviy fintech-style\nijtimoiy tarmoq platformasi",
-                color = PremiumTextSecondary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+                Text(
+                    text = "Talabalar uchun zamonaviy ijtimoiy tarmoq platformasi",
+                    color = textSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 4.dp, start = 12.dp, end = 12.dp)
+                )
 
-            Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-            // 3. Login / Register Tab Toggle
-            TabSwitch(
-                selectedIndex = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
+                TabSwitch(
+                    selectedIndex = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    isDarkMode = isDarkMode
+                )
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-            // 4. Smooth Content Switching
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally(animationSpec = tween(500)) { it } + fadeIn(animationSpec = tween(500)))
-                            .togetherWith(slideOutHorizontally(animationSpec = tween(500)) { -it } + fadeOut(animationSpec = tween(500)))
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            (slideInHorizontally(animationSpec = tween(400)) { it } + fadeIn(animationSpec = tween(400)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(400)) { -it } + fadeOut(animationSpec = tween(400)))
+                        } else {
+                            (slideInHorizontally(animationSpec = tween(400)) { -it } + fadeIn(animationSpec = tween(400)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(400)) { it } + fadeOut(animationSpec = tween(400)))
+                        }.using(SizeTransform(clip = false))
+                    },
+                    label = "auth_content"
+                ) { targetTab ->
+                    if (targetTab == 0) {
+                        LoginContent(
+                            viewModel = loginViewModel,
+                            uiState = loginState,
+                            onNavigateToRegister = { selectedTab = 1 },
+                            contentColor = textPrimary,
+                            isDarkMode = isDarkMode
+                        )
                     } else {
-                        (slideInHorizontally(animationSpec = tween(500)) { -it } + fadeIn(animationSpec = tween(500)))
-                            .togetherWith(slideOutHorizontally(animationSpec = tween(500)) { it } + fadeOut(animationSpec = tween(500)))
-                    }.using(SizeTransform(clip = false))
-                },
-                label = "auth_content"
-            ) { targetTab ->
-                if (targetTab == 0) {
-                    LoginContent(
-                        viewModel = loginViewModel,
-                        uiState = loginState,
-                        onNavigateToRegister = { selectedTab = 1 },
-                        contentColor = PremiumTextPrimary,
-                        isDarkMode = true
-                    )
-                } else {
-                    RegisterContent(
-                        viewModel = registerViewModel,
-                        uiState = registerState,
-                        onNavigateToLogin = { selectedTab = 0 }
-                    )
+                        RegisterContent(
+                            viewModel = registerViewModel,
+                            uiState = registerState,
+                            onNavigateToLogin = { selectedTab = 0 },
+                            isDarkMode = isDarkMode
+                        )
+                    }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(40.dp))
+        }
+
+        // Global Loading Overlay
+        if (loginState.isLoading || registerState.isLoading) {
+            LoadingOverlay(isDarkMode = isDarkMode)
         }
     }
 }
