@@ -158,7 +158,7 @@ class RegisterViewModel : ViewModel() {
      * Returns true once the link is resolved (registered elsewhere, or ready
      * to continue to step 3) so the caller can stop polling/retrying.
      */
-    private fun applyLinkStatusData(context: Context, data: JsonObject): Boolean {
+    private suspend fun applyLinkStatusData(context: Context, data: JsonObject): Boolean {
         if (data.get("linked")?.asBoolean != true) return false
 
         if (data.get("alreadyRegistered")?.asBoolean == true) {
