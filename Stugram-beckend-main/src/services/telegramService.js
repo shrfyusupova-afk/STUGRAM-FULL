@@ -1,6 +1,8 @@
 const crypto = require("crypto");
 
 const TelegramLinkCode = require("../models/TelegramLinkCode");
+const TelegramChatState = require("../models/TelegramChatState");
+const TelegramSupportMessage = require("../models/TelegramSupportMessage");
 const OtpCode = require("../models/OtpCode");
 const User = require("../models/User");
 const { env } = require("../config/env");
@@ -11,6 +13,14 @@ const logger = require("../utils/logger");
 const LINK_CODE_EXPIRES_MINUTES = 10;
 const REGISTER_OTP_EXPIRES_MINUTES = 15;
 const TELEGRAM_API_BASE = "https://api.telegram.org";
+
+const MENU_LABEL_SUPPORT = "📩 Adminga murojaat qilish";
+const MENU_LABEL_CHANNELS = "📢 Bizning kanalimiz";
+
+// Public Telegram sticker (animated checkmark, "AnimatedEmojies" set) used to
+// confirm a support message was received; verified live against this bot.
+const CHECKMARK_STICKER_FILE_ID =
+  "CAACAgEAAxUAAWpOjtoGmIrhroZeNnA9_XRwV2pbAAKfAwACid9YRM6KQLzK3HtFPAQ";
 
 const isTelegramConfigured = () => Boolean(env.telegramBotToken);
 
@@ -43,6 +53,32 @@ const sendTelegramMessage = async (chatId, text, extra = {}) => {
 
 const replySafely = (chatId, text, extra = {}) =>
   sendTelegramMessage(chatId, text, extra).catch(() => {});
+
+const sendTelegramSticker = async (chatId, stickerFileId) => {
+  if (!isTelegramConfigured()) {
+    throw new Error("Telegram bot is not configured");
+  }
+
+  const response = await fetch(`${TELEGRAM_API_BASE}/bot${env.telegramBotToken}/sendSticker`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, sticker: stickerFileId }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    logger.error("telegram_send_sticker_failed", {
+      status: response.status,
+      message: errorText.slice(0, 300),
+    });
+    throw new Error(`Telegram sendSticker failed with status ${response.status}`);
+  }
+
+  return response.json();
+};
+
+const sendStickerSafely = (chatId, stickerFileId) =>
+  sendTelegramSticker(chatId, stickerFileId).catch(() => {});
 
 const createLinkCode = async () => {
   if (!isTelegramConfigured()) {
@@ -94,14 +130,23 @@ const getLinkStatus = async (code) => {
 
 const CONTACT_REQUEST_KEYBOARD = {
   reply_markup: {
-    keyboard: [[{ text: "📱 Telefon raqamni yuborish", request_contact: true }]],
+    keyboard: [
+      [{ text: "📱 Telefon raqamni yuborish", request_contact: true }],
+      [{ text: MENU_LABEL_SUPPORT }, { text: MENU_LABEL_CHANNELS }],
+    ],
     resize_keyboard: true,
-    one_time_keyboard: true,
+    is_persistent: true,
   },
 };
 
-const REMOVE_KEYBOARD = {
-  reply_markup: { remove_keyboard: true },
+// Shown once registration/linking is done (or already-registered): the
+// permanent bottom menu with support + channels, no more contact-request row.
+const MAIN_MENU_KEYBOARD = {
+  reply_markup: {
+    keyboard: [[{ text: MENU_LABEL_SUPPORT }, { text: MENU_LABEL_CHANNELS }]],
+    resize_keyboard: true,
+    is_persistent: true,
+  },
 };
 
 const handleStartCommand = async (message) => {
@@ -111,7 +156,8 @@ const handleStartCommand = async (message) => {
   if (!code) {
     await replySafely(
       chat.id,
-      "Assalomu alaykum! 👋\n\nRo'yxatdan o'tish Stugram ilovasi orqali boshlanadi. Ilovadagi \"Telegram orqali ro'yxatdan o'tish\" tugmasini bosing — bot sizni shu yerga o'zi olib keladi."
+      "Assalomu alaykum! 👋\n\nRo'yxatdan o'tish Stugram ilovasi orqali boshlanadi. Ilovadagi \"Telegram orqali ro'yxatdan o'tish\" tugmasini bosing — bot sizni shu yerga o'zi olib keladi.",
+      MAIN_MENU_KEYBOARD
     );
     return;
   }
@@ -137,7 +183,7 @@ const handleStartCommand = async (message) => {
     await replySafely(
       chat.id,
       `Siz allaqachon ro'yxatdan o'tgansiz (@${existingUser.username}). ✅\nIlovadagi \"Kirish\" bo'limidan username va parolingiz bilan kiring. Parolni unutgan bo'lsangiz, \"Parolni unutdingizmi?\" tugmasini bosing.`,
-      REMOVE_KEYBOARD
+      MAIN_MENU_KEYBOARD
     );
     return;
   }
@@ -170,7 +216,7 @@ const handleContactMessage = async (message) => {
     await replySafely(
       chat.id,
       "Faol so'rov topilmadi. Ilovaga qaytib, \"Telegram orqali ro'yxatdan o'tish\" tugmasini qaytadan bosing.",
-      REMOVE_KEYBOARD
+      MAIN_MENU_KEYBOARD
     );
     return;
   }
@@ -184,7 +230,7 @@ const handleContactMessage = async (message) => {
     await replySafely(
       chat.id,
       `Siz allaqachon ro'yxatdan o'tgansiz (@${existingUser.username}). Ilovadagi \"Kirish\" bo'limidan kiring. ✅`,
-      REMOVE_KEYBOARD
+      MAIN_MENU_KEYBOARD
     );
     return;
   }
@@ -214,13 +260,58 @@ const handleContactMessage = async (message) => {
   await replySafely(
     chat.id,
     "Raqamingiz tasdiqlandi! ✅\n\nEndi Stugram ilovasiga qayting — ro'yxatdan o'tish avtomatik davom etadi.",
-    REMOVE_KEYBOARD
+    MAIN_MENU_KEYBOARD
   );
 };
 
-// Called by the Telegram webhook for every bot update. Handles the two steps
-// of the registration handshake: "/start <code>" (from the app's deep link)
-// and the contact-share reply.
+const DEFAULT_CHANNELS_TEXT =
+  "Bizning rasmiy kanal va chat havolalarimiz tez orada shu yerda paydo bo'ladi. 🔗";
+
+const handleChannelsButton = async (chat) => {
+  await replySafely(chat.id, env.telegramChannelsText || DEFAULT_CHANNELS_TEXT, MAIN_MENU_KEYBOARD);
+};
+
+const handleSupportButtonPress = async (chat) => {
+  await TelegramChatState.findOneAndUpdate(
+    { chatId: String(chat.id) },
+    { chatId: String(chat.id), awaitingSupportMessage: true },
+    { upsert: true }
+  );
+  await replySafely(
+    chat.id,
+    "✍️ Murojaatingizni yozib qoldirishingiz mumkin. Biz 48 soat ichida javob qaytaramiz.",
+    MAIN_MENU_KEYBOARD
+  );
+};
+
+const handleSupportMessageSubmission = async (message) => {
+  const chat = message.chat;
+
+  await TelegramSupportMessage.create({
+    chatId: String(chat.id),
+    telegramUsername: chat.username || null,
+    firstName: chat.first_name || null,
+    message: message.text,
+  });
+
+  await TelegramChatState.findOneAndUpdate(
+    { chatId: String(chat.id) },
+    { awaitingSupportMessage: false }
+  );
+
+  logger.info("telegram_support_message_received", { chatId: String(chat.id) });
+
+  await replySafely(
+    chat.id,
+    "✅ Qabul qilindi! Murojaatingiz ma'muriyatga yuborildi. 48 soat ichida javob beramiz.",
+    MAIN_MENU_KEYBOARD
+  );
+  await sendStickerSafely(chat.id, CHECKMARK_STICKER_FILE_ID);
+};
+
+// Called by the Telegram webhook for every bot update. Handles the
+// registration handshake ("/start <code>" + contact share) and the
+// persistent bottom menu (contact admin / channels).
 const handleTelegramUpdate = async (update) => {
   const message = update?.message;
   const chat = message?.chat;
@@ -234,8 +325,28 @@ const handleTelegramUpdate = async (update) => {
     return;
   }
 
-  if (typeof message.text === "string" && message.text.startsWith("/start")) {
+  const text = typeof message.text === "string" ? message.text : null;
+
+  if (text && text.startsWith("/start")) {
     await handleStartCommand(message);
+    return;
+  }
+
+  if (text === MENU_LABEL_CHANNELS) {
+    await handleChannelsButton(chat);
+    return;
+  }
+
+  if (text === MENU_LABEL_SUPPORT) {
+    await handleSupportButtonPress(chat);
+    return;
+  }
+
+  if (text) {
+    const state = await TelegramChatState.findOne({ chatId: String(chat.id) });
+    if (state?.awaitingSupportMessage) {
+      await handleSupportMessageSubmission(message);
+    }
   }
 };
 
