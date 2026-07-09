@@ -1,6 +1,8 @@
 package com.example.myapplication.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import com.example.myapplication.R
 import com.example.myapplication.core.storage.TokenManager
 import com.example.myapplication.data.remote.AuthSession
@@ -19,12 +21,16 @@ import com.example.myapplication.data.remote.ResetPasswordRequest
 import com.example.myapplication.data.remote.VerifyOtpRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,6 +45,12 @@ class LoginViewModel : ViewModel() {
 
     fun onPasswordChange(password: String) {
         _uiState.update { it.copy(password = password, error = null) }
+    }
+
+    private fun saveSession(context: Context, access: String, refresh: String) {
+        AuthSession.accessToken = access
+        ChatSocketManager.updateAccessToken(access)
+        TokenManager(context).saveTokens(access, refresh)
     }
 
     fun login(context: Context) {
@@ -64,9 +76,7 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
-                        TokenManager(context).saveTokens(access, refresh)
+                        saveSession(context, access, refresh)
                     }
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 } else {
@@ -135,9 +145,7 @@ class LoginViewModel : ViewModel() {
                     val access = data?.get("accessToken")?.asString
                     val refresh = data?.get("refreshToken")?.asString
                     if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
-                        AuthSession.accessToken = access
-                        ChatSocketManager.updateAccessToken(access)
-                        TokenManager(context).saveTokens(access, refresh)
+                        saveSession(context, access, refresh)
                     } else {
                         _uiState.update {
                             it.copy(
@@ -164,6 +172,107 @@ class LoginViewModel : ViewModel() {
                         error = "Google login xatosi: ${e.message ?: "Unknown error"}"
                     )
                 }
+            }
+        }
+    }
+
+    // --- Telegram orqali kirish ---
+    // Botga qayta kirilishi (allaqachon ro'yxatdan o'tgan akkaunt uchun)
+    // shaxsni tasdiqlash sifatida qabul qilinadi -- backend sessiya
+    // tokenlarini beradi, biz ularni link-status orqali olib kelamiz.
+
+    private var telegramLoginPollJob: Job? = null
+
+    fun startTelegramLogin(context: Context) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.createTelegramLinkCode()
+                }
+                if (!response.isSuccessful) {
+                    val body = response.errorBody()?.string()?.take(200)
+                    _uiState.update { it.copy(isLoading = false, error = "Telegram bilan ulanib bo'lmadi (${response.code()}): ${body ?: ""}") }
+                    return@launch
+                }
+                val data = response.body()?.getAsJsonObject("data")
+                val code = data?.get("code")?.takeIf { !it.isJsonNull }?.asString
+                val deepLink = data?.get("deepLink")?.takeIf { !it.isJsonNull }?.asString
+                if (code.isNullOrBlank() || deepLink.isNullOrBlank()) {
+                    _uiState.update { it.copy(isLoading = false, error = "Telegram orqali kirish hozircha sozlanmagan") }
+                    return@launch
+                }
+                _uiState.update { it.copy(isLoading = false, telegramWaiting = true, telegramDeepLink = deepLink) }
+                openTelegramLink(context, deepLink)
+                startTelegramLoginPolling(context, code)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}") }
+            }
+        }
+    }
+
+    fun reopenTelegramLogin(context: Context) {
+        _uiState.value.telegramDeepLink?.let { openTelegramLink(context, it) }
+    }
+
+    fun cancelTelegramLogin() {
+        telegramLoginPollJob?.cancel()
+        telegramLoginPollJob = null
+        _uiState.update { it.copy(telegramWaiting = false, error = null) }
+    }
+
+    private fun openTelegramLink(context: Context, link: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            _uiState.update { it.copy(error = "Telegram ilovasi ochilmadi. Telegram o'rnatilganini tekshiring.") }
+        }
+    }
+
+    private fun startTelegramLoginPolling(context: Context, code: String) {
+        telegramLoginPollJob?.cancel()
+        telegramLoginPollJob = viewModelScope.launch {
+            val deadline = System.currentTimeMillis() + 10 * 60 * 1000L
+            while (isActive && System.currentTimeMillis() < deadline) {
+                delay(2500)
+                try {
+                    val response = withContext(Dispatchers.IO) {
+                        RetrofitClient.instance.getTelegramLinkStatus(code)
+                    }
+                    if (response.code() == 404) {
+                        _uiState.update { it.copy(telegramWaiting = false, error = "Havola muddati o'tdi. Qaytadan urinib ko'ring.") }
+                        return@launch
+                    }
+                    val data: JsonObject = response.body()?.getAsJsonObject("data") ?: continue
+                    if (data.get("linked")?.asBoolean != true) continue
+
+                    if (data.get("alreadyRegistered")?.asBoolean != true) {
+                        // Chat is linked but no account exists for it yet.
+                        _uiState.update {
+                            it.copy(
+                                telegramWaiting = false,
+                                error = "Bu Telegram akkaunti hali ro'yxatdan o'tmagan. Avval \"Ro'yxatdan o'tish\" bo'limidan Telegram orqali ro'yxatdan o'ting."
+                            )
+                        }
+                        return@launch
+                    }
+
+                    val access = data.get("accessToken")?.takeIf { !it.isJsonNull }?.asString
+                    val refresh = data.get("refreshToken")?.takeIf { !it.isJsonNull }?.asString
+                    if (access.isNullOrBlank() || refresh.isNullOrBlank()) continue
+
+                    saveSession(context, access, refresh)
+                    _uiState.update { it.copy(telegramWaiting = false, isSuccess = true) }
+                    return@launch
+                } catch (_: Exception) {
+                    // Vaqtinchalik tarmoq xatosi — kuzatishni davom ettiramiz
+                }
+            }
+            if (_uiState.value.telegramWaiting) {
+                _uiState.update { it.copy(telegramWaiting = false, error = "Kutish vaqti tugadi. Qaytadan urinib ko'ring.") }
             }
         }
     }
@@ -308,6 +417,11 @@ class LoginViewModel : ViewModel() {
             }
         }
     }
+
+    override fun onCleared() {
+        telegramLoginPollJob?.cancel()
+        super.onCleared()
+    }
 }
 
 data class LoginUiState(
@@ -317,6 +431,8 @@ data class LoginUiState(
     val error: String? = null,
     val isSuccess: Boolean = false,
     val infoMessage: String? = null,
+    val telegramWaiting: Boolean = false,
+    val telegramDeepLink: String? = null,
     val forgotVisible: Boolean = false,
     val forgotStep: Int = 1,
     val forgotUsername: String = "",

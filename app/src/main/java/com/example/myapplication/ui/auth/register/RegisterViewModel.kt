@@ -125,7 +125,7 @@ class RegisterViewModel : ViewModel() {
                 }
                 _uiState.update { it.copy(isLoading = false, telegramWaiting = true, telegramDeepLink = deepLink) }
                 openTelegramLink(context, deepLink)
-                startTelegramPolling(code)
+                startTelegramPolling(context, code)
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}") }
             }
@@ -158,10 +158,23 @@ class RegisterViewModel : ViewModel() {
      * Returns true once the link is resolved (registered elsewhere, or ready
      * to continue to step 3) so the caller can stop polling/retrying.
      */
-    private fun applyLinkStatusData(data: JsonObject): Boolean {
+    private fun applyLinkStatusData(context: Context, data: JsonObject): Boolean {
         if (data.get("linked")?.asBoolean != true) return false
 
         if (data.get("alreadyRegistered")?.asBoolean == true) {
+            // Possession of the Telegram chat was just proven, so if the
+            // backend handed back a real session, log the user straight in
+            // instead of dead-ending on an error.
+            val access = data.get("accessToken")?.takeIf { !it.isJsonNull }?.asString
+            val refresh = data.get("refreshToken")?.takeIf { !it.isJsonNull }?.asString
+            if (!access.isNullOrBlank() && !refresh.isNullOrBlank()) {
+                AuthSession.accessToken = access
+                ChatSocketManager.updateAccessToken(access)
+                TokenManager(context).saveTokens(access, refresh)
+                _uiState.update { it.copy(isLoading = false, telegramWaiting = false, isSuccess = true) }
+                return true
+            }
+
             val existing = data.get("existingUsername")?.takeIf { !it.isJsonNull }?.asString
             _uiState.update {
                 it.copy(
@@ -195,7 +208,7 @@ class RegisterViewModel : ViewModel() {
         return true
     }
 
-    private fun startTelegramPolling(code: String) {
+    private fun startTelegramPolling(context: Context, code: String) {
         telegramPollJob?.cancel()
         telegramPollJob = viewModelScope.launch {
             val deadline = System.currentTimeMillis() + 10 * 60 * 1000L
@@ -210,7 +223,7 @@ class RegisterViewModel : ViewModel() {
                         return@launch
                     }
                     val data = response.body()?.getAsJsonObject("data") ?: continue
-                    if (applyLinkStatusData(data)) return@launch
+                    if (applyLinkStatusData(context, data)) return@launch
                 } catch (_: Exception) {
                     // Vaqtinchalik tarmoq xatosi — kuzatishni davom ettiramiz
                 }
@@ -224,7 +237,7 @@ class RegisterViewModel : ViewModel() {
     // Opened via the Telegram bot's https bridge link (stugram://telegram-register).
     // The bot already linked the code by the time this is tapped, so this is a
     // one-shot fetch rather than a poll.
-    fun resumeFromTelegramCode(code: String) {
+    fun resumeFromTelegramCode(context: Context, code: String) {
         telegramPollJob?.cancel()
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, telegramWaiting = false, error = null) }
@@ -237,7 +250,7 @@ class RegisterViewModel : ViewModel() {
                     return@launch
                 }
                 val data = response.body()?.getAsJsonObject("data")
-                val resolved = data?.let { applyLinkStatusData(it) } ?: false
+                val resolved = data?.let { applyLinkStatusData(context, it) } ?: false
                 if (!resolved) {
                     _uiState.update { it.copy(isLoading = false, error = "Hali tasdiqlanmagan. Botda telefon raqamingizni yuboring.") }
                 }

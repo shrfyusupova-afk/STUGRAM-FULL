@@ -673,3 +673,57 @@ fun LiquidGlassPlusButton(
         }
     }
 }
+
+/**
+ * Foydalanuvchi Telegram botda amalni yakunlashini kutish holati (ro'yxatdan
+ * o'tish yoki kirish uchun umumiy). Poll fonida ishlaydi.
+ */
+@Composable
+fun TelegramWaitingCard(
+    title: String = "Telegramda tasdiqlang",
+    message: String,
+    onReopenTelegram: () -> Unit,
+    onCancel: () -> Unit,
+    isDarkMode: Boolean
+) {
+    val textPrimary = authTextPrimary(isDarkMode)
+    val textSecondary = authTextSecondary(isDarkMode)
+    val inputFill = authInputFill(isDarkMode)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(inputFill, RoundedCornerShape(20.dp))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(36.dp),
+            color = AuthBlue,
+            strokeWidth = 3.dp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = title,
+            color = textPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = message,
+            color = textSecondary,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        PremiumButton(
+            text = "Telegramni qayta ochish",
+            onClick = onReopenTelegram
+        )
+        TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+            Text("Bekor qilish", color = textSecondary, fontSize = 13.sp)
+        }
+    }
+}

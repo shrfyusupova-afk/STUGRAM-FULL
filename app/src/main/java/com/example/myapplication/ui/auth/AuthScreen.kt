@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,7 @@ fun AuthScreen(
     onTelegramCodeConsumed: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
+    val context = LocalContext.current
 
     val loginViewModel: LoginViewModel = viewModel()
     val registerViewModel: RegisterViewModel = viewModel()
@@ -48,7 +50,7 @@ fun AuthScreen(
     LaunchedEffect(pendingTelegramCode) {
         val code = pendingTelegramCode ?: return@LaunchedEffect
         selectedTab = 1
-        registerViewModel.resumeFromTelegramCode(code)
+        registerViewModel.resumeFromTelegramCode(context, code)
         onTelegramCodeConsumed()
     }
 

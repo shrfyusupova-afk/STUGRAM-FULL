@@ -30,6 +30,7 @@ import com.example.myapplication.R
 import com.example.myapplication.ui.auth.components.PremiumButton
 import com.example.myapplication.ui.auth.components.PremiumTextField
 import com.example.myapplication.ui.auth.components.PremiumSocialButton
+import com.example.myapplication.ui.auth.components.TelegramWaitingCard
 import com.example.myapplication.ui.theme.AuthBlue
 import com.example.myapplication.ui.theme.AuthError
 import com.example.myapplication.ui.theme.authCard
@@ -52,6 +53,16 @@ fun LoginContent(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        if (uiState.telegramWaiting) {
+            TelegramWaitingCard(
+                message = "Botda o'zingizni tasdiqlang.\nTasdiqlangach bu yerda avtomatik kirasiz.",
+                onReopenTelegram = { viewModel.reopenTelegramLogin(context) },
+                onCancel = viewModel::cancelTelegramLogin,
+                isDarkMode = isDarkMode
+            )
+            return@Column
+        }
+
         PremiumTextField(
             value = uiState.username,
             onValueChange = viewModel::onUsernameChange,
@@ -126,6 +137,15 @@ fun LoginContent(
             painter = painterResource(id = R.drawable.ic_google_g),
             text = "Google orqali kirish",
             onClick = { viewModel.loginWithGoogle(context) },
+            isDarkMode = isDarkMode
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        PremiumSocialButton(
+            painter = painterResource(id = R.drawable.ic_telegram),
+            text = "Telegram orqali kirish",
+            onClick = { viewModel.startTelegramLogin(context) },
             isDarkMode = isDarkMode
         )
 
