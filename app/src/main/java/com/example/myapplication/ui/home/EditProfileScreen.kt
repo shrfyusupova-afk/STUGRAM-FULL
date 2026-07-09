@@ -1,5 +1,9 @@
 package com.example.myapplication.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -9,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,11 +24,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.myapplication.R
+import com.example.myapplication.core.media.MediaUtils
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,12 +45,19 @@ fun EditProfileScreen(
     onBack: () -> Unit,
     onSave: (String, String, String, String, String, String) -> Unit,
     isSaving: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    avatarUrl: String? = null,
+    bannerUrl: String? = null,
+    isUploadingAvatar: Boolean = false,
+    isUploadingBanner: Boolean = false,
+    onPickAvatar: (File) -> Unit = {},
+    onPickBanner: (File) -> Unit = {}
 ) {
     val backgroundColor = if (isDarkMode) Color(0xFF0F0F0F) else Color.White
     val contentColor = if (isDarkMode) Color.White else Color.Black
     val accentBlue = Color(0xFF00A3FF)
     val fieldColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
+    val context = LocalContext.current
 
     var name by remember { mutableStateOf(initialName) }
     var username by remember { mutableStateOf(initialUsername) }
@@ -51,6 +65,18 @@ fun EditProfileScreen(
     var birthday by remember { mutableStateOf(initialBirthday) }
     var location by remember { mutableStateOf(initialLocation) }
     var school by remember { mutableStateOf(initialSchool) }
+
+    val avatarPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) runCatching { MediaUtils.compressImage(context, uri) }.onSuccess(onPickAvatar)
+    }
+    val bannerPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) runCatching { MediaUtils.compressImage(context, uri) }.onSuccess(onPickBanner)
+    }
+    val imageOnlyRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -95,19 +121,22 @@ fun EditProfileScreen(
                     .fillMaxWidth()
                     .height(bannerHeight + (avatarSize / 2))
             ) {
-                // Banner
+                // Banner: real photo if set, otherwise a plain flat surface.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(bannerHeight)
                         .background(fieldColor)
+                        .clickable(enabled = !isUploadingBanner) { bannerPicker.launch(imageOnlyRequest) }
                 ) {
-                    AsyncImage(
-                        model = R.drawable.kun,
-                        contentDescription = "Banner",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    if (!bannerUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = bannerUrl,
+                            contentDescription = "Banner",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                     // Banner Edit Overlay
                     Box(
                         modifier = Modifier
@@ -115,9 +144,13 @@ fun EditProfileScreen(
                             .background(Color.Black.copy(0.35f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(32.dp))
-                            Text("Edit Cover", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        if (isUploadingBanner) {
+                            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                                Text("Edit Cover", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -130,13 +163,28 @@ fun EditProfileScreen(
                         .background(backgroundColor, CircleShape)
                         .padding(4.dp)
                 ) {
-                    Box(modifier = Modifier.fillMaxSize().clip(CircleShape)) {
-                        AsyncImage(
-                            model = R.drawable.photo_1,
-                            contentDescription = "Profile Picture",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(fieldColor)
+                            .clickable(enabled = !isUploadingAvatar) { avatarPicker.launch(imageOnlyRequest) }
+                    ) {
+                        if (!avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = avatarUrl,
+                                contentDescription = "Profile Picture",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                tint = contentColor.copy(alpha = 0.4f),
+                                modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center)
+                            )
+                        }
                         // Avatar Edit Overlay
                         Box(
                             modifier = Modifier
@@ -144,7 +192,11 @@ fun EditProfileScreen(
                                 .background(Color.Black.copy(0.35f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            if (isUploadingAvatar) {
+                                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                            } else {
+                                Icon(Icons.Default.CameraAlt, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                            }
                         }
                     }
                 }

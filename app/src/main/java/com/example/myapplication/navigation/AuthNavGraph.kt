@@ -196,7 +196,10 @@ fun AuthNavGraph(
                 onRefresh = {},
                 isMyProfile = false,
                 targetUsername = username,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onMessage = { targetName ->
+                    navController.navigate(Screen.ChatDetail.createRoute(targetName, false))
+                }
             )
         }
     }

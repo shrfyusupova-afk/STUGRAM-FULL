@@ -6,6 +6,7 @@ import java.io.File
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 
@@ -79,6 +80,18 @@ class PostRepository(
         else PostResult.Error(response.code(), mapError(response.code()))
     }
 
+    suspend fun getMyHighlights(): PostResult<List<HighlightDto>> = safeCall {
+        val response = api.getMyHighlights()
+        if (response.isSuccessful) PostResult.Success(response.body()?.data.orEmpty())
+        else PostResult.Error(response.code(), mapError(response.code()))
+    }
+
+    suspend fun getHighlightsByUsername(username: String): PostResult<List<HighlightDto>> = safeCall {
+        val response = api.getHighlightsByUsername(username)
+        if (response.isSuccessful) PostResult.Success(response.body()?.data.orEmpty())
+        else PostResult.Error(response.code(), mapError(response.code()))
+    }
+
     // --- Mutations ---
 
     suspend fun likePost(postId: String): PostResult<Unit> = safeUnit { api.likePost(postId) }
@@ -132,6 +145,24 @@ class PostRepository(
         }
         val part = MultipartBody.Part.createFormData("media", file.name, body)
         return runCreate(idempotencyKey, caption) { key, captionBody -> api.createStory(key, part, captionBody) }
+    }
+
+    suspend fun uploadAvatar(file: File): PostResult<ProfileDto> = safeCall {
+        val body = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("avatar", file.name, body)
+        val response = api.uploadAvatar(part)
+        val dto = response.body()?.data
+        if (response.isSuccessful && dto != null) PostResult.Success(dto)
+        else PostResult.Error(response.code(), mapError(response.code()))
+    }
+
+    suspend fun uploadBanner(file: File): PostResult<ProfileDto> = safeCall {
+        val body = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("banner", file.name, body)
+        val response = api.uploadBanner(part)
+        val dto = response.body()?.data
+        if (response.isSuccessful && dto != null) PostResult.Success(dto)
+        else PostResult.Error(response.code(), mapError(response.code()))
     }
 
     // --- Helpers ---

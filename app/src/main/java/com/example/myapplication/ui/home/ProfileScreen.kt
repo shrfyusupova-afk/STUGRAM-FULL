@@ -1,4 +1,4 @@
-﻿package com.example.myapplication.ui.home
+package com.example.myapplication.ui.home
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -6,16 +6,25 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -24,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +52,8 @@ fun ProfileScreen(
     onRefresh: () -> Unit,
     isMyProfile: Boolean = true,
     targetUsername: String? = null,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    onMessage: ((String) -> Unit)? = null
 ) {
     val vm: ProfileViewModel = viewModel()
     val ui = vm.uiState.collectAsState().value
@@ -62,6 +73,12 @@ fun ProfileScreen(
             initialBirthday = "",
             initialLocation = ui.location,
             initialSchool = ui.school,
+            avatarUrl = ui.avatarUrl,
+            bannerUrl = ui.bannerUrl,
+            isUploadingAvatar = ui.isUploadingAvatar,
+            isUploadingBanner = ui.isUploadingBanner,
+            onPickAvatar = vm::uploadAvatar,
+            onPickBanner = vm::uploadBanner,
             onBack = { isEditMode = false },
             isSaving = ui.isSaving,
             errorMessage = ui.saveError,
@@ -82,6 +99,7 @@ fun ProfileScreen(
     val bg = if (isDarkMode) Color(0xFF0F0F0F) else Color.White
     val fg = if (isDarkMode) Color.White else Color.Black
     val accent = Color(0xFF00A3FF)
+    val surface = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF0F0F0)
 
     PullToRefreshBox(
         isRefreshing = isRefreshing || ui.isLoading,
@@ -92,9 +110,9 @@ fun ProfileScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize().background(bg)) {
-            Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -120,37 +138,39 @@ fun ProfileScreen(
                     }
 
                     else -> {
+                        ProfileHeader(
+                            fullName = ui.fullName,
+                            username = ui.username,
+                            avatarUrl = ui.avatarUrl,
+                            bannerUrl = ui.bannerUrl,
+                            surface = surface,
+                            accent = accent,
+                            fg = fg,
+                            bg = bg
+                        )
+
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                            Text(
-                                text = ui.fullName.ifBlank { "No name set" },
-                                color = fg,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                text = if (ui.username.isBlank()) "@unknown" else "@${ui.username}",
-                                color = accent,
-                                fontSize = 15.sp
-                            )
-                            if (ui.bio.isNotBlank()) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(ui.bio, color = fg, fontSize = 14.sp)
+                            if (ui.school.isNotBlank()) {
+                                InfoRow(icon = Icons.Default.School, text = ui.school.uppercase(), fg = fg, bold = true)
+                                Spacer(Modifier.height(4.dp))
                             }
-                            if (ui.location.isNotBlank() || ui.school.isNotBlank()) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    listOf(ui.location, ui.school).filter { it.isNotBlank() }.joinToString(" • "),
-                                    color = fg.copy(alpha = 0.7f),
-                                    fontSize = 12.sp
-                                )
+                            if (ui.group.isNotBlank()) {
+                                InfoRow(icon = Icons.Default.Groups, text = "Group: ${ui.group}", fg = fg, bold = true)
+                                Spacer(Modifier.height(4.dp))
                             }
-                            Spacer(Modifier.height(12.dp))
+
+                            Spacer(Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 StatItemHeader(ui.postsCount.toString(), "Posts", fg)
                                 StatItemHeader(ui.followersCount.toString(), "Followers", fg)
                                 StatItemHeader(ui.followingCount.toString(), "Following", fg)
                             }
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(12.dp))
+
+                            if (ui.bio.isNotBlank()) {
+                                Text(ui.bio, color = fg, fontSize = 14.sp)
+                                Spacer(Modifier.height(12.dp))
+                            }
 
                             if (resolvedIsMyProfile) {
                                 OutlinedButton(
@@ -164,19 +184,34 @@ fun ProfileScreen(
                                 }
                             } else {
                                 val following = ui.followStatus == "following"
-                                Button(
-                                    onClick = { vm.followOrUnfollow() },
-                                    enabled = !ui.isSaving,
-                                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (following) fg.copy(alpha = 0.2f) else accent
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        if (following) "Unfollow" else "Follow",
-                                        color = if (following) fg else Color.White
-                                    )
+                                    Button(
+                                        onClick = { vm.followOrUnfollow() },
+                                        enabled = !ui.isSaving,
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (following) fg.copy(alpha = 0.2f) else accent
+                                        )
+                                    ) {
+                                        Text(
+                                            if (following) "Unfollow" else "Follow",
+                                            color = if (following) fg else Color.White
+                                        )
+                                    }
+                                    if (onMessage != null) {
+                                        Button(
+                                            onClick = { onMessage(ui.username) },
+                                            modifier = Modifier.weight(1f).height(46.dp),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = surface)
+                                        ) {
+                                            Text("Message", color = fg)
+                                        }
+                                    }
                                 }
                             }
 
@@ -187,15 +222,37 @@ fun ProfileScreen(
                             Spacer(Modifier.height(16.dp))
                         }
 
-                        val tabs = listOf("Posts", "Reels", "Tagged")
+                        if (ui.highlights.isNotEmpty()) {
+                            FavoriteMomentsRow(ui.highlights, surface, fg)
+                            Spacer(Modifier.height(16.dp))
+                        }
+
+                        val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayArrow, Icons.Default.AccountBox)
                         var selectedTab by remember { mutableStateOf(0) }
                         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                            tabs.forEachIndexed { index, label ->
+                            tabs.forEachIndexed { index, icon ->
+                                val selected = selectedTab == index
                                 Box(
-                                    modifier = Modifier.weight(1f).clickable { selectedTab = index }.padding(vertical = 12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(label, color = if (selectedTab == index) accent else fg.copy(alpha = 0.6f), fontSize = 13.sp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (selected) accent else Color.Transparent)
+                                            .clickable { selectedTab = index },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            icon,
+                                            contentDescription = null,
+                                            tint = if (selected) Color.White else fg.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -214,6 +271,157 @@ fun ProfileScreen(
                             else -> CenteredHint("Hali belgilangan post yo'q", fg)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileHeader(
+    fullName: String,
+    username: String,
+    avatarUrl: String?,
+    bannerUrl: String?,
+    surface: Color,
+    accent: Color,
+    fg: Color,
+    bg: Color
+) {
+    val bannerHeight = 140.dp
+    val avatarSize = 88.dp
+
+    Box(modifier = Modifier.fillMaxWidth().height(bannerHeight + avatarSize / 2)) {
+        // Banner: real photo if set, otherwise a plain flat surface (no fake photo).
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(bannerHeight)
+                .align(Alignment.TopStart)
+                .background(surface)
+        ) {
+            if (!bannerUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = bannerUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        // Avatar: real photo if set, otherwise a generic person silhouette.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp)
+                .size(avatarSize)
+                .background(bg, CircleShape)
+                .padding(3.dp)
+                .border(2.dp, accent, CircleShape)
+                .padding(2.dp)
+                .clip(CircleShape)
+        ) {
+            if (!avatarUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = fg.copy(alpha = 0.4f),
+                        modifier = Modifier.size(44.dp)
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp + avatarSize + 12.dp, end = 20.dp, bottom = 10.dp)
+        ) {
+            Text(
+                text = fullName.ifBlank { "No name set" },
+                color = fg,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (username.isBlank()) "@unknown" else "@$username",
+                color = accent,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(icon: ImageVector, text: String, fg: Color, bold: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = fg.copy(alpha = 0.7f), modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = text,
+            color = fg.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun FavoriteMomentsRow(highlights: List<HighlightItem>, surface: Color, fg: Color) {
+    Column {
+        Text(
+            text = "Favorite Moments",
+            color = fg.copy(alpha = 0.8f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 20.dp, bottom = 10.dp)
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp)
+        ) {
+            items(highlights, key = { it.id }) { highlight ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(surface)
+                    ) {
+                        if (!highlight.coverUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = highlight.coverUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = highlight.title,
+                        color = fg.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 72.dp)
+                    )
                 }
             }
         }
