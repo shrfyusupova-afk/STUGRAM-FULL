@@ -56,7 +56,9 @@ fun AuthNavGraph(
     isDarkMode: Boolean,
     onThemeChange: (Boolean) -> Unit,
     pendingDeepLink: DeepLinkTarget? = null,
-    onDeepLinkConsumed: () -> Unit = {}
+    onDeepLinkConsumed: () -> Unit = {},
+    pendingTelegramCode: String? = null,
+    onTelegramCodeConsumed: () -> Unit = {}
 ) {
     // Forced logout (refresh failure) or explicit logout: clear the whole back
     // stack and return to Auth. A fresh Auth entry gives fresh Login/Register
@@ -96,11 +98,16 @@ fun AuthNavGraph(
         startDestination = startDestination
     ) {
         composable(route = Screen.Auth.route) {
-            AuthScreen(isDarkMode = isDarkMode, onNavigateToHome = {
-                navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Auth.route) { inclusive = true }
-                }
-            })
+            AuthScreen(
+                isDarkMode = isDarkMode,
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Auth.route) { inclusive = true }
+                    }
+                },
+                pendingTelegramCode = pendingTelegramCode,
+                onTelegramCodeConsumed = onTelegramCodeConsumed
+            )
         }
 
         composable(
