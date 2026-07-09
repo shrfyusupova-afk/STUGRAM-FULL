@@ -95,10 +95,19 @@ data class ProfileDto(
     val username: String? = null,
     val bio: String? = null,
     val avatar: String? = null,
+    val banner: String? = null,
     val location: String? = null,
     val school: String? = null,
+    val grade: String? = null,
+    val group: String? = null,
     val followersCount: Int? = null,
     val followingCount: Int? = null,
     val postsCount: Int? = null,
     val followStatus: String? = null
+)
+
+data class HighlightDto(
+    @SerializedName("_id") val id: String? = null,
+    val title: String? = null,
+    val coverImageUrl: String? = null
 )

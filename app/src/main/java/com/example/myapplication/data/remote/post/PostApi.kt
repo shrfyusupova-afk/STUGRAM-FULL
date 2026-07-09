@@ -88,6 +88,21 @@ interface PostApi {
     @GET("api/v1/profiles/{username}")
     suspend fun getProfileByUsername(@Path("username") username: String): Response<ApiEnvelope<ProfileDto>>
 
+    @Multipart
+    @POST("api/v1/profiles/me/avatar")
+    suspend fun uploadAvatar(@Part avatar: MultipartBody.Part): Response<ApiEnvelope<ProfileDto>>
+
+    @Multipart
+    @POST("api/v1/profiles/me/banner")
+    suspend fun uploadBanner(@Part banner: MultipartBody.Part): Response<ApiEnvelope<ProfileDto>>
+
+    // --- Highlights ("Favorite Moments") ---
+    @GET("api/v1/highlights/me")
+    suspend fun getMyHighlights(): Response<ApiEnvelope<List<HighlightDto>>>
+
+    @GET("api/v1/highlights/{username}")
+    suspend fun getHighlightsByUsername(@Path("username") username: String): Response<ApiEnvelope<List<HighlightDto>>>
+
     // --- Likes ---
     @POST("api/v1/likes/posts/{postId}")
     suspend fun likePost(@Path("postId") postId: String): Response<Unit>

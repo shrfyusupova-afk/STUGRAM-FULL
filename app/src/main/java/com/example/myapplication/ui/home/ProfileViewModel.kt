@@ -6,9 +6,11 @@ import com.example.myapplication.core.ui.UiState
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.UpdateProfileRequest
+import com.example.myapplication.data.remote.post.HighlightDto
 import com.example.myapplication.data.remote.post.PostDto
 import com.example.myapplication.data.remote.post.PostRepository
 import com.example.myapplication.data.remote.post.PostResult
+import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,8 +28,11 @@ data class AlphaProfileUiState(
     val fullName: String = "",
     val username: String = "",
     val bio: String = "",
+    val avatarUrl: String? = null,
+    val bannerUrl: String? = null,
     val location: String = "",
     val school: String = "",
+    val group: String = "",
     val followersCount: Int = 0,
     val followingCount: Int = 0,
     val postsCount: Int = 0,
@@ -36,7 +41,16 @@ data class AlphaProfileUiState(
     val isSelf: Boolean = true,
     val followStatus: String = "self",
     val postsState: UiState<List<ProfilePostItem>> = UiState.Loading,
-    val isLoadingMorePosts: Boolean = false
+    val isLoadingMorePosts: Boolean = false,
+    val highlights: List<HighlightItem> = emptyList(),
+    val isUploadingAvatar: Boolean = false,
+    val isUploadingBanner: Boolean = false
+)
+
+data class HighlightItem(
+    val id: String,
+    val title: String,
+    val coverUrl: String?
 )
 
 data class ProfilePostItem(
@@ -86,8 +100,11 @@ class ProfileViewModel(
                             fullName = dto.fullName.orEmpty(),
                             username = dto.username.orEmpty(),
                             bio = dto.bio.orEmpty(),
+                            avatarUrl = dto.avatar,
+                            bannerUrl = dto.banner,
                             location = dto.location.orEmpty(),
                             school = dto.school.orEmpty(),
+                            group = dto.group.orEmpty(),
                             followersCount = dto.followersCount ?: 0,
                             followingCount = dto.followingCount ?: 0,
                             postsCount = dto.postsCount ?: 0,
@@ -97,7 +114,50 @@ class ProfileViewModel(
                         )
                     }
                     loadPosts(reset = true)
+                    loadHighlights(target)
                 }
+            }
+        }
+    }
+
+    private fun loadHighlights(target: String?) {
+        viewModelScope.launch {
+            val result = withContext(ioDispatcher) {
+                if (target.isNullOrBlank()) repository.getMyHighlights() else repository.getHighlightsByUsername(target)
+            }
+            if (result is PostResult.Success) {
+                _uiState.update {
+                    it.copy(
+                        highlights = result.value.mapNotNull { dto ->
+                            val id = dto.id ?: return@mapNotNull null
+                            HighlightItem(id = id, title = dto.title.orEmpty(), coverUrl = dto.coverImageUrl)
+                        }
+                    )
+                }
+            }
+            // Highlights are a supplementary section; a fetch failure just
+            // leaves the row empty rather than surfacing a profile-wide error.
+        }
+    }
+
+    fun uploadAvatar(file: File) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingAvatar = true, saveError = null) }
+            val result = withContext(ioDispatcher) { repository.uploadAvatar(file) }
+            when (result) {
+                is PostResult.Success -> _uiState.update { it.copy(isUploadingAvatar = false, avatarUrl = result.value.avatar) }
+                is PostResult.Error -> _uiState.update { it.copy(isUploadingAvatar = false, saveError = result.message) }
+            }
+        }
+    }
+
+    fun uploadBanner(file: File) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingBanner = true, saveError = null) }
+            val result = withContext(ioDispatcher) { repository.uploadBanner(file) }
+            when (result) {
+                is PostResult.Success -> _uiState.update { it.copy(isUploadingBanner = false, bannerUrl = result.value.banner) }
+                is PostResult.Error -> _uiState.update { it.copy(isUploadingBanner = false, saveError = result.message) }
             }
         }
     }
