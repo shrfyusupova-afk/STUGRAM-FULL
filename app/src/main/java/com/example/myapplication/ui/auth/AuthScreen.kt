@@ -25,7 +25,9 @@ import com.example.myapplication.ui.theme.*
 @Composable
 fun AuthScreen(
     isDarkMode: Boolean,
-    onNavigateToHome: () -> Unit
+    onNavigateToHome: () -> Unit,
+    pendingTelegramCode: String? = null,
+    onTelegramCodeConsumed: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
 
@@ -39,6 +41,15 @@ fun AuthScreen(
         if (loginState.isSuccess || registerState.isSuccess) {
             onNavigateToHome()
         }
+    }
+
+    // Opened via the Telegram bot's "Ilovani ochish" bridge link: jump
+    // straight into the register flow and resolve the code into step 3.
+    LaunchedEffect(pendingTelegramCode) {
+        val code = pendingTelegramCode ?: return@LaunchedEffect
+        selectedTab = 1
+        registerViewModel.resumeFromTelegramCode(code)
+        onTelegramCodeConsumed()
     }
 
     // One-shot entrance only, so it costs nothing after the first frame.

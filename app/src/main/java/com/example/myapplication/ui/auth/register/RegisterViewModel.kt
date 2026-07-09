@@ -10,6 +10,7 @@ import com.example.myapplication.data.remote.OtpRequest
 import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.VerifyOtpRequest
 import com.example.myapplication.data.remote.chat.ChatSocketManager
+import com.google.gson.JsonObject
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +153,48 @@ class RegisterViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Applies a /telegram/link-status response to the UI state.
+     * Returns true once the link is resolved (registered elsewhere, or ready
+     * to continue to step 3) so the caller can stop polling/retrying.
+     */
+    private fun applyLinkStatusData(data: JsonObject): Boolean {
+        if (data.get("linked")?.asBoolean != true) return false
+
+        if (data.get("alreadyRegistered")?.asBoolean == true) {
+            val existing = data.get("existingUsername")?.takeIf { !it.isJsonNull }?.asString
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    telegramWaiting = false,
+                    error = "Siz allaqachon ro'yxatdan o'tgansiz" +
+                        (if (!existing.isNullOrBlank()) " (@$existing)" else "") +
+                        ". \"Kirish\" bo'limidan kiring."
+                )
+            }
+            return true
+        }
+
+        val identity = data.get("identity")?.takeIf { !it.isJsonNull }?.asString
+        val otp = data.get("otp")?.takeIf { !it.isJsonNull }?.asString
+        val phone = data.get("phoneNumber")?.takeIf { !it.isJsonNull }?.asString ?: ""
+        if (identity.isNullOrBlank() || otp.isNullOrBlank()) return false
+
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                telegramWaiting = false,
+                telegramLinked = true,
+                telegramPhone = phone,
+                identity = identity,
+                otp = otp,
+                currentStep = 3,
+                error = null
+            )
+        }
+        return true
+    }
+
     private fun startTelegramPolling(code: String) {
         telegramPollJob?.cancel()
         telegramPollJob = viewModelScope.launch {
@@ -167,42 +210,39 @@ class RegisterViewModel : ViewModel() {
                         return@launch
                     }
                     val data = response.body()?.getAsJsonObject("data") ?: continue
-                    if (data.get("linked")?.asBoolean != true) continue
-
-                    if (data.get("alreadyRegistered")?.asBoolean == true) {
-                        val existing = data.get("existingUsername")?.takeIf { !it.isJsonNull }?.asString
-                        _uiState.update {
-                            it.copy(
-                                telegramWaiting = false,
-                                error = "Siz allaqachon ro'yxatdan o'tgansiz" +
-                                    (if (!existing.isNullOrBlank()) " (@$existing)" else "") +
-                                    ". \"Kirish\" bo'limidan kiring."
-                            )
-                        }
-                    } else {
-                        val identity = data.get("identity")?.takeIf { !it.isJsonNull }?.asString
-                        val otp = data.get("otp")?.takeIf { !it.isJsonNull }?.asString
-                        val phone = data.get("phoneNumber")?.takeIf { !it.isJsonNull }?.asString ?: ""
-                        if (identity.isNullOrBlank() || otp.isNullOrBlank()) continue
-                        _uiState.update {
-                            it.copy(
-                                telegramWaiting = false,
-                                telegramLinked = true,
-                                telegramPhone = phone,
-                                identity = identity,
-                                otp = otp,
-                                currentStep = 3,
-                                error = null
-                            )
-                        }
-                    }
-                    return@launch
+                    if (applyLinkStatusData(data)) return@launch
                 } catch (_: Exception) {
                     // Vaqtinchalik tarmoq xatosi — kuzatishni davom ettiramiz
                 }
             }
             if (_uiState.value.telegramWaiting) {
                 _uiState.update { it.copy(telegramWaiting = false, error = "Kutish vaqti tugadi. Qaytadan urinib ko'ring.") }
+            }
+        }
+    }
+
+    // Opened via the Telegram bot's https bridge link (stugram://telegram-register).
+    // The bot already linked the code by the time this is tapped, so this is a
+    // one-shot fetch rather than a poll.
+    fun resumeFromTelegramCode(code: String) {
+        telegramPollJob?.cancel()
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, telegramWaiting = false, error = null) }
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.instance.getTelegramLinkStatus(code)
+                }
+                if (response.code() == 404) {
+                    _uiState.update { it.copy(isLoading = false, error = "Havola muddati o'tgan. Botda qaytadan \"Ro'yxatdan o'tish\"ni bosing.") }
+                    return@launch
+                }
+                val data = response.body()?.getAsJsonObject("data")
+                val resolved = data?.let { applyLinkStatusData(it) } ?: false
+                if (!resolved) {
+                    _uiState.update { it.copy(isLoading = false, error = "Hali tasdiqlanmagan. Botda telefon raqamingizni yuboring.") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Tarmoq xatosi: ${e.message}") }
             }
         }
     }

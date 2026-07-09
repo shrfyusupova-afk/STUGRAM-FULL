@@ -43,6 +43,10 @@ class MainActivity : ComponentActivity() {
     // Set from the launch intent (notification tap) and consumed by the nav graph.
     private val pendingDeepLink = mutableStateOf<DeepLinkTarget?>(null)
 
+    // Set when the app is opened via the Telegram bot's "stugram://telegram-register?code=..."
+    // bridge link; consumed by AuthNavGraph to jump straight into the register flow.
+    private val pendingTelegramCode = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -51,6 +55,7 @@ class MainActivity : ComponentActivity() {
         RetrofitClient.initialize(applicationContext)
         StugramFirebaseMessagingService.ensureNotificationChannel(applicationContext)
         pendingDeepLink.value = parseDeepLink(intent)
+        pendingTelegramCode.value = parseTelegramCode(intent)
 
         printSHA1()
         enableEdgeToEdge()
@@ -86,7 +91,9 @@ class MainActivity : ComponentActivity() {
                             isDarkMode = isDarkMode.value,
                             onThemeChange = { isDarkMode.value = it },
                             pendingDeepLink = pendingDeepLink.value,
-                            onDeepLinkConsumed = { pendingDeepLink.value = null }
+                            onDeepLinkConsumed = { pendingDeepLink.value = null },
+                            pendingTelegramCode = pendingTelegramCode.value,
+                            onTelegramCodeConsumed = { pendingTelegramCode.value = null }
                         )
                     }
                 }
@@ -98,6 +105,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         // singleTop: a notification tap while the app is alive lands here.
         parseDeepLink(intent)?.let { pendingDeepLink.value = it }
+        parseTelegramCode(intent)?.let { pendingTelegramCode.value = it }
+    }
+
+    /** Reads "code" from a "stugram://telegram-register?code=..." VIEW intent. */
+    private fun parseTelegramCode(intent: Intent?): String? {
+        val uri = intent?.data ?: return null
+        if (uri.scheme != "stugram" || uri.host != "telegram-register") return null
+        return uri.getQueryParameter("code")?.takeIf { it.isNotBlank() }
     }
 
     /**
