@@ -47,7 +47,7 @@ class LoginViewModel : ViewModel() {
         _uiState.update { it.copy(password = password, error = null) }
     }
 
-    private fun saveSession(context: Context, access: String, refresh: String) {
+    private suspend fun saveSession(context: Context, access: String, refresh: String) {
         AuthSession.accessToken = access
         ChatSocketManager.updateAccessToken(access)
         TokenManager(context).saveTokens(access, refresh)
