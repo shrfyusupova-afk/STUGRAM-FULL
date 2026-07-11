@@ -35,6 +35,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
@@ -130,14 +131,14 @@ fun ChatDetailScreen(
         }
     }
 
-    if (!isRequest) {
-        LaunchedEffect(Unit) {
-            while (true) {
-                delay(5000)
-                isTyping = true
-                delay(3000)
-                isTyping = false
-            }
+    // Real typing indicator (driven by the other participant's typing_start/typing_stop
+    // socket events, received only for them since the backend excludes the sender).
+    // The auto-clear guards against a dropped typing_stop leaving the indicator stuck.
+    var typingClearToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isTyping, typingClearToken) {
+        if (isTyping) {
+            delay(6000)
+            isTyping = false
         }
     }
 
@@ -248,8 +249,21 @@ fun ChatDetailScreen(
                             }
                         }
 
+                        is ChatSocketEvent.TypingStart -> {
+                            if (event.conversationId == targetConversationId) {
+                                isTyping = true
+                                typingClearToken++
+                            }
+                        }
+
+                        is ChatSocketEvent.TypingStop -> {
+                            if (event.conversationId == targetConversationId) {
+                                isTyping = false
+                            }
+                        }
+
                         else -> {
-                            // no-op for typing/unknown in this phase
+                            // no-op for unknown events
                         }
                     }
                 }
@@ -274,6 +288,23 @@ fun ChatDetailScreen(
                 }
             }
         }
+
+        // Tell the other participant we're typing. Throttled to at most one
+        // typing_start per 2s (keystrokes re-trigger this effect, cancelling
+        // the pending typing_stop each time); typing_stop fires 3s after the
+        // last keystroke, matching Telegram's indicator timeout.
+        var lastTypingStartAtMillis by remember { mutableLongStateOf(0L) }
+        LaunchedEffect(messageText, conversationId) {
+            val targetConversationId = conversationId ?: return@LaunchedEffect
+            if (messageText.isBlank()) return@LaunchedEffect
+            val now = System.currentTimeMillis()
+            if (now - lastTypingStartAtMillis > 2000L) {
+                lastTypingStartAtMillis = now
+                ChatSocketManager.sendTypingStart(targetConversationId)
+            }
+            delay(3000)
+            ChatSocketManager.sendTypingStop(targetConversationId)
+        }
     }
 
     val listState = rememberLazyListState()
@@ -282,6 +313,19 @@ fun ChatDetailScreen(
     val scrollToStart = suspend {
         if (messages.isNotEmpty()) {
             delay(100)
+            listState.animateScrollToItem(0)
+        }
+    }
+
+    // Follow the conversation like Telegram does: a freshly arrived message
+    // (mine, or the other side's while I'm already near the latest one) pulls
+    // the view down to it instead of leaving it out of sight below the fold.
+    val newestMessageId = messages.firstOrNull()?.id
+    LaunchedEffect(newestMessageId) {
+        if (newestMessageId == null) return@LaunchedEffect
+        val newest = messages.firstOrNull() ?: return@LaunchedEffect
+        val nearBottom = listState.firstVisibleItemIndex <= 1
+        if (newest.isMe || nearBottom) {
             listState.animateScrollToItem(0)
         }
     }
@@ -308,15 +352,34 @@ fun ChatDetailScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
                 ) {
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        val isSameDay = if (index < messages.size - 1) {
-                            isSameDay(message.timestamp, messages[index + 1].timestamp)
-                        } else false
+                        // messages is newest-first (DESC), so the "older" neighbor sits at
+                        // index+1 and the "newer" one at index-1.
+                        val olderNeighbor = messages.getOrNull(index + 1)
+                        val newerNeighbor = messages.getOrNull(index - 1)
 
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            if (index == messages.size - 1 || !isSameDay) {
+                        val isNewDay = olderNeighbor == null || !isSameDay(message.timestamp, olderNeighbor.timestamp)
+
+                        // A message starts a new visual group when the sender changes, a
+                        // new day begins, or there's a real pause since the prior message
+                        // (Telegram-style bursts vs. separate messages).
+                        val isGroupStart = isNewDay || olderNeighbor == null ||
+                            olderNeighbor.isMe != message.isMe ||
+                            (message.timestamp - olderNeighbor.timestamp) > MESSAGE_GROUP_GAP_MILLIS
+                        val isGroupEnd = newerNeighbor == null ||
+                            newerNeighbor.isMe != message.isMe ||
+                            !isSameDay(newerNeighbor.timestamp, message.timestamp) ||
+                            (newerNeighbor.timestamp - message.timestamp) > MESSAGE_GROUP_GAP_MILLIS
+
+                        Column(modifier = Modifier.fillMaxWidth().animateItem()) {
+                            if (isNewDay) {
                                 DateHeader(message.timestamp, isDarkMode)
                             }
-                            MessageBubble(message, isDarkMode)
+                            MessageBubble(
+                                message = message,
+                                isDarkMode = isDarkMode,
+                                isGroupEnd = isGroupEnd,
+                                topSpacing = if (isGroupStart) 10.dp else 2.dp
+                            )
                         }
                     }
                 }
@@ -487,6 +550,7 @@ fun ChatDetailScreen(
                             val clientId = "android:${UUID.randomUUID()}"
                             messageText = ""
                             isMenuOpen = false
+                            ChatSocketManager.sendTypingStop(targetConversationId)
                             scope.launch { scrollToStart() }
 
                             scope.launch {
@@ -605,11 +669,21 @@ if (!errorText.isNullOrBlank()) {
 }
 
 @Composable
-fun MessageBubble(message: MessageData, isDarkMode: Boolean) {
+fun MessageBubble(
+    message: MessageData,
+    isDarkMode: Boolean,
+    isGroupEnd: Boolean = true,
+    topSpacing: Dp = 4.dp
+) {
     val alignment = if (message.isMe) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isMe) PremiumBlue else (if (isDarkMode) Color(0xFF262626) else Color(0xFFF0F2F0))
     val textColor = if (message.isMe) Color.White else (if (isDarkMode) Color.White else Color.Black)
-    val shape = if (message.isMe) {
+    // The pointed "tail" corner only appears on the last bubble of a consecutive
+    // group from the same sender; bubbles mid-burst are uniformly rounded so the
+    // group reads as one continuous block, matching Telegram's grouping.
+    val shape = if (!isGroupEnd) {
+        RoundedCornerShape(16.dp)
+    } else if (message.isMe) {
         RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp)
     } else {
         RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
@@ -619,7 +693,7 @@ fun MessageBubble(message: MessageData, isDarkMode: Boolean) {
     val timeString = timeFormat.format(Date(message.timestamp))
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), 
+        modifier = Modifier.fillMaxWidth().padding(top = topSpacing, bottom = 1.dp),
         horizontalAlignment = alignment
     ) {
         Surface(
@@ -1024,7 +1098,8 @@ fun RequestActionButton(text: String, color: Color, modifier: Modifier = Modifie
 
 @Composable
 private fun DateHeader(timestamp: Long, isDarkMode: Boolean) {
-    val dateString = SimpleDateFormat("dd MMMM", Locale.getDefault()).format(Date(timestamp))
+    val dateFormat = remember { SimpleDateFormat("dd MMMM", Locale.getDefault()) }
+    val dateString = dateFormat.format(Date(timestamp))
     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
         Surface(
             color = if (isDarkMode) Color.White.copy(0.1f) else Color.Black.copy(0.05f),
@@ -1035,10 +1110,16 @@ private fun DateHeader(timestamp: Long, isDarkMode: Boolean) {
     }
 }
 
+// Allocation-free day comparison (no per-call SimpleDateFormat/Calendar).
 private fun isSameDay(t1: Long, t2: Long): Boolean {
-    val f = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
-    return f.format(Date(t1)) == f.format(Date(t2))
+    val offset1 = TimeZone.getDefault().getOffset(t1)
+    val offset2 = TimeZone.getDefault().getOffset(t2)
+    return (t1 + offset1) / 86_400_000L == (t2 + offset2) / 86_400_000L
 }
+
+// Consecutive messages from the same sender within this window are grouped
+// into one visual burst (reduced spacing, tail only on the last bubble).
+private const val MESSAGE_GROUP_GAP_MILLIS = 5 * 60 * 1000L
 
 enum class MessageStatus { SENT, READ, FAILED, SENDING }
 

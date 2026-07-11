@@ -152,14 +152,42 @@ object ChatSocketManager {
         }
         target.on("message_seen", seenHandler)
 
-        val typingHandler = Emitter.Listener { args ->
+        val typingStartHandler = Emitter.Listener { args ->
             val payload = args.firstOrNull() ?: return@Listener
             val obj = payloadToObject(payload) ?: return@Listener
-            val conversationId = obj.optString("conversationId")
-            if (conversationId.isBlank()) return@Listener
-            _events.tryEmit(ChatSocketEvent.Typing(conversationId = conversationId, userId = obj.optString("userId").ifBlank { null }))
+            val userId = obj.optJSONObject("user")?.optString("_id").orEmpty().ifBlank { null }
+            _events.tryEmit(
+                ChatSocketEvent.TypingStart(
+                    conversationId = obj.optString("conversationId").ifBlank { null },
+                    groupId = obj.optString("groupId").ifBlank { null },
+                    userId = userId
+                )
+            )
         }
-        target.on("typing", typingHandler)
+        target.on("typing_start", typingStartHandler)
+
+        val typingStopHandler = Emitter.Listener { args ->
+            val payload = args.firstOrNull() ?: return@Listener
+            val obj = payloadToObject(payload) ?: return@Listener
+            _events.tryEmit(
+                ChatSocketEvent.TypingStop(
+                    conversationId = obj.optString("conversationId").ifBlank { null },
+                    groupId = obj.optString("groupId").ifBlank { null },
+                    userId = obj.optString("userId").ifBlank { null }
+                )
+            )
+        }
+        target.on("typing_stop", typingStopHandler)
+    }
+
+    fun sendTypingStart(conversationId: String) {
+        if (conversationId.isBlank()) return
+        socket?.emit("typing_start", JSONObject().put("conversationId", conversationId))
+    }
+
+    fun sendTypingStop(conversationId: String) {
+        if (conversationId.isBlank()) return
+        socket?.emit("typing_stop", JSONObject().put("conversationId", conversationId))
     }
 
     private fun payloadToObject(payload: Any): JSONObject? {
