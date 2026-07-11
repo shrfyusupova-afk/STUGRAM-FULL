@@ -53,7 +53,7 @@ import coil.compose.AsyncImage
 import com.example.myapplication.core.ui.UiState
 import kotlinx.coroutines.launch
 
-private val ProfileAvatarSize = 88.dp
+private val ProfileAvatarSize = 104.dp
 private val ProfileInfoColumnWidth = 116.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,6 +136,8 @@ fun ProfileScreen(
 
                     else -> {
                         ProfileHeader(
+                            fullName = ui.fullName,
+                            username = ui.username,
                             avatarUrl = ui.avatarUrl,
                             bannerUrl = ui.bannerUrl,
                             surface = surface,
@@ -146,7 +148,7 @@ fun ProfileScreen(
                         )
 
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(14.dp))
 
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.width(ProfileInfoColumnWidth)) {
@@ -165,28 +167,13 @@ fun ProfileScreen(
 
                                 Spacer(Modifier.width(12.dp))
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = ui.fullName.ifBlank { "No name set" },
-                                        color = fg,
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Black,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = if (ui.username.isBlank()) "@unknown" else "@${ui.username}",
-                                        color = accent,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(Modifier.height(10.dp))
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        StatItemHeader(ui.postsCount.toString(), "Posts", fg)
-                                        StatItemHeader(ui.followersCount.toString(), "Followers", fg)
-                                        StatItemHeader(ui.followingCount.toString(), "Following", fg)
-                                    }
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    StatItemHeader(ui.postsCount.toString(), "Posts", fg)
+                                    StatItemHeader(ui.followersCount.toString(), "Followers", fg)
+                                    StatItemHeader(ui.followingCount.toString(), "Following", fg)
                                 }
                             }
 
@@ -284,22 +271,32 @@ fun ProfileScreen(
                         val pagerState = rememberPagerState(pageCount = { tabs.size })
                         val pagerScope = rememberCoroutineScope()
 
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(surface)
+                                .padding(6.dp)
+                        ) {
                             tabs.forEachIndexed { index, icon ->
                                 val selected = pagerState.currentPage == index
                                 Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(vertical = 10.dp),
+                                    modifier = Modifier.weight(1f),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(20.dp))
                                             .background(if (selected) accent else Color.Transparent)
                                             .clickable {
-                                                pagerScope.launch { pagerState.animateScrollToPage(index) }
+                                                pagerScope.launch {
+                                                    pagerState.animateScrollToPage(
+                                                        page = index,
+                                                        animationSpec = tween(durationMillis = 280)
+                                                    )
+                                                }
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -348,6 +345,8 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileHeader(
+    fullName: String,
+    username: String,
     avatarUrl: String?,
     bannerUrl: String?,
     surface: Color,
@@ -425,6 +424,30 @@ private fun ProfileHeader(
                     )
                 }
             }
+        }
+
+        // Name/username sit beside the avatar, bottom-aligned with it so they
+        // land in the same visual band as the avatar's lower half.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp + ProfileAvatarSize + 12.dp, end = 20.dp, bottom = 14.dp)
+        ) {
+            Text(
+                text = fullName.ifBlank { "No name set" },
+                color = fg,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (username.isBlank()) "@unknown" else "@$username",
+                color = accent,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
