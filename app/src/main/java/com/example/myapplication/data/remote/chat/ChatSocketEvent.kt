@@ -18,8 +18,15 @@ sealed class ChatSocketEvent {
         val conversationId: String?
     ) : ChatSocketEvent()
 
-    data class Typing(
-        val conversationId: String,
+    data class TypingStart(
+        val conversationId: String?,
+        val groupId: String?,
+        val userId: String?
+    ) : ChatSocketEvent()
+
+    data class TypingStop(
+        val conversationId: String?,
+        val groupId: String?,
         val userId: String?
     ) : ChatSocketEvent()
 

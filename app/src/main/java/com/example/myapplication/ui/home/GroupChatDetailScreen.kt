@@ -96,7 +96,9 @@ fun GroupChatDetailScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = totalHeaderHeight + 10.dp, bottom = 12.dp)
                 ) {
                     itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        GroupMessageBubble(message, isDarkMode, true, true, accentBlue)
+                        Box(modifier = Modifier.animateItem()) {
+                            GroupMessageBubble(message, isDarkMode, true, true, accentBlue)
+                        }
                     }
                 }
 
