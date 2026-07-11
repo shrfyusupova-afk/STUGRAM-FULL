@@ -1,6 +1,7 @@
 package com.example.myapplication.data.remote.chat
 
 import com.example.myapplication.data.remote.RetrofitClient
+import com.example.myapplication.data.remote.post.PostApi
 import retrofit2.Response
 import java.io.IOException
 import java.time.Instant
@@ -34,7 +35,8 @@ enum class UiMessageStatus {
 }
 
 class ChatRepository(
-    private val api: ChatApi = RetrofitClient.createService(ChatApi::class.java)
+    private val api: ChatApi = RetrofitClient.createService(ChatApi::class.java),
+    private val postApi: PostApi = RetrofitClient.createService(PostApi::class.java)
 ) {
     suspend fun findOrCreateConversationWithUserName(userName: String): ChatResult<ConversationDto> {
         val conversationsResponse = api.getConversations()
@@ -48,19 +50,21 @@ class ChatRepository(
         }
         if (target != null) return ChatResult.Success(target)
 
-        val participantId = conversations
-            .asSequence()
-            .mapNotNull { it.otherParticipant }
-            .firstOrNull {
-                listOfNotNull(it.fullName, it.username).any { value ->
-                    value.equals(userName, ignoreCase = true)
-                }
-            }?._id
-
+        // No existing conversation with this person yet -- look their username up
+        // directly instead of re-searching the same (empty) match, which could
+        // never succeed and made starting a first-time chat impossible.
+        val profileResponse = postApi.getProfileByUsername(userName)
+        if (!profileResponse.isSuccessful) {
+            return ChatResult.Error(
+                code = profileResponse.code(),
+                message = "User not found."
+            )
+        }
+        val participantId = profileResponse.body()?.data?.id
         if (participantId.isNullOrBlank()) {
             return ChatResult.Error(
                 code = 404,
-                message = "Conversation for this user was not found."
+                message = "User not found."
             )
         }
 
