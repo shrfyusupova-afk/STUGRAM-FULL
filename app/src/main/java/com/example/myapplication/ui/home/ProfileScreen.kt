@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.home
 
+import android.content.Intent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -16,16 +17,22 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -35,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +51,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.myapplication.core.ui.UiState
+import kotlinx.coroutines.launch
+
+private val ProfileAvatarSize = 88.dp
+private val ProfileInfoColumnWidth = 116.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +71,7 @@ fun ProfileScreen(
     val ui = vm.uiState.collectAsState().value
     var isEditMode by remember { mutableStateOf(false) }
     val resolvedIsMyProfile = isMyProfile && targetUsername.isNullOrBlank()
+    val context = LocalContext.current
 
     LaunchedEffect(targetUsername) {
         vm.setProfileTarget(targetUsername)
@@ -111,22 +124,6 @@ fun ProfileScreen(
     ) {
         Box(modifier = Modifier.fillMaxSize().background(bg)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = fg)
-                        }
-                    } else {
-                        Spacer(Modifier.size(40.dp))
-                    }
-                    Text("Profile", color = fg, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Spacer(Modifier.size(40.dp))
-                }
-
                 when {
                     ui.error != null -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -139,32 +136,60 @@ fun ProfileScreen(
 
                     else -> {
                         ProfileHeader(
-                            fullName = ui.fullName,
-                            username = ui.username,
                             avatarUrl = ui.avatarUrl,
                             bannerUrl = ui.bannerUrl,
                             surface = surface,
                             accent = accent,
                             fg = fg,
-                            bg = bg
+                            bg = bg,
+                            onBack = onBack
                         )
 
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                            if (ui.school.isNotBlank()) {
-                                InfoRow(icon = Icons.Default.School, text = ui.school.uppercase(), fg = fg, bold = true)
-                                Spacer(Modifier.height(4.dp))
-                            }
-                            if (ui.group.isNotBlank()) {
-                                InfoRow(icon = Icons.Default.Groups, text = "Group: ${ui.group}", fg = fg, bold = true)
-                                Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(10.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.width(ProfileInfoColumnWidth)) {
+                                    if (ui.location.isNotBlank()) {
+                                        InfoRow(icon = Icons.Default.LocationOn, text = ui.location, fg = fg, bold = true)
+                                        Spacer(Modifier.height(6.dp))
+                                    }
+                                    if (ui.school.isNotBlank()) {
+                                        InfoRow(icon = Icons.Default.School, text = ui.school.uppercase(), fg = fg, bold = true)
+                                        Spacer(Modifier.height(6.dp))
+                                    }
+                                    if (ui.group.isNotBlank()) {
+                                        InfoRow(icon = Icons.Default.Groups, text = "Group: ${ui.group}", fg = fg, bold = true)
+                                    }
+                                }
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = ui.fullName.ifBlank { "No name set" },
+                                        color = fg,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (ui.username.isBlank()) "@unknown" else "@${ui.username}",
+                                        color = accent,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        StatItemHeader(ui.postsCount.toString(), "Posts", fg)
+                                        StatItemHeader(ui.followersCount.toString(), "Followers", fg)
+                                        StatItemHeader(ui.followingCount.toString(), "Following", fg)
+                                    }
+                                }
                             }
 
-                            Spacer(Modifier.height(8.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                StatItemHeader(ui.postsCount.toString(), "Posts", fg)
-                                StatItemHeader(ui.followersCount.toString(), "Followers", fg)
-                                StatItemHeader(ui.followingCount.toString(), "Following", fg)
-                            }
                             Spacer(Modifier.height(12.dp))
 
                             if (ui.bio.isNotBlank()) {
@@ -173,14 +198,42 @@ fun ProfileScreen(
                             }
 
                             if (resolvedIsMyProfile) {
-                                OutlinedButton(
-                                    onClick = { isEditMode = true },
-                                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                                    border = ButtonDefaults.outlinedButtonBorder,
-                                    shape = RoundedCornerShape(14.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text("Edit Profile")
+                                    OutlinedButton(
+                                        onClick = { isEditMode = true },
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                                        border = ButtonDefaults.outlinedButtonBorder,
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Edit")
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val shareText = if (ui.username.isBlank()) {
+                                                "Stugram ilovasidagi profilimni ko'ring!"
+                                            } else {
+                                                "Stugram ilovasida @${ui.username} profilini ko'ring!"
+                                            }
+                                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, shareText)
+                                            }
+                                            context.startActivity(Intent.createChooser(intent, "Ulashish"))
+                                        },
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = surface)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Share", color = fg)
+                                    }
                                 }
                             } else {
                                 val following = ui.followStatus == "following"
@@ -227,11 +280,13 @@ fun ProfileScreen(
                             Spacer(Modifier.height(16.dp))
                         }
 
-                        val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayArrow, Icons.Default.AccountBox)
-                        var selectedTab by remember { mutableStateOf(0) }
+                        val tabs = listOf(Icons.Default.GridOn, Icons.Default.PlayArrow, Icons.Default.AccountBox, Icons.Default.Info)
+                        val pagerState = rememberPagerState(pageCount = { tabs.size })
+                        val pagerScope = rememberCoroutineScope()
+
                         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                             tabs.forEachIndexed { index, icon ->
-                                val selected = selectedTab == index
+                                val selected = pagerState.currentPage == index
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -243,7 +298,9 @@ fun ProfileScreen(
                                             .size(38.dp)
                                             .clip(RoundedCornerShape(12.dp))
                                             .background(if (selected) accent else Color.Transparent)
-                                            .clickable { selectedTab = index },
+                                            .clickable {
+                                                pagerScope.launch { pagerState.animateScrollToPage(index) }
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -257,18 +314,30 @@ fun ProfileScreen(
                             }
                         }
 
-                        when (selectedTab) {
-                            0 -> ProfilePostsGrid(
-                                state = ui.postsState,
-                                isLoadingMore = ui.isLoadingMorePosts,
-                                isDarkMode = isDarkMode,
-                                accent = accent,
-                                fg = fg,
-                                onRetry = { vm.refresh() },
-                                onLoadMore = { vm.loadMorePosts() }
-                            )
-                            1 -> CenteredHint("Hali reels yo'q", fg)
-                            else -> CenteredHint("Hali belgilangan post yo'q", fg)
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        ) { page ->
+                            when (page) {
+                                0 -> ProfilePostsGrid(
+                                    state = ui.postsState,
+                                    isLoadingMore = ui.isLoadingMorePosts,
+                                    isDarkMode = isDarkMode,
+                                    accent = accent,
+                                    fg = fg,
+                                    onRetry = { vm.refresh() },
+                                    onLoadMore = { vm.loadMorePosts() }
+                                )
+                                1 -> CenteredHint("Hali reels yo'q", fg)
+                                2 -> CenteredHint("Hali belgilangan post yo'q", fg)
+                                else -> ProfileInfoTab(
+                                    location = ui.location,
+                                    school = ui.school,
+                                    group = ui.group,
+                                    bio = ui.bio,
+                                    fg = fg
+                                )
+                            }
                         }
                     }
                 }
@@ -279,20 +348,19 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileHeader(
-    fullName: String,
-    username: String,
     avatarUrl: String?,
     bannerUrl: String?,
     surface: Color,
     accent: Color,
     fg: Color,
-    bg: Color
+    bg: Color,
+    onBack: (() -> Unit)?
 ) {
     val bannerHeight = 140.dp
-    val avatarSize = 88.dp
 
-    Box(modifier = Modifier.fillMaxWidth().height(bannerHeight + avatarSize / 2)) {
+    Box(modifier = Modifier.fillMaxWidth().height(bannerHeight + ProfileAvatarSize / 2)) {
         // Banner: real photo if set, otherwise a plain flat surface (no fake photo).
+        // Drawn edge-to-edge; the status bar overlays directly on top of it.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -310,12 +378,27 @@ private fun ProfileHeader(
             }
         }
 
+        if (onBack != null) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 8.dp, top = 4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f))
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color.White)
+            }
+        }
+
         // Avatar: real photo if set, otherwise a generic person silhouette.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 20.dp)
-                .size(avatarSize)
+                .size(ProfileAvatarSize)
                 .background(bg, CircleShape)
                 .padding(3.dp)
                 .border(2.dp, accent, CircleShape)
@@ -343,34 +426,12 @@ private fun ProfileHeader(
                 }
             }
         }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 20.dp + avatarSize + 12.dp, end = 20.dp, bottom = 10.dp)
-        ) {
-            Text(
-                text = fullName.ifBlank { "No name set" },
-                color = fg,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (username.isBlank()) "@unknown" else "@$username",
-                color = accent,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 
 @Composable
 private fun InfoRow(icon: ImageVector, text: String, fg: Color, bold: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.Top) {
         Icon(icon, contentDescription = null, tint = fg.copy(alpha = 0.7f), modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
         Text(
@@ -379,6 +440,34 @@ private fun InfoRow(icon: ImageVector, text: String, fg: Color, bold: Boolean) {
             fontSize = 12.sp,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal
         )
+    }
+}
+
+@Composable
+private fun ProfileInfoTab(location: String, school: String, group: String, bio: String, fg: Color) {
+    val rows = buildList {
+        if (location.isNotBlank()) add(Icons.Default.LocationOn to location)
+        if (school.isNotBlank()) add(Icons.Default.School to school)
+        if (group.isNotBlank()) add(Icons.Default.Groups to "Group: $group")
+    }
+
+    if (rows.isEmpty() && bio.isBlank()) {
+        CenteredHint("Hali ma'lumot yo'q", fg)
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
+        if (bio.isNotBlank()) {
+            Text(bio, color = fg, fontSize = 14.sp)
+            Spacer(Modifier.height(16.dp))
+        }
+        rows.forEach { (icon, text) ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+                Icon(icon, contentDescription = null, tint = fg.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(text, color = fg.copy(alpha = 0.9f), fontSize = 14.sp)
+            }
+        }
     }
 }
 
