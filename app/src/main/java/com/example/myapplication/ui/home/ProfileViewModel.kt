@@ -1,7 +1,10 @@
 package com.example.myapplication.ui.home
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.core.media.MediaUtils
 import com.example.myapplication.core.ui.UiState
 import com.example.myapplication.data.remote.AuthApi
 import com.example.myapplication.data.remote.RetrofitClient
@@ -141,24 +144,45 @@ class ProfileViewModel(
         }
     }
 
-    fun uploadAvatar(file: File) {
+    // Compression runs here (off the caller's thread) rather than in the
+    // picker callback in EditProfileScreen, which used to run
+    // MediaUtils.compressImage synchronously on the main thread and freeze
+    // the UI for large photos. Mirrors the try/catch/finally shape of
+    // CreatePostViewModel.share().
+    fun uploadAvatar(context: Context, uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isUploadingAvatar = true, saveError = null) }
-            val result = withContext(ioDispatcher) { repository.uploadAvatar(file) }
-            when (result) {
-                is PostResult.Success -> _uiState.update { it.copy(isUploadingAvatar = false, avatarUrl = result.value.avatar) }
-                is PostResult.Error -> _uiState.update { it.copy(isUploadingAvatar = false, saveError = result.message) }
+            var compressed: File? = null
+            try {
+                compressed = withContext(ioDispatcher) { MediaUtils.compressImage(context, uri) }
+                val result = withContext(ioDispatcher) { repository.uploadAvatar(compressed) }
+                when (result) {
+                    is PostResult.Success -> _uiState.update { it.copy(isUploadingAvatar = false, avatarUrl = result.value.avatar) }
+                    is PostResult.Error -> _uiState.update { it.copy(isUploadingAvatar = false, saveError = result.message) }
+                }
+            } catch (e: MediaUtils.MediaException) {
+                _uiState.update { it.copy(isUploadingAvatar = false, saveError = e.message ?: "Rasmni siqishda xatolik") }
+            } finally {
+                compressed?.let { file -> withContext(ioDispatcher) { runCatching { file.delete() } } }
             }
         }
     }
 
-    fun uploadBanner(file: File) {
+    fun uploadBanner(context: Context, uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isUploadingBanner = true, saveError = null) }
-            val result = withContext(ioDispatcher) { repository.uploadBanner(file) }
-            when (result) {
-                is PostResult.Success -> _uiState.update { it.copy(isUploadingBanner = false, bannerUrl = result.value.banner) }
-                is PostResult.Error -> _uiState.update { it.copy(isUploadingBanner = false, saveError = result.message) }
+            var compressed: File? = null
+            try {
+                compressed = withContext(ioDispatcher) { MediaUtils.compressImage(context, uri) }
+                val result = withContext(ioDispatcher) { repository.uploadBanner(compressed) }
+                when (result) {
+                    is PostResult.Success -> _uiState.update { it.copy(isUploadingBanner = false, bannerUrl = result.value.banner) }
+                    is PostResult.Error -> _uiState.update { it.copy(isUploadingBanner = false, saveError = result.message) }
+                }
+            } catch (e: MediaUtils.MediaException) {
+                _uiState.update { it.copy(isUploadingBanner = false, saveError = e.message ?: "Rasmni siqishda xatolik") }
+            } finally {
+                compressed?.let { file -> withContext(ioDispatcher) { runCatching { file.delete() } } }
             }
         }
     }

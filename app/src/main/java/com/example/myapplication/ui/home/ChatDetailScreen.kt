@@ -111,6 +111,10 @@ fun ChatDetailScreen(
     var lastSeenSyncAtMillis by remember { mutableLongStateOf(0L) }
     var syncInFlight by remember { mutableStateOf(false) }
     var lastReconnectSyncAtMillis by remember { mutableLongStateOf(0L) }
+    // Tracks whether the first message-history fetch has resolved (success or
+    // error) so the UI can tell "still loading" apart from "genuinely empty".
+    var hasLoadedOnce by remember { mutableStateOf(false) }
+    var retryToken by remember { mutableIntStateOf(0) }
 
     val context = LocalContext.current
     val chatDatabase = remember { ChatDatabase.getInstance(context) }
@@ -177,12 +181,20 @@ fun ChatDetailScreen(
         }
     }
 
+    fun retryLoad() {
+        errorText = null
+        hasLoadedOnce = false
+        ChatSocketManager.retryConnection()
+        retryToken++
+    }
+
     if (!isRequest) {
-        LaunchedEffect(userName) {
+        LaunchedEffect(userName, retryToken) {
             errorText = null
             when (val conversationResult = chatRepository.findOrCreateConversationWithUserName(userName)) {
                 is ChatResult.Error -> {
                     errorText = conversationResult.message
+                    hasLoadedOnce = true
                 }
                 is ChatResult.Success -> {
                     conversationId = conversationResult.value._id
@@ -198,16 +210,18 @@ fun ChatDetailScreen(
             }
         }
 
-        LaunchedEffect(conversationId, userName) {
+        LaunchedEffect(conversationId, userName, retryToken) {
             val targetConversationId = conversationId ?: return@LaunchedEffect
             when (val messagesResult = chatRepository.getMessages(targetConversationId)) {
                 is ChatResult.Error -> {
                     errorText = messagesResult.message
+                    hasLoadedOnce = true
                 }
                 is ChatResult.Success -> {
                     chatLocalStore.saveBackendMessages(targetConversationId, messagesResult.value)
                     syncMissingEvents(targetConversationId)
                     errorText = null
+                    hasLoadedOnce = true
                 }
             }
         }
@@ -342,44 +356,90 @@ fun ChatDetailScreen(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
         }
 
+        // Loading/Error/Empty only apply to a real (non-request) conversation;
+        // a request preview always has its one fixed placeholder message.
+        val isLoadingChat = !isRequest && errorText == null && messages.isEmpty() &&
+            (conversationId == null || !hasLoadedOnce)
+        val isChatError = !isRequest && errorText != null && messages.isEmpty()
+        val isChatEmpty = !isRequest && hasLoadedOnce && messages.isEmpty() &&
+            errorText == null && conversationId != null
+
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 // --- MESSAGES LIST ---
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    reverseLayout = true,
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
-                ) {
-                    itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
-                        // messages is newest-first (DESC), so the "older" neighbor sits at
-                        // index+1 and the "newer" one at index-1.
-                        val olderNeighbor = messages.getOrNull(index + 1)
-                        val newerNeighbor = messages.getOrNull(index - 1)
+                when {
+                    isLoadingChat -> Box(
+                        modifier = Modifier.fillMaxSize().padding(top = headerHeight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = accentBlue)
+                    }
 
-                        val isNewDay = olderNeighbor == null || !isSameDay(message.timestamp, olderNeighbor.timestamp)
-
-                        // A message starts a new visual group when the sender changes, a
-                        // new day begins, or there's a real pause since the prior message
-                        // (Telegram-style bursts vs. separate messages).
-                        val isGroupStart = isNewDay || olderNeighbor == null ||
-                            olderNeighbor.isMe != message.isMe ||
-                            (message.timestamp - olderNeighbor.timestamp) > MESSAGE_GROUP_GAP_MILLIS
-                        val isGroupEnd = newerNeighbor == null ||
-                            newerNeighbor.isMe != message.isMe ||
-                            !isSameDay(newerNeighbor.timestamp, message.timestamp) ||
-                            (newerNeighbor.timestamp - message.timestamp) > MESSAGE_GROUP_GAP_MILLIS
-
-                        Column(modifier = Modifier.fillMaxWidth().animateItem()) {
-                            if (isNewDay) {
-                                DateHeader(message.timestamp, isDarkMode)
-                            }
-                            MessageBubble(
-                                message = message,
-                                isDarkMode = isDarkMode,
-                                isGroupEnd = isGroupEnd,
-                                topSpacing = if (isGroupStart) 10.dp else 2.dp
+                    isChatError -> Box(
+                        modifier = Modifier.fillMaxSize().padding(top = headerHeight, start = 32.dp, end = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = errorText ?: "Suhbatni yuklab bo'lmadi",
+                                color = contentColor,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
                             )
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { retryLoad() }, colors = ButtonDefaults.buttonColors(containerColor = accentBlue)) {
+                                Text("Qayta urinish", color = Color.White)
+                            }
+                        }
+                    }
+
+                    isChatEmpty -> Box(
+                        modifier = Modifier.fillMaxSize().padding(top = headerHeight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Hali xabar yo'q. Suhbatni boshlang!",
+                            color = contentColor.copy(alpha = 0.6f),
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    else -> LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        reverseLayout = true,
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = headerHeight, bottom = 12.dp)
+                    ) {
+                        itemsIndexed(messages, key = { _, msg -> msg.id }) { index, message ->
+                            // messages is newest-first (DESC), so the "older" neighbor sits at
+                            // index+1 and the "newer" one at index-1.
+                            val olderNeighbor = messages.getOrNull(index + 1)
+                            val newerNeighbor = messages.getOrNull(index - 1)
+
+                            val isNewDay = olderNeighbor == null || !isSameDay(message.timestamp, olderNeighbor.timestamp)
+
+                            // A message starts a new visual group when the sender changes, a
+                            // new day begins, or there's a real pause since the prior message
+                            // (Telegram-style bursts vs. separate messages).
+                            val isGroupStart = isNewDay || olderNeighbor == null ||
+                                olderNeighbor.isMe != message.isMe ||
+                                (message.timestamp - olderNeighbor.timestamp) > MESSAGE_GROUP_GAP_MILLIS
+                            val isGroupEnd = newerNeighbor == null ||
+                                newerNeighbor.isMe != message.isMe ||
+                                !isSameDay(newerNeighbor.timestamp, message.timestamp) ||
+                                (newerNeighbor.timestamp - message.timestamp) > MESSAGE_GROUP_GAP_MILLIS
+
+                            Column(modifier = Modifier.fillMaxWidth().animateItem()) {
+                                if (isNewDay) {
+                                    DateHeader(message.timestamp, isDarkMode)
+                                }
+                                MessageBubble(
+                                    message = message,
+                                    isDarkMode = isDarkMode,
+                                    isGroupEnd = isGroupEnd,
+                                    topSpacing = if (isGroupStart) 10.dp else 2.dp
+                                )
+                            }
                         }
                     }
                 }

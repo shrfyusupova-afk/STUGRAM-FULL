@@ -46,7 +46,7 @@ fun CreatePostScreen(
     val fg = if (isDarkMode) Color.White else Color.Black
 
     LaunchedEffect(Unit) {
-        viewModel.init(type)
+        viewModel.startNewSession(type)
         if (initialMedia.isNotEmpty()) viewModel.setMedia(initialMedia, initialIsVideo)
     }
 

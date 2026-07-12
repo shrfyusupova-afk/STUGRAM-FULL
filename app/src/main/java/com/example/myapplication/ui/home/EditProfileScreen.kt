@@ -24,13 +24,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.myapplication.core.media.MediaUtils
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,14 +47,13 @@ fun EditProfileScreen(
     bannerUrl: String? = null,
     isUploadingAvatar: Boolean = false,
     isUploadingBanner: Boolean = false,
-    onPickAvatar: (File) -> Unit = {},
-    onPickBanner: (File) -> Unit = {}
+    onPickAvatar: (Uri) -> Unit = {},
+    onPickBanner: (Uri) -> Unit = {}
 ) {
     val backgroundColor = if (isDarkMode) Color(0xFF0F0F0F) else Color.White
     val contentColor = if (isDarkMode) Color.White else Color.Black
     val accentBlue = Color(0xFF00A3FF)
     val fieldColor = if (isDarkMode) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
-    val context = LocalContext.current
 
     var name by remember { mutableStateOf(initialName) }
     var username by remember { mutableStateOf(initialUsername) }
@@ -66,16 +62,15 @@ fun EditProfileScreen(
     var location by remember { mutableStateOf(initialLocation) }
     var school by remember { mutableStateOf(initialSchool) }
 
+    // Compression + upload both happen off the main thread in the ViewModel
+    // (see ProfileViewModel.uploadAvatar/uploadBanner) -- this screen just
+    // forwards the picked Uri and reflects isUploadingAvatar/Banner.
     val avatarPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) runCatching { MediaUtils.compressImage(context, uri) }.onSuccess(onPickAvatar)
-    }
+    ) { uri: Uri? -> uri?.let(onPickAvatar) }
     val bannerPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) runCatching { MediaUtils.compressImage(context, uri) }.onSuccess(onPickBanner)
-    }
+    ) { uri: Uri? -> uri?.let(onPickBanner) }
     val imageOnlyRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 
     val configuration = LocalConfiguration.current

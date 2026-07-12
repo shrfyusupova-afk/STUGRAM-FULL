@@ -45,7 +45,7 @@ interface ChatApi {
         @Query("limit") limit: Int = 200
     ): Response<ChatEventsResponse>
 
-    @GET("api/v1/groups/{groupId}/events")
+    @GET("api/v1/group-chats/{groupId}/events")
     suspend fun getGroupEvents(
         @Path("groupId") groupId: String,
         @Query("after") after: Long = 0,
