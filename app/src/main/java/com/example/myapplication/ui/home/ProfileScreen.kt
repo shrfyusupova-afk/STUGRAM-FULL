@@ -27,6 +27,7 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Groups
@@ -62,7 +63,7 @@ import com.example.myapplication.core.ui.UiState
 import kotlin.math.roundToInt
 
 private val ProfileAvatarSize = 110.dp
-private val ProfileCoverHeight = 280.dp
+private val ProfileCoverHeight = 200.dp
 private val ProfileCoverCorner = 32.dp
 private val ProfileAccent = Color(0xFF4D9FFF)
 private val ProfileInfoColumnWidth = 132.dp
@@ -183,8 +184,6 @@ fun ProfileScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Column {
                                 ProfileHeader(
-                                    fullName = ui.fullName,
-                                    username = ui.username,
                                     avatarUrl = ui.avatarUrl,
                                     bannerUrl = ui.bannerUrl,
                                     surface = surface,
@@ -195,9 +194,36 @@ fun ProfileScreen(
                                 )
 
                                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                                    Spacer(Modifier.height(10.dp))
+
+                                    // Name/username now sit below the avatar instead of beside it.
+                                    Text(
+                                        text = ui.fullName.ifBlank { "No name set" },
+                                        color = fg,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = if (ui.username.isBlank()) "@unknown" else "@${ui.username}",
+                                        color = accent,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
                                     Spacer(Modifier.height(14.dp))
 
-                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                                        StatItemHeader(formatCount(ui.postsCount), "Posts", fg)
+                                        StatItemHeader(formatCount(ui.followersCount), "Followers", fg)
+                                        StatItemHeader(formatCount(ui.followingCount), "Following", fg)
+                                    }
+
+                                    if (ui.school.isNotBlank() || ui.group.isNotBlank()) {
+                                        Spacer(Modifier.height(12.dp))
                                         Column(modifier = Modifier.width(ProfileInfoColumnWidth)) {
                                             if (ui.school.isNotBlank()) {
                                                 InfoRow(icon = Icons.Default.School, text = ui.school.uppercase(), fg = fg, accent = accent, bold = true)
@@ -206,17 +232,6 @@ fun ProfileScreen(
                                             if (ui.group.isNotBlank()) {
                                                 InfoRow(icon = Icons.Default.Groups, text = "Group: ${ui.group}", fg = fg, accent = accent, bold = true)
                                             }
-                                        }
-
-                                        Spacer(Modifier.width(12.dp))
-
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            StatItemHeader(formatCount(ui.postsCount), "Posts", fg)
-                                            StatItemHeader(formatCount(ui.followersCount), "Followers", fg)
-                                            StatItemHeader(formatCount(ui.followingCount), "Following", fg)
                                         }
                                     }
 
@@ -302,10 +317,8 @@ fun ProfileScreen(
                                     Spacer(Modifier.height(20.dp))
                                 }
 
-                                if (ui.highlights.isNotEmpty()) {
-                                    FavoriteMomentsRow(ui.highlights, surface, fg)
-                                    Spacer(Modifier.height(16.dp))
-                                }
+                                FavoriteMomentsRow(ui.highlights, surface, fg, accent)
+                                Spacer(Modifier.height(16.dp))
 
                                 ProfileTabBar(
                                     tabs = tabs,
@@ -349,8 +362,6 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileHeader(
-    fullName: String,
-    username: String,
     avatarUrl: String?,
     bannerUrl: String?,
     surface: Color,
@@ -427,29 +438,6 @@ private fun ProfileHeader(
             }
         }
 
-        // Name/username sit beside the avatar, bottom-aligned with it so they
-        // land in the same visual band as the avatar's lower half.
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 20.dp + ProfileAvatarSize + 14.dp, end = 20.dp, bottom = 16.dp)
-        ) {
-            Text(
-                text = fullName.ifBlank { "No name set" },
-                color = fg,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (username.isBlank()) "@unknown" else "@$username",
-                color = accent,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 
@@ -579,7 +567,7 @@ private fun ProfileInfoTab(location: String, school: String, group: String, fg: 
 }
 
 @Composable
-private fun FavoriteMomentsRow(highlights: List<HighlightItem>, surface: Color, fg: Color) {
+private fun FavoriteMomentsRow(highlights: List<HighlightItem>, surface: Color, fg: Color, accent: Color) {
     Column {
         Text(
             text = "Favorite Moments",
@@ -588,6 +576,21 @@ private fun FavoriteMomentsRow(highlights: List<HighlightItem>, surface: Color, 
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 20.dp, bottom = 10.dp)
         )
+        if (highlights.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 20.dp)
+                    .width(100.dp)
+                    .height(140.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(surface)
+                    .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add highlight", tint = accent, modifier = Modifier.size(32.dp))
+            }
+            return@Column
+        }
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 20.dp)
