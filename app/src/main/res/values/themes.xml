@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Some devices (MIUI/Xiaomi in particular) and emulators draw a
+             rectangular focus-highlight ring around any focusable view on
+             tap, not just D-pad/keyboard navigation. Every button in the
+             app inherits Compose's default focusable() semantics, so this
+             showed up as a stray border behind every button press. -->
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+    </style>
 </resources>
