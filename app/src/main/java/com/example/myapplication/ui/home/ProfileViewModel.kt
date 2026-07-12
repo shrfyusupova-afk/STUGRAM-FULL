@@ -44,7 +44,8 @@ data class AlphaProfileUiState(
     val isLoadingMorePosts: Boolean = false,
     val highlights: List<HighlightItem> = emptyList(),
     val isUploadingAvatar: Boolean = false,
-    val isUploadingBanner: Boolean = false
+    val isUploadingBanner: Boolean = false,
+    val snackbarMessage: String? = null
 )
 
 data class HighlightItem(
@@ -215,33 +216,52 @@ class ProfileViewModel(
 
     fun followOrUnfollow() {
         val state = _uiState.value
-        if (state.isSelf) return
+        if (state.isSelf || state.isSaving) return
         val userId = state.userId
         if (userId.isNullOrBlank()) {
-            _uiState.update { it.copy(saveError = "User ID topilmadi") }
+            _uiState.update { it.copy(snackbarMessage = "User ID topilmadi") }
             return
         }
+
+        val wasFollowing = state.followStatus == "following"
+        val optimisticStatus = if (wasFollowing) "not_following" else "following"
+        val optimisticDelta = if (wasFollowing) -1 else 1
+
+        // Flip immediately so the button feels instant; revert + toast on failure.
+        _uiState.update {
+            it.copy(
+                isSaving = true,
+                followStatus = optimisticStatus,
+                followersCount = (it.followersCount + optimisticDelta).coerceAtLeast(0)
+            )
+        }
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, saveError = null) }
             val response = withContext(ioDispatcher) {
                 runCatching {
-                    if (state.followStatus == "following") authApi.unfollowUser(userId)
-                    else authApi.followUser(userId)
+                    if (wasFollowing) authApi.unfollowUser(userId) else authApi.followUser(userId)
                 }
             }
             _uiState.update { it.copy(isSaving = false) }
-            response.onFailure { e ->
-                _uiState.update { it.copy(saveError = "Tarmoq xatosi: ${e.message}") }
-                return@launch
-            }
-            response.onSuccess { resp ->
-                if (!resp.isSuccessful) {
-                    _uiState.update { it.copy(saveError = "Follow amal bajarilmadi (${resp.code()})") }
-                } else {
-                    refresh()
+
+            val failureMessage = response.fold(
+                onSuccess = { resp -> if (resp.isSuccessful) null else "Follow amal bajarilmadi (${resp.code()})" },
+                onFailure = { e -> "Tarmoq xatosi: ${e.message}" }
+            )
+            if (failureMessage != null) {
+                _uiState.update {
+                    it.copy(
+                        followStatus = if (wasFollowing) "following" else "not_following",
+                        followersCount = (it.followersCount - optimisticDelta).coerceAtLeast(0),
+                        snackbarMessage = failureMessage
+                    )
                 }
             }
         }
+    }
+
+    fun consumeSnackbarMessage() {
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 
     fun updateProfile(
