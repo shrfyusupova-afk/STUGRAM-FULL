@@ -1,17 +1,29 @@
 package com.example.myapplication.data.remote.chat
 
+import android.util.Log
 import com.example.myapplication.data.remote.AuthSession
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 
+enum class ChatConnectionState { CONNECTING, CONNECTED, FAILED }
+
 object ChatSocketManager {
     private const val SOCKET_URL = "https://stugram-beckend.onrender.com"
+    private const val TAG = "ChatSocketManager"
+
+    // The underlying socket.io client already retries with backoff
+    // (reconnectionDelay -> reconnectionDelayMax); this bounds how many times
+    // it does so before giving up, instead of retrying forever.
+    private const val MAX_RECONNECT_ATTEMPTS = 8
 
     private var socket: Socket? = null
     private var listenersAttached = false
@@ -22,6 +34,9 @@ object ChatSocketManager {
 
     private val _events = MutableSharedFlow<ChatSocketEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<ChatSocketEvent> = _events
+
+    private val _connectionState = MutableStateFlow(ChatConnectionState.CONNECTING)
+    val connectionState: StateFlow<ChatConnectionState> = _connectionState.asStateFlow()
 
     @Synchronized
     fun updateAccessToken(token: String?) {
@@ -45,11 +60,19 @@ object ChatSocketManager {
         if (activeToken.isNullOrBlank()) return
 
         val existing = socket
-        if (existing == null) {
+        if (existing == null || _connectionState.value == ChatConnectionState.FAILED) {
+            // FAILED means the bounded reconnection attempts already ran out;
+            // the underlying client won't retry again on its own, so this
+            // needs a fresh socket + attempt budget.
             reconnectWithCurrentToken()
         } else if (!existing.connected()) {
             existing.connect()
         }
+    }
+
+    /** Explicit retry after [connectionState] reports FAILED (e.g. a "Retry" tap in the UI). */
+    fun retryConnection() {
+        ensureConnected()
     }
 
     @Synchronized
@@ -77,6 +100,7 @@ object ChatSocketManager {
         socket?.disconnect()
         socket?.off()
         socket = null
+        _connectionState.value = ChatConnectionState.CONNECTING
     }
 
     @Synchronized
@@ -85,11 +109,12 @@ object ChatSocketManager {
 
         socket?.disconnect()
         socket?.off()
+        _connectionState.value = ChatConnectionState.CONNECTING
 
         val options = IO.Options.builder()
             .setForceNew(false)
             .setReconnection(true)
-            .setReconnectionAttempts(Int.MAX_VALUE)
+            .setReconnectionAttempts(MAX_RECONNECT_ATTEMPTS)
             .setReconnectionDelay(1_000)
             .setReconnectionDelayMax(10_000)
             .build()
@@ -111,6 +136,7 @@ object ChatSocketManager {
         listenersAttached = true
 
         target.on(Socket.EVENT_CONNECT) {
+            _connectionState.value = ChatConnectionState.CONNECTED
             val emitReconnectEvent = synchronized(this) {
                 val shouldEmit = hasConnectedOnce
                 hasConnectedOnce = true
@@ -125,6 +151,28 @@ object ChatSocketManager {
             if (emitReconnectEvent) {
                 _events.tryEmit(ChatSocketEvent.Reconnected)
             }
+        }
+
+        target.on(Socket.EVENT_DISCONNECT) {
+            // The client auto-reconnects on unexpected disconnects; only mark
+            // CONNECTING (not FAILED) here -- FAILED is reserved for when the
+            // bounded retry budget below is actually exhausted.
+            if (_connectionState.value != ChatConnectionState.FAILED) {
+                _connectionState.value = ChatConnectionState.CONNECTING
+            }
+        }
+
+        target.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            Log.w(TAG, "Socket connect_error: ${args.firstOrNull()}")
+        }
+
+        target.on(Socket.EVENT_ERROR) { args ->
+            Log.w(TAG, "Socket error: ${args.firstOrNull()}")
+        }
+
+        target.on(Socket.EVENT_RECONNECT_FAILED) {
+            Log.w(TAG, "Socket reconnection attempts exhausted after $MAX_RECONNECT_ATTEMPTS tries")
+            _connectionState.value = ChatConnectionState.FAILED
         }
 
         val newMessageHandler = Emitter.Listener { args ->

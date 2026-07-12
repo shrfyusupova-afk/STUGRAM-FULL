@@ -44,12 +44,22 @@ class CreatePostViewModel(
     var uploadState by mutableStateOf<UploadUiState>(UploadUiState.Idle)
         private set
 
-    // Generated once per screen; reused across retries so a retried upload after a
-    // network blip does not create a duplicate post server-side.
+    // Reused across retries within one create attempt so a retried upload after
+    // a network blip doesn't create a duplicate post server-side. Regenerated
+    // on every fresh session (see startNewSession) -- this ViewModel is scoped
+    // above the AnimatedVisibility that shows/hides the create flow in
+    // HomeScreen, so it outlives any single attempt and would otherwise keep
+    // replaying the first attempt's idempotent response forever.
     private var idempotencyKey: String = UUID.randomUUID().toString()
 
-    fun init(createType: CreateType) {
+    /** Call every time the create flow is opened, not just on first ViewModel creation. */
+    fun startNewSession(createType: CreateType) {
         type = createType
+        idempotencyKey = UUID.randomUUID().toString()
+        uploadState = UploadUiState.Idle
+        mediaUris = emptyList()
+        isVideo = false
+        caption = ""
     }
 
     fun setMedia(uris: List<Uri>, isVideo: Boolean) {
@@ -93,6 +103,9 @@ class CreatePostViewModel(
                     is PostResult.Success -> {
                         uploadState = UploadUiState.Success
                         onSuccess()
+                        // Reset so a second create in the same session gets a fresh
+                        // idempotency key instead of replaying this response.
+                        startNewSession(type)
                     }
                     is PostResult.Error -> uploadState = UploadUiState.Error(result.message)
                 }
