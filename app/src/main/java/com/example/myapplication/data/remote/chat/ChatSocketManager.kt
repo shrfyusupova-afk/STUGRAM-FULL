@@ -3,6 +3,7 @@ package com.example.myapplication.data.remote.chat
 import android.util.Log
 import com.example.myapplication.data.remote.AuthSession
 import io.socket.client.IO
+import io.socket.client.Manager
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -166,11 +167,13 @@ object ChatSocketManager {
             Log.w(TAG, "Socket connect_error: ${args.firstOrNull()}")
         }
 
-        target.on(Socket.EVENT_ERROR) { args ->
+        // EVENT_ERROR and EVENT_RECONNECT_FAILED are Manager-level (connection
+        // lifecycle), not Socket-level (namespace) events in this client version.
+        target.io().on(Manager.EVENT_ERROR) { args ->
             Log.w(TAG, "Socket error: ${args.firstOrNull()}")
         }
 
-        target.on(Socket.EVENT_RECONNECT_FAILED) {
+        target.io().on(Manager.EVENT_RECONNECT_FAILED) {
             Log.w(TAG, "Socket reconnection attempts exhausted after $MAX_RECONNECT_ATTEMPTS tries")
             _connectionState.value = ChatConnectionState.FAILED
         }
