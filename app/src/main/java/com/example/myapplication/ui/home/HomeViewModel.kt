@@ -43,6 +43,11 @@ class HomeViewModel(
     var recommendedProfiles by mutableStateOf(emptyList<RecommendedProfile>())
         private set
 
+    // Backs the Profile tab's avatar in StugramBottomBar; falls back to a plain
+    // icon while null (initial load, or on fetch failure).
+    var myAvatarUrl by mutableStateOf<String?>(null)
+        private set
+
     // Kept for the story viewer; populated by the story-insights endpoints later.
     var myStoryActivities by mutableStateOf(
         Triple(
@@ -61,6 +66,7 @@ class HomeViewModel(
 
     init {
         loadHomeFeed()
+        loadMyAvatar()
     }
 
     fun onTabSelected(index: Int) {
@@ -143,6 +149,15 @@ class HomeViewModel(
             is PostResult.Success -> storyProfiles = result.value.toStoryProfiles()
             // Stories are supplementary — on error we simply hide the ring row.
             is PostResult.Error -> storyProfiles = emptyList()
+        }
+    }
+
+    private fun loadMyAvatar() {
+        viewModelScope.launch {
+            when (val result = withContext(ioDispatcher) { repository.getMyProfile() }) {
+                is PostResult.Success -> myAvatarUrl = result.value.avatar
+                is PostResult.Error -> Unit
+            }
         }
     }
 

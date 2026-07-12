@@ -2,7 +2,6 @@ package com.example.myapplication.ui.home
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 
 // --- GLOBAL KONSTANTALAR ---
 val GlobalBackgroundColor = Color(0xFF0F0F0F)
@@ -42,9 +41,6 @@ data class StoryActivityUser(
     val avatar: String,
     val subtitle: String
 )
-
-@Immutable
-data class TabItem(val name: String, val icon: ImageVector)
 
 @Immutable
 data class RecommendedProfile(

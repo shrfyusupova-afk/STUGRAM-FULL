@@ -21,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.config.AlphaFeatureFlags
 import com.example.myapplication.push.PushTokenManager
 import com.example.myapplication.ui.comments.CommentsSheet
+import com.example.myapplication.ui.components.STUGRAM_TAB_HOME
+import com.example.myapplication.ui.components.StugramBottomBar
 import com.example.myapplication.ui.create.CreateFlowHost
 import com.example.myapplication.ui.create.CreateType
 import androidx.compose.ui.Alignment
@@ -31,10 +33,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 /**
  * HomeScreen - Loyihaning asosiy mantiqiy markazi.
@@ -56,6 +62,28 @@ fun HomeScreen(
 
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // Hide-on-scroll: any scrollable descendant (feed, reels pager, messages list, ...)
+    // bubbles its scroll delta up through this connection, so the floating bar reacts
+    // no matter which of the 5 tabs is currently showing.
+    var navBarVisible by remember { mutableStateOf(true) }
+    val navBarScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -4f) navBarVisible = false
+                else if (available.y > 4f) navBarVisible = true
+                return Offset.Zero
+            }
+        }
+    }
+
+    fun onBottomTabSelected(index: Int) {
+        if (index == STUGRAM_TAB_HOME && viewModel.currentTab == STUGRAM_TAB_HOME) {
+            coroutineScope.launch { listState.animateScrollToItem(0) }
+        }
+        viewModel.onTabSelected(index)
+    }
 
     // Home is the single post-auth entry point (login, register, cold-start
     // restore), so registering the FCM token here covers every path.
@@ -79,23 +107,13 @@ fun HomeScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedLiquidBackground(isDarkMode = isDarkMode)
         Scaffold(
-            containerColor = Color.Transparent,
-            bottomBar = {
-                // Yaratish oqimi yoki Story ochiq bo'lsa navigatsiyani yashiramiz
-                if (viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null && viewModel.currentTab != 2) {
-                    GlassSlidingNavigation(
-                        selectedTab = viewModel.currentTab,
-                        onTabSelected = { viewModel.onTabSelected(it) },
-                        isDarkMode = isDarkMode,
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-                }
-            }
+            containerColor = Color.Transparent
         ) { paddingValues ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(if (viewModel.currentTab == 2) Color.Black else backgroundColor)
+                    .nestedScroll(navBarScrollConnection)
             ) {
                 Crossfade(targetState = viewModel.currentTab, label = "main_nav") { targetTab ->
                     when (targetTab) {
@@ -150,17 +168,20 @@ fun HomeScreen(
                     }
                 }
 
-                // Reels shaffof navigatsiya
-                if (viewModel.currentTab == 2 && viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null) {
-                    Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) {
-                        GlassSlidingNavigation(
-                            selectedTab = viewModel.currentTab,
-                            onTabSelected = { viewModel.onTabSelected(it) },
-                            isDarkMode = true,
-                            modifier = Modifier.graphicsLayer(alpha = 0.8f)
-                        )
-                    }
-                }
+                // Floating pill nav — sits above every tab's content, which scrolls behind it.
+                // Hidden while the create flow or a story is open; on Reels it stays translucent
+                // over the video instead of hiding on scroll (a pager, not a scrollable list).
+                val navBarShown = viewModel.createFlowType == null && viewModel.activeStoryProfileIndex == null
+                StugramBottomBar(
+                    selectedTab = viewModel.currentTab,
+                    onTabSelected = { onBottomTabSelected(it) },
+                    unreadCount = 0, // no aggregate unread-message count from the backend yet
+                    avatarUrl = viewModel.myAvatarUrl,
+                    visible = navBarShown && (navBarVisible || viewModel.currentTab == 2),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .then(if (viewModel.currentTab == 2) Modifier.graphicsLayer(alpha = 0.85f) else Modifier)
+                )
             }
         }
 
