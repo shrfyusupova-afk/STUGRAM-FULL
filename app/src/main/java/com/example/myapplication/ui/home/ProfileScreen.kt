@@ -183,8 +183,6 @@ fun ProfileScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             Column {
                                 ProfileHeader(
-                                    fullName = ui.fullName,
-                                    username = ui.username,
                                     avatarUrl = ui.avatarUrl,
                                     bannerUrl = ui.bannerUrl,
                                     surface = surface,
@@ -196,6 +194,24 @@ fun ProfileScreen(
 
                                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                                     Spacer(Modifier.height(14.dp))
+
+                                    Text(
+                                        text = ui.fullName.ifBlank { "No name set" },
+                                        color = fg,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (ui.username.isBlank()) "@unknown" else "@${ui.username}",
+                                        color = accent,
+                                        fontSize = 16.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(Modifier.height(12.dp))
 
                                     Row(modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.width(ProfileInfoColumnWidth)) {
@@ -349,8 +365,6 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileHeader(
-    fullName: String,
-    username: String,
     avatarUrl: String?,
     bannerUrl: String?,
     surface: Color,
@@ -425,30 +439,6 @@ private fun ProfileHeader(
                     )
                 }
             }
-        }
-
-        // Name/username sit beside the avatar, bottom-aligned with it so they
-        // land in the same visual band as the avatar's lower half.
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 20.dp + ProfileAvatarSize + 14.dp, end = 20.dp, bottom = 16.dp)
-        ) {
-            Text(
-                text = fullName.ifBlank { "No name set" },
-                color = fg,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (username.isBlank()) "@unknown" else "@$username",
-                color = accent,
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
