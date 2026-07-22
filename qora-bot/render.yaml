@@ -1,12 +1,11 @@
 services:
-  - type: web
+  - type: worker
     name: qora-bot
     runtime: node
-    plan: free
+    plan: starter
     rootDir: qora-bot
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
         sync: false

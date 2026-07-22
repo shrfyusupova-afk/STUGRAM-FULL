@@ -34,35 +34,35 @@ Anketa sozlamalari orqali anketani qayta to'ldirish mumkin. Qolgan tugmalar hozi
 
 Ma'lumotlar `data/users.json` faylida saqlanadi (git ga qo'shilmaydi).
 
-## Render'da 24/7 ishlatish (bepul tarif)
+## Render'da 24/7 ishlatish (Background Worker, $7/oy)
 
-Bot Telegram bilan long polling orqali ishlaydi, ya'ni tashqaridan HTTP so'rov kelmaydi. Render'ning bepul Web Service tarifi esa ~15 daqiqa harakatsizlikdan keyin xizmatni "uxlatib qo'yadi". Buning oldini olish uchun bot ichida kichik health-check server (`src/keepAlive.js`) ishlaydi, va uni tashqi bepul "pinger" xizmati orqali muntazam uyg'otib turish kerak.
+Pullik **Background Worker** xizmati HTTP trafikka bog'liq emas, shu sababli hech qachon "uxlab qolmaydi" — alohida pinger yoki health-check ham kerak emas.
 
-### 1) Render'da deploy qilish
+### Blueprint orqali (eng tez yo'l)
 
-1. https://render.com — GitHub hisobingiz bilan kiring va shu repo (`STUGRAM-FULL`)ni ulang.
-2. **New +** → **Web Service** ni tanlang.
-3. Repo tanlangandan so'ng:
+1. https://render.com — GitHub hisobingiz bilan kiring va shu repo (`STUGRAM-FULL`)ni ulang (agar hali ulanmagan bo'lsa).
+2. **New +** → **Blueprint** ni tanlang va shu repo'ni tanlang. Render `qora-bot/render.yaml` faylini o'zi topadi va sozlamalarni avtomatik to'ldiradi:
+   - **Type**: Background Worker
+   - **Root Directory**: `qora-bot`
+   - **Plan**: Starter (~$7/oy)
+3. `BOT_TOKEN` maydoniga botingiz tokenini qo'lda kiriting (u `render.yaml`da `sync: false` qilib qo'yilgan — xavfsizlik uchun repo'ga yozilmaydi).
+4. **Apply** / **Deploy** ni bosing.
+
+### Yoki qo'lda sozlash
+
+1. **New +** → **Background Worker** ni tanlang, shu repo'ni ulang.
+2. Sozlamalar:
    - **Root Directory**: `qora-bot`
    - **Runtime**: Node
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
-   - **Instance Type**: Free
-4. **Environment** bo'limida qo'shing: `BOT_TOKEN` = botingiz tokeni (hech qachon kodga yoki repo'ga yozmang).
-5. **Create Web Service** ni bosing. Deploy tugagach, Render sizga `https://qora-bot-xxxx.onrender.com` kabi manzil beradi.
+   - **Instance Type**: Starter (~$7/oy)
+3. **Environment** bo'limida qo'shing: `BOT_TOKEN` = botingiz tokeni.
+4. **Deploy Background Worker** ni bosing.
 
-(`render.yaml` fayli allaqachon repo'da bor — Render'da **New +** → **Blueprint** orqali ham avtomatik shu sozlamalar bilan deploy qilishingiz mumkin, faqat `BOT_TOKEN`ni qo'lda kiritishingiz kerak bo'ladi.)
+Deploy tugagach, Render loglarida `Qora bot ishga tushdi.` chiqishi kerak — bu botning Telegram bilan ulanib, doimiy ishlayotganini bildiradi. Background Worker'da tashqi manzil (URL) berilmaydi, chunki bot HTTP so'rovlarni qabul qilmaydi — bu normal holat.
 
-### 2) Uxlab qolmasligi uchun pinger sozlash
-
-1. https://uptimerobot.com (yoki https://cron-job.org) da bepul hisob oching.
-2. Yangi monitor yarating:
-   - **Monitor Type**: HTTP(s)
-   - **URL**: Render bergan manzil (masalan `https://qora-bot-xxxx.onrender.com`)
-   - **Monitoring Interval**: 10 daqiqa (15 daqiqadan kam bo'lishi shart — Render aynan shu vaqtdan keyin uxlatadi)
-3. Saqlang. Endi bu xizmat har 10 daqiqada botga so'rov yuborib, doim uyg'oq turishini ta'minlaydi.
-
-Eslatma: bu — bepul usul, 100% kafolat bermaydi (masalan Render texnik ishlar olib borsa yoki pinger vaqtinchalik ishlamasa, bot bir necha daqiqaga "uyg'onishi" kerak bo'lishi mumkin). To'liq kafolatlangan, hech qachon uxlamaydigan variant — Render'ning pullik **Background Worker** xizmati (~$7/oy).
+`src/keepAlive.js` fayli endi shart emas (u faqat bepul Web Service tarifida "uyg'ot" uchun kerak edi), lekin ziyoni yo'q — kodda qoldirdim, xohlasangiz olib tashlashingiz mumkin.
 
 ## Keyingi qadam
 
