@@ -1,0 +1,14 @@
+{
+  "name": "foreveryone-dating-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone Telegram bot for a dating/matchmaking (tanishish) service — profile creation flow.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
