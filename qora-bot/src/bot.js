@@ -3,6 +3,7 @@ const { Telegraf, session } = require("telegraf");
 const { BOT_TOKEN } = require("./config");
 const storage = require("./storage");
 const { mainMenuKeyboard, jinsKeyboard, settingsKeyboard } = require("./menu");
+require("./keepAlive");
 
 const bot = new Telegraf(BOT_TOKEN);
 bot.use(session({ defaultSession: () => ({ step: null, draft: {} }) }));
