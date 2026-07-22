@@ -32,7 +32,7 @@ async function onAge(ctx) {
   await ctx.reply(
     "⚧ Jinsingizni tanlang:",
     Markup.inlineKeyboard([
-      [Markup.button.callback("Erkak", "gender:erkak"), Markup.button.callback("Ayol", "gender:ayol")],
+      [Markup.button.callback("🔵 Erkak", "gender:erkak"), Markup.button.callback("🔴 Ayol", "gender:ayol")],
     ])
   );
   return ctx.wizard.next();
@@ -86,6 +86,10 @@ async function onAccount(ctx) {
   return ctx.wizard.next();
 }
 
+const contactRequestKeyboard = Markup.keyboard([Markup.button.contactRequest("📱 Raqamni yuborish")])
+  .resize()
+  .oneTime();
+
 async function onBio(ctx) {
   const text = ctx.message?.text?.trim();
   if (!text || text.length > 500) {
@@ -93,6 +97,31 @@ async function onBio(ctx) {
     return;
   }
   ctx.wizard.state.profile.bio = text;
+
+  await ctx.reply(
+    "✅ Anketani tasdiqlash uchun telefon raqamingizni ulashing (soxta anketalarning oldini olish uchun kerak):",
+    contactRequestKeyboard
+  );
+  return ctx.wizard.next();
+}
+
+// Phone confirmation doubles as a lightweight anti-fake-profile check: a
+// shared contact card is tied to a real Telegram account, unlike free text.
+async function onContact(ctx) {
+  const contact = ctx.message?.contact;
+  if (!contact?.phone_number) {
+    await ctx.reply(
+      'Iltimos, pastdagi "📱 Raqamni yuborish" tugmasini bosib, raqamingizni yuboring:',
+      contactRequestKeyboard
+    );
+    return;
+  }
+  if (contact.user_id && contact.user_id !== ctx.from.id) {
+    await ctx.reply("Iltimos, o'zingizning raqamingizni ulashing:", contactRequestKeyboard);
+    return;
+  }
+
+  ctx.wizard.state.profile.phone = contact.phone_number;
 
   const profile = ctx.wizard.state.profile;
   saveProfile(ctx.from.id, profile);
@@ -113,7 +142,8 @@ const profileWizard = new Scenes.WizardScene(
   onPhoto,
   onLocation,
   onAccount,
-  onBio
+  onBio,
+  onContact
 );
 
 module.exports = { profileWizard };
