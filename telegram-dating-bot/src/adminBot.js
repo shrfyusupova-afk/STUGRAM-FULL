@@ -1,9 +1,11 @@
 const { Telegraf, Markup } = require("telegraf");
 const { getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin } = require("./db");
+const { getSalesSummary } = require("./click");
 
 const ADMIN_CODE = "19752901";
 const STATS_LABEL = "📊 Statistika";
 const USERS_LABEL = "👥 Foydalanuvchilar";
+const SALES_LABEL = "💰 Sotuvlar";
 
 // In-memory only: which digits an unauthenticated user has entered so far.
 // Resets on restart -- acceptable, it's just a login-attempt-in-progress
@@ -34,7 +36,7 @@ function pinKeyboard() {
 }
 
 function adminMenuKeyboard() {
-  return Markup.keyboard([[STATS_LABEL, USERS_LABEL]]).resize();
+  return Markup.keyboard([[STATS_LABEL, USERS_LABEL], [SALES_LABEL]]).resize();
 }
 
 // Wraps a handler so it silently no-ops for anyone not in data/admins.json --
@@ -146,6 +148,27 @@ function createAdminBot(token) {
     USERS_LABEL,
     requireAdmin(async (ctx) => {
       await ctx.reply("🔍 Ism yoki Telegram ID bo'yicha qidiring:");
+    })
+  );
+
+  // "Sotilgan akkauntlar" (private-chat unlock purchases) and "VIP kanallar"
+  // aren't real, purchasable features yet (both are still placeholders
+  // elsewhere in the bot) -- shown as not-yet-launched rather than
+  // fabricating numbers for something nobody can actually buy.
+  bot.hears(
+    SALES_LABEL,
+    requireAdmin(async (ctx) => {
+      const premium = getSalesSummary();
+      await ctx.reply(
+        `💰 Sotuvlar hisoboti\n\n` +
+          `💎 Premium obuna:\n` +
+          `✅ Sotilgan: ${premium.count} ta\n` +
+          `💵 Jami tushum: ${premium.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
+          `🔐 Sotilgan akkauntlar (shaxsiy chat huquqi):\n` +
+          `⏳ Hali ishga tushmagan\n\n` +
+          `📢 VIP kanallar:\n` +
+          `⏳ Hali ishga tushmagan`
+      );
     })
   );
 

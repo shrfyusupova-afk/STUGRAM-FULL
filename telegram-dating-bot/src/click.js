@@ -202,10 +202,18 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   });
 }
 
+function getSalesSummary() {
+  const all = Object.values(readTx());
+  const paid = all.filter((tx) => tx.status === "paid");
+  const totalRevenue = paid.reduce((sum, tx) => sum + tx.amount, 0);
+  return { count: paid.length, totalRevenue };
+}
+
 module.exports = {
   createOrder,
   buildCheckoutUrl,
   registerClickRoutes,
+  getSalesSummary,
   verifyPrepareSign,
   verifyCompleteSign,
   PREMIUM_PRICE_SOM,
