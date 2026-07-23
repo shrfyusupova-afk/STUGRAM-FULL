@@ -84,10 +84,11 @@ function buildCheckoutUrl(merchantTransId) {
 // Registers Click's two merchant webhook actions on an existing Express app.
 // onPaid(userId, amountSom) is called once, exactly when a transaction first
 // transitions to "paid" (guarded against Click's at-least-once delivery).
-function registerClickRoutes(app, { onPaid } = {}) {
+function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
+  const middleware = bodyParser ? [bodyParser] : [];
 
-  app.post("/click/prepare", (req, res) => {
+  app.post("/click/prepare", ...middleware, (req, res) => {
     const body = req.body || {};
     if (!secretKey || !verifyPrepareSign(body, secretKey)) {
       return res.json({
@@ -138,7 +139,7 @@ function registerClickRoutes(app, { onPaid } = {}) {
     });
   });
 
-  app.post("/click/complete", async (req, res) => {
+  app.post("/click/complete", ...middleware, async (req, res) => {
     const body = req.body || {};
     if (!secretKey || !verifyCompleteSign(body, secretKey)) {
       return res.json({

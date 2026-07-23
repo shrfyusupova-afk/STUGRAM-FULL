@@ -94,9 +94,17 @@ if (webhookDomain) {
   const app = express();
   app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
-  // Click's Prepare/Complete callbacks are form-encoded POST requests.
-  app.use(express.urlencoded({ extended: true }));
+  // Click's Prepare/Complete callbacks are form-encoded POST requests, but
+  // this parser MUST be scoped to only those two routes (not app.use()'d
+  // globally) -- express body-parsers set req.body = {} for every request
+  // they see, even ones with a non-matching Content-Type. Telegraf's
+  // webhookCallback treats a non-null req.body as "already parsed" and uses
+  // it as-is instead of reading the real JSON payload, so a global
+  // urlencoded() parser silently turned every Telegram update into {},
+  // breaking /start and everything else.
+  const clickBodyParser = express.urlencoded({ extended: true });
   registerClickRoutes(app, {
+    bodyParser: clickBodyParser,
     onPaid: async (userId, amountSom) => {
       const premiumUntil = new Date(Date.now() + PREMIUM_DAYS * 24 * 60 * 60 * 1000).toISOString();
       setPremiumUntil(userId, premiumUntil);
