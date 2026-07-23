@@ -66,8 +66,6 @@ const STRINGS = {
       "✅ Har bir nomzodning shaxsiy chatiga cheksiz kirish huquqi (🔐 alohida to'lovsiz)\n" +
       "✅ Profilingiz boshqa foydalanuvchilarga ko'proq va tez-tez ko'rsatiladi\n\n" +
       "💵 Narxi: 69 000 so'm / 1 oy",
-    premiumPayButton: "💳 Payme orqali to'lash",
-    premiumPayPlaceholder: "💳 To'lov tizimi hozircha ulanmagan. Tez orada ishga tushadi!",
     premiumPayClickButton: "💳 Click orqali to'lash",
     premiumPayClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan (Merchant ID / Service ID kutilmoqda).",
     premiumActivated: (days) => `🎉 Premium faollashtirildi! ${days} kun davomida barcha imtiyozlardan foydalanasiz.`,
@@ -139,8 +137,6 @@ const STRINGS = {
       "✅ Неограниченный доступ к личному чату каждого кандидата (без отдельной оплаты 🔐)\n" +
       "✅ Ваш профиль показывается другим пользователям чаще и заметнее\n\n" +
       "💵 Цена: 69 000 сум / 1 месяц",
-    premiumPayButton: "💳 Оплатить через Payme",
-    premiumPayPlaceholder: "💳 Платёжная система пока не подключена. Скоро заработает!",
     premiumPayClickButton: "💳 Оплатить через Click",
     premiumPayClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена (ожидаются Merchant ID / Service ID).",
     premiumActivated: (days) => `🎉 Премиум активирован! Все привилегии доступны в течение ${days} дней.`,
@@ -212,8 +208,6 @@ const STRINGS = {
       "✅ Unlimited access to every candidate's private chat (no separate 🔐 payments)\n" +
       "✅ Your profile is shown to other users more often and more prominently\n\n" +
       "💵 Price: 69,000 UZS / month",
-    premiumPayButton: "💳 Pay with Payme",
-    premiumPayPlaceholder: "💳 The payment system isn't connected yet. Coming soon!",
     premiumPayClickButton: "💳 Pay with Click",
     premiumPayClickNotConfigured: "💳 Click payments aren't fully set up yet (waiting on Merchant ID / Service ID).",
     premiumActivated: (days) => `🎉 Premium activated! You'll have all the perks for ${days} days.`,
