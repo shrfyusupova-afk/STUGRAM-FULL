@@ -54,19 +54,25 @@ function discoverKeyboard(lang) {
   return Markup.keyboard([[LIKE, DISLIKE], [t(lang, "backButton")]]).resize();
 }
 
-async function sendCandidate(ctx, lang, candidateId, profile) {
+function buildProfileCaption(lang, candidateId, profile) {
   const username = getUsername();
   const unlockUrl = username ? `https://t.me/${username}?start=unlock_${candidateId}` : null;
   const unlockLabel = escapeHtml(t(lang, "unlockLinkText"));
   const unlockLine = unlockUrl ? `🔐 <a href="${unlockUrl}">${unlockLabel}</a>` : `🔐 ${unlockLabel}`;
 
-  const caption =
+  return (
     `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
     `📍 ${escapeHtml(profile.location)}\n\n` +
     `${escapeHtml(profile.bio)}\n\n\n` +
-    unlockLine;
+    unlockLine
+  );
+}
 
-  const extra = { caption, parse_mode: "HTML", ...discoverKeyboard(lang) };
+// keyboardExtra is optional -- omit it (as the "who liked me" list does) to
+// send the card without touching whatever keyboard is currently docked.
+async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra) {
+  const caption = buildProfileCaption(lang, candidateId, profile);
+  const extra = { caption, parse_mode: "HTML", ...(keyboardExtra || {}) };
 
   if (profile.mediaType === "video") {
     await ctx.replyWithVideo(profile.mediaFileId, extra);
@@ -82,7 +88,7 @@ async function showNextCandidate(ctx, lang, myGender) {
     await ctx.reply(t(lang, "discoverNoCandidates"), discoverKeyboard(lang));
     return;
   }
-  await sendCandidate(ctx, lang, candidate.id, candidate.profile);
+  await sendCandidate(ctx, lang, candidate.id, candidate.profile, discoverKeyboard(lang));
 }
 
 function registerDiscoverHandlers(bot) {
@@ -139,4 +145,4 @@ async function handleUnlockDeepLink(ctx, lang) {
   );
 }
 
-module.exports = { registerDiscoverHandlers, handleUnlockDeepLink };
+module.exports = { registerDiscoverHandlers, handleUnlockDeepLink, sendCandidate };

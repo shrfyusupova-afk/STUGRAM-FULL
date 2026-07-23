@@ -24,11 +24,11 @@ async function sendMainMenu(ctx, profile, lang) {
 // one language's labels -- but bot.hears must recognize the label no matter
 // which language it was rendered in, since different users can be on
 // different languages at the same time.
-// "discover" is deliberately excluded here -- discover.js registers the real
-// handler for that button (it starts the candidate-browsing flow instead of
-// a placeholder reply).
+// "discover" and "likes" are deliberately excluded here -- discover.js and
+// likes.js register the real handlers for those buttons instead of a
+// placeholder reply.
 function registerMenuHandlers(bot) {
-  const KEYS = ["profile", "likes", "vip", "premium"];
+  const KEYS = ["profile", "vip", "premium"];
 
   for (const key of KEYS) {
     const labelsForKey = Object.values(STRINGS).map((dict) => dict.menu[key]);
