@@ -1,9 +1,10 @@
 require("dotenv").config();
 const express = require("express");
-const { Telegraf, Scenes, session } = require("telegraf");
+const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
-const { getProfile } = require("./db");
+const { getProfile, getLanguage, setLanguage } = require("./db");
+const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -26,22 +27,38 @@ const stage = new Scenes.Stage([profileWizard]);
 bot.use(session());
 bot.use(stage.middleware());
 
+function languageKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`${LANGUAGES.uz.flag} ${LANGUAGES.uz.label}`, "lang:uz")],
+    [Markup.button.callback(`${LANGUAGES.ru.flag} ${LANGUAGES.ru.label}`, "lang:ru")],
+    [Markup.button.callback(`${LANGUAGES.en.flag} ${LANGUAGES.en.label}`, "lang:en")],
+  ]);
+}
+
+// Every /start shows the language picker first, even for returning users --
+// the choice is re-confirmed (and can be changed) on every fresh start.
 bot.start(async (ctx) => {
+  await ctx.reply("Choose your language", languageKeyboard());
+});
+
+bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
+  const lang = ctx.match[1];
+  setLanguage(ctx.from.id, lang);
+  await ctx.answerCbQuery();
+
   const existing = getProfile(ctx.from.id);
   if (existing) {
-    await ctx.reply(`Xush kelibsiz qaytganingizdan xursandmiz, ${existing.name}!`);
-    await sendMainMenu(ctx, existing);
+    await ctx.reply(t(lang, "welcomeBack")(existing.name));
+    await sendMainMenu(ctx, existing, lang);
     return;
   }
-  await ctx.reply(
-    "Assalomu alaykum! 👋 Tanishish va uylanish maqsadidagi botimizga xush kelibsiz.\n" +
-      "Avval qisqacha anketangizni to'ldiramiz."
-  );
-  await ctx.scene.enter("profile-wizard");
+  await ctx.reply(t(lang, "welcomeNew"));
+  await ctx.scene.enter("profile-wizard", { lang });
 });
 
 bot.command("anketa", async (ctx) => {
-  await ctx.scene.enter("profile-wizard");
+  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+  await ctx.scene.enter("profile-wizard", { lang });
 });
 
 registerMenuHandlers(bot);

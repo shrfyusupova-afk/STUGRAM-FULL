@@ -1,0 +1,172 @@
+const DEFAULT_LANG = "uz";
+
+const LANGUAGES = {
+  uz: { flag: "🇺🇿", label: "O'zbekcha" },
+  ru: { flag: "🇷🇺", label: "Русский" },
+  en: { flag: "🇬🇧", label: "English" },
+};
+
+const STRINGS = {
+  uz: {
+    welcomeBack: (name) => `Xush kelibsiz qaytganingizdan xursandmiz, ${name}!`,
+    welcomeNew:
+      "Assalomu alaykum! 👋 Tanishish va uylanish maqsadidagi botimizga xush kelibsiz.\n" +
+      "Avval qisqacha anketangizni to'ldiramiz.",
+    askName: "👤 Ismingizni kiriting:",
+    errName: "Iltimos, to'g'ri ism kiriting (2-50 belgi):",
+    askAge: "🎂 Yoshingizni kiriting (faqat raqam):",
+    errAge: (min, max) => `Yoshingiz ${min} dan ${max} gacha bo'lgan butun son bo'lishi kerak. Qayta kiriting:`,
+    askGender: "⚧ Jinsingizni tanlang:",
+    genderMale: "👨 Erkak",
+    genderFemale: "👩 Ayol",
+    genderMaleValue: "Erkak",
+    genderFemaleValue: "Ayol",
+    errGenderButtons: "Iltimos, yuqoridagi tugmalardan birini tanlang.",
+    askMedia:
+      "📸 Rasm yoki video yuboring\n\n" +
+      "Iltimos, tiniq va sifatli o'zingiz tushgan rasm yuboring, aks holda anketangiz o'chirib yuborilishi mumkin.",
+    errMedia: "Iltimos, rasm yoki video yuboring:",
+    askLocation: "📍 Manzilingizni kiriting (shahar/tuman) yoki pastdagi tugma orqali joylashuvingizni yuboring:",
+    locationButton: "📍 Lokatsiya yuborish",
+    errLocation: "Iltimos, manzilingizni matn shaklida kiriting yoki joylashuvingizni yuboring:",
+    askBio: "📝 O'zingiz haqingizda qisqacha ma'lumot yozing (maks. 500 belgi):",
+    errBio: "Iltimos, 500 belgidan oshmagan matn kiriting:",
+    askContact: "✅ Anketani tasdiqlash uchun telefon raqamingizni ulashing (soxta anketalarning oldini olish uchun kerak):",
+    contactButton: "📱 Raqamni yuborish",
+    errContact: 'Iltimos, pastdagi "📱 Raqamni yuborish" tugmasini bosib, raqamingizni yuboring:',
+    errContactOwn: "Iltimos, o'zingizning raqamingizni ulashing:",
+    backButton: "⬅️ Orqaga",
+    errFirstStep: "Bu birinchi qadam, orqaga qaytarib bo'lmaydi.",
+    profileSaved: (p) =>
+      `✅ Anketangiz saqlandi!\n\n` +
+      `👤 Ism: ${p.name}\n` +
+      `🎂 Yosh: ${p.age}\n` +
+      `⚧ Jins: ${p.genderLabel}\n` +
+      `📍 Manzil: ${p.location}\n` +
+      `📝 Ma'lumot: ${p.bio}\n` +
+      `📞 Tasdiqlangan raqam: ${p.phone}`,
+    menu: {
+      discover: "🔍 Yangi tanishuvlar",
+      profile: "👤 Anketam",
+      likes: "💌 Kimlar yoqtirdi",
+      vip: "👑 VIP suhbat",
+      premium: "💎 Premium",
+    },
+    menuPlaceholders: {
+      discover: "🔍 Yangi tanishuvlar bo'limi tez orada ishga tushadi.",
+      profile: "👤 Anketani ko'rish/tahrirlash tez orada qo'shiladi.",
+      likes: "💌 Kim sizni yoqtirganini ko'rish tez orada qo'shiladi.",
+      vip: "👑 VIP suhbat funksiyasi tez orada qo'shiladi.",
+      premium: "💎 Premium tarif tez orada qo'shiladi.",
+    },
+  },
+  ru: {
+    welcomeBack: (name) => `Рады видеть вас снова, ${name}!`,
+    welcomeNew: "Здравствуйте! 👋 Добро пожаловать в бот знакомств.\nСначала заполним вашу анкету.",
+    askName: "👤 Введите ваше имя:",
+    errName: "Пожалуйста, введите корректное имя (2-50 символов):",
+    askAge: "🎂 Введите ваш возраст (только число):",
+    errAge: (min, max) => `Возраст должен быть целым числом от ${min} до ${max}. Введите заново:`,
+    askGender: "⚧ Выберите ваш пол:",
+    genderMale: "👨 Мужчина",
+    genderFemale: "👩 Женщина",
+    genderMaleValue: "Мужчина",
+    genderFemaleValue: "Женщина",
+    errGenderButtons: "Пожалуйста, выберите один из вариантов выше.",
+    askMedia:
+      "📸 Отправьте фото или видео\n\n" +
+      "Пожалуйста, отправьте чёткое и качественное фото с собой, иначе анкета может быть удалена.",
+    errMedia: "Пожалуйста, отправьте фото или видео:",
+    askLocation: "📍 Введите ваш адрес (город/район) или отправьте геолокацию через кнопку ниже:",
+    locationButton: "📍 Отправить геолокацию",
+    errLocation: "Пожалуйста, введите адрес текстом или отправьте геолокацию:",
+    askBio: "📝 Напишите немного о себе (макс. 500 символов):",
+    errBio: "Пожалуйста, введите текст не более 500 символов:",
+    askContact: "✅ Для подтверждения анкеты поделитесь номером телефона (это защита от фейковых анкет):",
+    contactButton: "📱 Отправить номер",
+    errContact: 'Пожалуйста, нажмите кнопку "📱 Отправить номер" ниже:',
+    errContactOwn: "Пожалуйста, поделитесь своим собственным номером:",
+    backButton: "⬅️ Назад",
+    errFirstStep: "Это первый шаг, назад пути нет.",
+    profileSaved: (p) =>
+      `✅ Ваша анкета сохранена!\n\n` +
+      `👤 Имя: ${p.name}\n` +
+      `🎂 Возраст: ${p.age}\n` +
+      `⚧ Пол: ${p.genderLabel}\n` +
+      `📍 Адрес: ${p.location}\n` +
+      `📝 О себе: ${p.bio}\n` +
+      `📞 Подтверждённый номер: ${p.phone}`,
+    menu: {
+      discover: "🔍 Новые знакомства",
+      profile: "👤 Моя анкета",
+      likes: "💌 Кому я понравился",
+      vip: "👑 VIP чат",
+      premium: "💎 Премиум",
+    },
+    menuPlaceholders: {
+      discover: "🔍 Раздел новых знакомств скоро появится.",
+      profile: "👤 Просмотр/редактирование анкеты скоро добавим.",
+      likes: "💌 Просмотр лайков скоро добавим.",
+      vip: "👑 Функция VIP чата скоро появится.",
+      premium: "💎 Премиум тариф скоро появится.",
+    },
+  },
+  en: {
+    welcomeBack: (name) => `Welcome back, ${name}!`,
+    welcomeNew: "Hello! 👋 Welcome to the dating bot.\nFirst, let's fill out your profile.",
+    askName: "👤 Enter your name:",
+    errName: "Please enter a valid name (2-50 characters):",
+    askAge: "🎂 Enter your age (numbers only):",
+    errAge: (min, max) => `Your age must be a whole number between ${min} and ${max}. Try again:`,
+    askGender: "⚧ Choose your gender:",
+    genderMale: "👨 Male",
+    genderFemale: "👩 Female",
+    genderMaleValue: "Male",
+    genderFemaleValue: "Female",
+    errGenderButtons: "Please choose one of the buttons above.",
+    askMedia:
+      "📸 Send a photo or video\n\n" +
+      "Please send a clear, good-quality photo of yourself, otherwise your profile may be removed.",
+    errMedia: "Please send a photo or video:",
+    askLocation: "📍 Enter your location (city/district) or share it using the button below:",
+    locationButton: "📍 Send location",
+    errLocation: "Please enter your location as text or share it:",
+    askBio: "📝 Write a short bio about yourself (max 500 characters):",
+    errBio: "Please enter no more than 500 characters:",
+    askContact: "✅ To confirm your profile, share your phone number (this helps prevent fake profiles):",
+    contactButton: "📱 Send number",
+    errContact: 'Please tap the "📱 Send number" button below:',
+    errContactOwn: "Please share your own phone number:",
+    backButton: "⬅️ Back",
+    errFirstStep: "This is the first step, there's nothing before it.",
+    profileSaved: (p) =>
+      `✅ Your profile has been saved!\n\n` +
+      `👤 Name: ${p.name}\n` +
+      `🎂 Age: ${p.age}\n` +
+      `⚧ Gender: ${p.genderLabel}\n` +
+      `📍 Location: ${p.location}\n` +
+      `📝 Bio: ${p.bio}\n` +
+      `📞 Verified number: ${p.phone}`,
+    menu: {
+      discover: "🔍 New matches",
+      profile: "👤 My profile",
+      likes: "💌 Who liked me",
+      vip: "👑 VIP chat",
+      premium: "💎 Premium",
+    },
+    menuPlaceholders: {
+      discover: "🔍 New matches section coming soon.",
+      profile: "👤 Viewing/editing your profile coming soon.",
+      likes: "💌 Seeing who liked you coming soon.",
+      vip: "👑 VIP chat feature coming soon.",
+      premium: "💎 Premium plan coming soon.",
+    },
+  },
+};
+
+function t(lang, key) {
+  const dict = STRINGS[lang] || STRINGS[DEFAULT_LANG];
+  return dict[key] ?? STRINGS[DEFAULT_LANG][key];
+}
+
+module.exports = { DEFAULT_LANG, LANGUAGES, STRINGS, t };
