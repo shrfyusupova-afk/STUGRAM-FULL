@@ -4,6 +4,7 @@ const path = require("path");
 const DB_PATH = path.join(__dirname, "..", "data", "profiles.json");
 const LANG_DB_PATH = path.join(__dirname, "..", "data", "languages.json");
 const LIKES_DB_PATH = path.join(__dirname, "..", "data", "likes.json");
+const ADMINS_DB_PATH = path.join(__dirname, "..", "data", "admins.json");
 
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -71,6 +72,16 @@ function getLikers(userId) {
   return readJson(LIKES_DB_PATH)[String(userId)] || [];
 }
 
+function isAdmin(userId) {
+  return !!readJson(ADMINS_DB_PATH)[String(userId)];
+}
+
+function addAdmin(userId) {
+  const all = readJson(ADMINS_DB_PATH);
+  all[String(userId)] = { addedAt: new Date().toISOString() };
+  writeJson(ADMINS_DB_PATH, all);
+}
+
 function getLanguage(userId) {
   return readJson(LANG_DB_PATH)[String(userId)] || null;
 }
@@ -88,6 +99,8 @@ module.exports = {
   getAllProfiles,
   setProfileActive,
   setPremiumUntil,
+  isAdmin,
+  addAdmin,
   getLanguage,
   setLanguage,
   recordLike,

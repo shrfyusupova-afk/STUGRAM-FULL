@@ -8,6 +8,7 @@ const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
+const { createAdminBot } = require("./adminBot");
 const { getProfile, getLanguage, setLanguage, setPremiumUntil } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
@@ -26,6 +27,14 @@ const webhookDomain = process.env.RENDER_EXTERNAL_URL || process.env.WEBHOOK_DOM
 const webhookPath = "/telegram/webhook";
 const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || undefined;
 const port = process.env.PORT || 3000;
+
+// The admin bot is optional -- runs in this same process/service so it
+// shares the exact same data/ files as the main bot (no sync, no
+// duplication, no risk of losing account data across two separate deploys).
+const adminToken = process.env.ADMIN_BOT_TOKEN;
+const adminBot = adminToken ? createAdminBot(adminToken) : null;
+const adminWebhookPath = "/telegram/admin-webhook";
+const adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET || undefined;
 
 const bot = new Telegraf(token);
 const stage = new Scenes.Stage([profileWizard]);
@@ -116,6 +125,10 @@ if (webhookDomain) {
 
   app.use(bot.webhookCallback(webhookPath, webhookSecret ? { secretToken: webhookSecret } : undefined));
 
+  if (adminBot) {
+    app.use(adminBot.webhookCallback(adminWebhookPath, adminWebhookSecret ? { secretToken: adminWebhookSecret } : undefined));
+  }
+
   app.listen(port, () => {
     console.log(`HTTP server listening on port ${port}`);
   });
@@ -124,11 +137,29 @@ if (webhookDomain) {
     .setWebhook(`${webhookDomain}${webhookPath}`, webhookSecret ? { secret_token: webhookSecret } : undefined)
     .then(() => console.log(`ForOneForever_bot webhook rejimida: ${webhookDomain}${webhookPath}`))
     .catch((err) => console.error("setWebhook failed:", err));
+
+  if (adminBot) {
+    adminBot.telegram
+      .setWebhook(`${webhookDomain}${adminWebhookPath}`, adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined)
+      .then(() => console.log(`ForOneAdmin_bot webhook rejimida: ${webhookDomain}${adminWebhookPath}`))
+      .catch((err) => console.error("admin setWebhook failed:", err));
+  }
 } else {
   bot.launch().then(() => {
     console.log("ForOneForever_bot ishga tushdi (long polling, domen sozlanmagan).");
   });
+  if (adminBot) {
+    adminBot.launch().then(() => {
+      console.log("ForOneAdmin_bot ishga tushdi (long polling, domen sozlanmagan).");
+    });
+  }
 }
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once("SIGINT", () => {
+  bot.stop("SIGINT");
+  if (adminBot) adminBot.stop("SIGINT");
+});
+process.once("SIGTERM", () => {
+  bot.stop("SIGTERM");
+  if (adminBot) adminBot.stop("SIGTERM");
+});
