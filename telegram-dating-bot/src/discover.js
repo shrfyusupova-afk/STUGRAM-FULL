@@ -28,7 +28,7 @@ function pickCandidate(userId, myGender) {
   const all = getAllProfiles();
   const wanted = oppositeGender(myGender);
   const pool = Object.entries(all).filter(
-    ([id, p]) => id !== String(userId) && p.gender === wanted && p.mediaFileId && p.phone
+    ([id, p]) => id !== String(userId) && p.gender === wanted && p.mediaFileId && p.phone && p.active !== false
   );
   if (pool.length === 0) return null;
 
@@ -54,24 +54,29 @@ function discoverKeyboard(lang) {
   return Markup.keyboard([[LIKE, DISLIKE], [t(lang, "backButton")]]).resize();
 }
 
-function buildProfileCaption(lang, candidateId, profile) {
+function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true } = {}) {
+  const base =
+    `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
+    `📍 ${escapeHtml(profile.location)}\n\n` +
+    `${escapeHtml(profile.bio)}`;
+
+  if (!includeUnlock) return base;
+
   const username = getUsername();
   const unlockUrl = username ? `https://t.me/${username}?start=unlock_${candidateId}` : null;
   const unlockLabel = escapeHtml(t(lang, "unlockLinkText"));
   const unlockLine = unlockUrl ? `🔐 <a href="${unlockUrl}">${unlockLabel}</a>` : `🔐 ${unlockLabel}`;
 
-  return (
-    `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
-    `📍 ${escapeHtml(profile.location)}\n\n` +
-    `${escapeHtml(profile.bio)}\n\n\n` +
-    unlockLine
-  );
+  return `${base}\n\n\n${unlockLine}`;
 }
 
-// keyboardExtra is optional -- omit it (as the "who liked me" list does) to
-// send the card without touching whatever keyboard is currently docked.
-async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra) {
-  const caption = buildProfileCaption(lang, candidateId, profile);
+// keyboardExtra is optional -- omit it (as the "who liked me" list and the
+// self-view do) to send the card without touching whatever keyboard is
+// currently docked. captionOptions is passed straight through to
+// buildProfileCaption (e.g. { includeUnlock: false } for viewing your own
+// profile, where "buy access to this chat" makes no sense).
+async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, captionOptions) {
+  const caption = buildProfileCaption(lang, candidateId, profile, captionOptions);
   const extra = { caption, parse_mode: "HTML", ...(keyboardExtra || {}) };
 
   if (profile.mediaType === "video") {

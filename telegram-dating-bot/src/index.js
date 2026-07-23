@@ -5,6 +5,7 @@ const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
 const { registerDiscoverHandlers, handleUnlockDeepLink } = require("./discover");
 const { registerLikesHandlers } = require("./likes");
+const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { getProfile, getLanguage, setLanguage } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
@@ -75,6 +76,7 @@ bot.command("anketa", async (ctx) => {
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
+registerProfileSettingsHandlers(bot);
 
 bot.telegram
   .getMe()

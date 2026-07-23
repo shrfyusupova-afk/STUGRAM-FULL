@@ -40,8 +40,15 @@ function getAllProfiles() {
   return readJson(DB_PATH);
 }
 
-// Recorded so a future "who liked me" feature has something to read from --
-// not surfaced anywhere yet.
+function setProfileActive(userId, active) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return null;
+  all[key] = { ...all[key], active, updatedAt: new Date().toISOString() };
+  writeJson(DB_PATH, all);
+  return all[key];
+}
+
 function recordLike(likerId, likedId) {
   const all = readJson(LIKES_DB_PATH);
   const key = String(likedId);
@@ -70,6 +77,7 @@ module.exports = {
   saveProfile,
   deleteProfile,
   getAllProfiles,
+  setProfileActive,
   getLanguage,
   setLanguage,
   recordLike,
