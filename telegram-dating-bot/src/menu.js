@@ -1,15 +1,11 @@
 const { Markup } = require("telegraf");
 
-// Telegram bots can't set custom button colors -- neither reply keyboards
-// nor inline keyboards expose a color/style field; button appearance is
-// entirely up to the user's Telegram client theme. Colored circle emoji in
-// the label is the closest available substitute for "colored buttons".
 const BUTTONS = {
-  discover: "🔴 Yangi tanishuvlar",
-  profile: "🔵 Anketam",
-  likes: "🟢 Kimlar yoqtirdi",
-  vip: "🟣 VIP suhbat",
-  premium: "🟡 Premium",
+  discover: "🔍 Yangi tanishuvlar",
+  profile: "👤 Anketam",
+  likes: "💌 Kimlar yoqtirdi",
+  vip: "👑 VIP suhbat",
+  premium: "💎 Premium",
 };
 
 // A persistent bottom (reply) keyboard, not an inline keyboard attached to
@@ -41,11 +37,11 @@ async function sendMainMenu(ctx, profile) {
 
 function registerMenuHandlers(bot) {
   const placeholders = {
-    [BUTTONS.discover]: "🔴 Yangi tanishuvlar bo'limi tez orada ishga tushadi.",
-    [BUTTONS.profile]: "🔵 Anketani ko'rish/tahrirlash tez orada qo'shiladi.",
-    [BUTTONS.likes]: "🟢 Kim sizni yoqtirganini ko'rish tez orada qo'shiladi.",
-    [BUTTONS.vip]: "🟣 VIP suhbat funksiyasi tez orada qo'shiladi.",
-    [BUTTONS.premium]: "🟡 Premium tarif tez orada qo'shiladi.",
+    [BUTTONS.discover]: "🔍 Yangi tanishuvlar bo'limi tez orada ishga tushadi.",
+    [BUTTONS.profile]: "👤 Anketani ko'rish/tahrirlash tez orada qo'shiladi.",
+    [BUTTONS.likes]: "💌 Kim sizni yoqtirganini ko'rish tez orada qo'shiladi.",
+    [BUTTONS.vip]: "👑 VIP suhbat funksiyasi tez orada qo'shiladi.",
+    [BUTTONS.premium]: "💎 Premium tarif tez orada qo'shiladi.",
   };
 
   for (const [label, text] of Object.entries(placeholders)) {

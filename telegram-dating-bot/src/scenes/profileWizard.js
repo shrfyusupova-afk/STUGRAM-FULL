@@ -32,7 +32,7 @@ async function onAge(ctx) {
   await ctx.reply(
     "⚧ Jinsingizni tanlang:",
     Markup.inlineKeyboard([
-      [Markup.button.callback("🔵 Erkak", "gender:erkak"), Markup.button.callback("🔴 Ayol", "gender:ayol")],
+      [Markup.button.callback("👨 Erkak", "gender:erkak"), Markup.button.callback("👩 Ayol", "gender:ayol")],
     ])
   );
   return ctx.wizard.next();
