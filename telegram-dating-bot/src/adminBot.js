@@ -10,10 +10,14 @@ const USERS_LABEL = "👥 Foydalanuvchilar";
 // cache, not anything that needs to survive a deploy.
 const loginState = new Map();
 
+// Shows entered digits as-is (not masked) with underscores for the
+// remaining slots, e.g. "1 9 7 5 _ _ _ _".
 function maskCode(entered) {
-  const filled = "●".repeat(entered.length);
-  const empty = "○".repeat(Math.max(0, ADMIN_CODE.length - entered.length));
-  return filled + empty;
+  const slots = [];
+  for (let i = 0; i < ADMIN_CODE.length; i++) {
+    slots.push(i < entered.length ? entered[i] : "_");
+  }
+  return slots.join(" ");
 }
 
 function digitButton(d) {
