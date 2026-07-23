@@ -7,7 +7,8 @@ const { registerDiscoverHandlers, handleUnlockDeepLink } = require("./discover")
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
-const { getProfile, getLanguage, setLanguage } = require("./db");
+const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
+const { getProfile, getLanguage, setLanguage, setPremiumUntil } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
 
@@ -92,6 +93,19 @@ bot.catch((err, ctx) => {
 if (webhookDomain) {
   const app = express();
   app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+
+  // Click's Prepare/Complete callbacks are form-encoded POST requests.
+  app.use(express.urlencoded({ extended: true }));
+  registerClickRoutes(app, {
+    onPaid: async (userId, amountSom) => {
+      const premiumUntil = new Date(Date.now() + PREMIUM_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      setPremiumUntil(userId, premiumUntil);
+      const lang = getLanguage(userId) || DEFAULT_LANG;
+      await bot.telegram.sendMessage(userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
+      console.log(`Premium activated for user ${userId} (${amountSom} so'm via Click)`);
+    },
+  });
+
   app.use(bot.webhookCallback(webhookPath, webhookSecret ? { secretToken: webhookSecret } : undefined));
 
   app.listen(port, () => {

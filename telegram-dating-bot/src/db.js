@@ -49,6 +49,15 @@ function setProfileActive(userId, active) {
   return all[key];
 }
 
+function setPremiumUntil(userId, untilIso) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return null;
+  all[key] = { ...all[key], premiumUntil: untilIso, updatedAt: new Date().toISOString() };
+  writeJson(DB_PATH, all);
+  return all[key];
+}
+
 function recordLike(likerId, likedId) {
   const all = readJson(LIKES_DB_PATH);
   const key = String(likedId);
@@ -78,6 +87,7 @@ module.exports = {
   deleteProfile,
   getAllProfiles,
   setProfileActive,
+  setPremiumUntil,
   getLanguage,
   setLanguage,
   recordLike,
