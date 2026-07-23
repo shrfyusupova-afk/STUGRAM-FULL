@@ -1,3 +1,4 @@
+const QRCode = require("qrcode");
 const { Markup } = require("telegraf");
 const { getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
@@ -6,7 +7,8 @@ const { createOrder, buildCheckoutUrl } = require("./click");
 // Payme was removed at the user's request -- Click is the only payment
 // option now. The checkout link itself only works once
 // CLICK_MERCHANT_ID/CLICK_SERVICE_ID are configured (buildCheckoutUrl
-// returns null until then), so it falls back to a "not configured" message.
+// returns null until then), so it falls back to a "not configured" message,
+// and no QR code is generated (there's no real link to encode yet).
 function registerPremiumHandlers(bot) {
   const premiumLabels = Object.values(STRINGS).map((dict) => dict.menu.premium);
 
@@ -20,6 +22,11 @@ function registerPremiumHandlers(bot) {
       : Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop");
 
     await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard([[button]]));
+
+    if (clickUrl) {
+      const qrBuffer = await QRCode.toBuffer(clickUrl, { width: 400, margin: 2 });
+      await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
+    }
   });
 
   bot.action("premium:pay:click:noop", async (ctx) => {
