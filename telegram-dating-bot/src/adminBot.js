@@ -69,6 +69,28 @@ function userActionsKeyboard(id, profile) {
   ]);
 }
 
+// A failed answerCbQuery/editMessageText (stale query, "message is not
+// modified", a transient network hiccup) must never abort the handler
+// partway through -- the digit is already recorded in loginState by the
+// time these run, so a swallowed display error just means the next tap
+// re-renders the correct, fully caught-up text instead of silently
+// dropping that digit from what the user sees.
+async function safeAnswerCbQuery(ctx, text) {
+  try {
+    await ctx.answerCbQuery(text);
+  } catch (err) {
+    console.error("admin bot answerCbQuery failed (ignored):", err.message);
+  }
+}
+
+async function safeEditMessageText(ctx, text, extra) {
+  try {
+    await ctx.editMessageText(text, extra);
+  } catch (err) {
+    console.error("admin bot editMessageText failed (ignored):", err.message);
+  }
+}
+
 function createAdminBot(token) {
   const bot = new Telegraf(token);
 
@@ -83,43 +105,43 @@ function createAdminBot(token) {
 
   bot.action(/^admin:pin:(\d)$/, async (ctx) => {
     if (isAdmin(ctx.from.id)) {
-      await ctx.answerCbQuery();
+      await safeAnswerCbQuery(ctx);
       return;
     }
     let entered = loginState.get(ctx.from.id) || "";
     if (entered.length >= ADMIN_CODE.length) {
-      await ctx.answerCbQuery();
+      await safeAnswerCbQuery(ctx);
       return;
     }
     entered += ctx.match[1];
     loginState.set(ctx.from.id, entered);
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
 
     if (entered.length < ADMIN_CODE.length) {
-      await ctx.editMessageText(`🔐 Kodni kiriting:\n${maskCode(entered)}`, pinKeyboard());
+      await safeEditMessageText(ctx, `🔐 Kodni kiriting:\n${maskCode(entered)}`, pinKeyboard());
       return;
     }
 
     if (entered === ADMIN_CODE) {
       addAdmin(ctx.from.id);
       loginState.delete(ctx.from.id);
-      await ctx.editMessageText("✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");
+      await safeEditMessageText(ctx, "✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");
       await ctx.reply("Admin panel:", adminMenuKeyboard());
     } else {
       loginState.set(ctx.from.id, "");
-      await ctx.editMessageText(`❌ Noto'g'ri kod. Qaytadan urinib ko'ring:\n${maskCode("")}`, pinKeyboard());
+      await safeEditMessageText(ctx, `❌ Noto'g'ri kod. Qaytadan urinib ko'ring:\n${maskCode("")}`, pinKeyboard());
     }
   });
 
   bot.action("admin:pin:back", async (ctx) => {
     if (isAdmin(ctx.from.id)) {
-      await ctx.answerCbQuery();
+      await safeAnswerCbQuery(ctx);
       return;
     }
     const entered = (loginState.get(ctx.from.id) || "").slice(0, -1);
     loginState.set(ctx.from.id, entered);
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(`🔐 Kodni kiriting:\n${maskCode(entered)}`, pinKeyboard());
+    await safeAnswerCbQuery(ctx);
+    await safeEditMessageText(ctx, `🔐 Kodni kiriting:\n${maskCode(entered)}`, pinKeyboard());
   });
 
   bot.hears(
