@@ -35,7 +35,7 @@ function registerProfileSettingsHandlers(bot) {
 
   bot.hears(editLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await ctx.scene.enter("profile-wizard", { lang });
+    await ctx.scene.enter("profile-wizard", { lang, isEditing: true });
   });
 
   bot.hears(viewLabels, async (ctx) => {

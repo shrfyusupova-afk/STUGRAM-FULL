@@ -1,5 +1,5 @@
 const { Scenes, Markup } = require("telegraf");
-const { saveProfile } = require("../db");
+const { getProfile, saveProfile } = require("../db");
 const { sendMainMenu } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
 
@@ -20,8 +20,13 @@ function isBackText(ctx, lang) {
 // going back, so each step always sets its OWN correct keyboard rather than
 // relying on whatever the previous step left behind.
 const RENDERERS = {
+  // Fresh signups have no menu to go "back" to, so this stays keyboard-less.
+  // Editing an existing profile enters here too, though -- in that case a
+  // back button (returning to the main menu, handled in the dispatcher
+  // below) is shown, since there IS somewhere to go back to.
   name: async (ctx, lang) => {
-    await ctx.reply(t(lang, "askName"), Markup.removeKeyboard());
+    const keyboard = ctx.wizard.state.isEditing ? backKeyboard(lang) : Markup.removeKeyboard();
+    await ctx.reply(t(lang, "askName"), keyboard);
   },
   age: async (ctx, lang) => {
     await ctx.reply(t(lang, "askAge"), backKeyboard(lang));
@@ -171,6 +176,13 @@ const profileWizard = new Scenes.WizardScene(
 
     if (isBackText(ctx, lang)) {
       if (idx === 0) {
+        if (ctx.wizard.state.isEditing) {
+          const existing = getProfile(ctx.from.id);
+          if (existing) {
+            await sendMainMenu(ctx, existing, lang);
+          }
+          return ctx.scene.leave();
+        }
         await ctx.reply(t(lang, "errFirstStep"));
         return;
       }

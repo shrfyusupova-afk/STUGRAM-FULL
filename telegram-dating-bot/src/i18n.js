@@ -53,8 +53,7 @@ const STRINGS = {
       premium: "💎 Premium",
     },
     menuPlaceholders: {
-      vip: "👑 VIP suhbat funksiyasi tez orada qo'shiladi.",
-      premium: "💎 Premium tarif tez orada qo'shiladi.",
+      vip: "👑 Chat bo'limi ustida qattiq ish olib borilmoqda. Tez orada yangilik bo'ladi! 🚧🔥",
     },
     discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
     unlockLinkText: "🔐 Kandidatning shaxsiy chatiga kirish huquqini sotib olish",
@@ -62,6 +61,13 @@ const STRINGS = {
     unlockButton: "💳 Sotib olish",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
+    premiumDetails:
+      "💎 Premium obuna — 1 oy\n\n" +
+      "✅ Har bir nomzodning shaxsiy chatiga cheksiz kirish huquqi (🔐 alohida to'lovsiz)\n" +
+      "✅ Profilingiz boshqa foydalanuvchilarga ko'proq va tez-tez ko'rsatiladi\n\n" +
+      "💵 Narxi: 69 000 so'm / 1 oy",
+    premiumPayButton: "💳 To'lash",
+    premiumPayPlaceholder: "💳 To'lov tizimi hozircha ulanmagan. Tez orada ishga tushadi!",
     profileSettingsIntro: "⚙️ Anketa sozlamalari:",
     profileSettingsEdit: "✏️ Anketani tahrirlash",
     profileSettingsView: "👁 Mening anketam",
@@ -117,8 +123,7 @@ const STRINGS = {
       premium: "💎 Премиум",
     },
     menuPlaceholders: {
-      vip: "👑 Функция VIP чата скоро появится.",
-      premium: "💎 Премиум тариф скоро появится.",
+      vip: "👑 Ведётся активная работа над разделом чата. Совсем скоро новости! 🚧🔥",
     },
     discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
     unlockLinkText: "🔐 Купить доступ к личному чату кандидата",
@@ -126,6 +131,13 @@ const STRINGS = {
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
     unlockPlaceholder: "🔐 Функция открытия личного чата (платно) скоро появится.",
     unlockButton: "💳 Купить",
+    premiumDetails:
+      "💎 Премиум подписка — 1 месяц\n\n" +
+      "✅ Неограниченный доступ к личному чату каждого кандидата (без отдельной оплаты 🔐)\n" +
+      "✅ Ваш профиль показывается другим пользователям чаще и заметнее\n\n" +
+      "💵 Цена: 69 000 сум / 1 месяц",
+    premiumPayButton: "💳 Оплатить",
+    premiumPayPlaceholder: "💳 Платёжная система пока не подключена. Скоро заработает!",
     profileSettingsIntro: "⚙️ Настройки анкеты:",
     profileSettingsEdit: "✏️ Редактировать анкету",
     profileSettingsView: "👁 Моя анкета",
@@ -181,8 +193,7 @@ const STRINGS = {
       premium: "💎 Premium",
     },
     menuPlaceholders: {
-      vip: "👑 VIP chat feature coming soon.",
-      premium: "💎 Premium plan coming soon.",
+      vip: "👑 We're working hard on the chat feature. Big news coming soon! 🚧🔥",
     },
     discoverNoCandidates: "No matching candidates found yet. Try again later.",
     unlockLinkText: "🔐 Unlock this candidate's private chat",
@@ -190,6 +201,13 @@ const STRINGS = {
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,
     unlockPlaceholder: "🔐 Unlocking the private chat (paid) is coming soon.",
     unlockButton: "💳 Buy",
+    premiumDetails:
+      "💎 Premium subscription — 1 month\n\n" +
+      "✅ Unlimited access to every candidate's private chat (no separate 🔐 payments)\n" +
+      "✅ Your profile is shown to other users more often and more prominently\n\n" +
+      "💵 Price: 69,000 UZS / month",
+    premiumPayButton: "💳 Pay",
+    premiumPayPlaceholder: "💳 The payment system isn't connected yet. Coming soon!",
     profileSettingsIntro: "⚙️ Profile settings:",
     profileSettingsEdit: "✏️ Edit profile",
     profileSettingsView: "👁 My profile",

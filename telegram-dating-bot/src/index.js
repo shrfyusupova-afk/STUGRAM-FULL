@@ -6,6 +6,7 @@ const { registerMenuHandlers, sendMainMenu } = require("./menu");
 const { registerDiscoverHandlers, handleUnlockDeepLink } = require("./discover");
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
+const { registerPremiumHandlers } = require("./premium");
 const { getProfile, getLanguage, setLanguage } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
@@ -70,13 +71,14 @@ bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
 
 bot.command("anketa", async (ctx) => {
   const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-  await ctx.scene.enter("profile-wizard", { lang });
+  await ctx.scene.enter("profile-wizard", { lang, isEditing: !!getProfile(ctx.from.id) });
 });
 
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
 registerProfileSettingsHandlers(bot);
+registerPremiumHandlers(bot);
 
 bot.telegram
   .getMe()
