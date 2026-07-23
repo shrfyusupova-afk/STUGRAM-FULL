@@ -53,12 +53,15 @@ const STRINGS = {
       premium: "💎 Premium",
     },
     menuPlaceholders: {
-      discover: "🔍 Yangi tanishuvlar bo'limi tez orada ishga tushadi.",
       profile: "👤 Anketani ko'rish/tahrirlash tez orada qo'shiladi.",
       likes: "💌 Kim sizni yoqtirganini ko'rish tez orada qo'shiladi.",
       vip: "👑 VIP suhbat funksiyasi tez orada qo'shiladi.",
       premium: "💎 Premium tarif tez orada qo'shiladi.",
     },
+    discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
+    unlockLinkText: "🔐 Kandidatning shaxsiy chatiga kirish huquqini sotib olish",
+    unlockPlaceholder: "🔐 Shaxsiy chatni ochish (to'lov) funksiyasi tez orada qo'shiladi.",
+    unlockButton: "💳 Sotib olish",
   },
   ru: {
     welcomeBack: (name) => `Рады видеть вас снова, ${name}!`,
@@ -104,12 +107,15 @@ const STRINGS = {
       premium: "💎 Премиум",
     },
     menuPlaceholders: {
-      discover: "🔍 Раздел новых знакомств скоро появится.",
       profile: "👤 Просмотр/редактирование анкеты скоро добавим.",
       likes: "💌 Просмотр лайков скоро добавим.",
       vip: "👑 Функция VIP чата скоро появится.",
       premium: "💎 Премиум тариф скоро появится.",
     },
+    discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
+    unlockLinkText: "🔐 Купить доступ к личному чату кандидата",
+    unlockPlaceholder: "🔐 Функция открытия личного чата (платно) скоро появится.",
+    unlockButton: "💳 Купить",
   },
   en: {
     welcomeBack: (name) => `Welcome back, ${name}!`,
@@ -155,12 +161,15 @@ const STRINGS = {
       premium: "💎 Premium",
     },
     menuPlaceholders: {
-      discover: "🔍 New matches section coming soon.",
       profile: "👤 Viewing/editing your profile coming soon.",
       likes: "💌 Seeing who liked you coming soon.",
       vip: "👑 VIP chat feature coming soon.",
       premium: "💎 Premium plan coming soon.",
     },
+    discoverNoCandidates: "No matching candidates found yet. Try again later.",
+    unlockLinkText: "🔐 Unlock this candidate's private chat",
+    unlockPlaceholder: "🔐 Unlocking the private chat (paid) is coming soon.",
+    unlockButton: "💳 Buy",
   },
 };
 

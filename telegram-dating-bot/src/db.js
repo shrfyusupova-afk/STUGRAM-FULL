@@ -3,6 +3,7 @@ const path = require("path");
 
 const DB_PATH = path.join(__dirname, "..", "data", "profiles.json");
 const LANG_DB_PATH = path.join(__dirname, "..", "data", "languages.json");
+const LIKES_DB_PATH = path.join(__dirname, "..", "data", "likes.json");
 
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -35,6 +36,25 @@ function deleteProfile(userId) {
   writeJson(DB_PATH, all);
 }
 
+function getAllProfiles() {
+  return readJson(DB_PATH);
+}
+
+// Recorded so a future "who liked me" feature has something to read from --
+// not surfaced anywhere yet.
+function recordLike(likerId, likedId) {
+  const all = readJson(LIKES_DB_PATH);
+  const key = String(likedId);
+  const likers = new Set(all[key] || []);
+  likers.add(String(likerId));
+  all[key] = [...likers];
+  writeJson(LIKES_DB_PATH, all);
+}
+
+function getLikers(userId) {
+  return readJson(LIKES_DB_PATH)[String(userId)] || [];
+}
+
 function getLanguage(userId) {
   return readJson(LANG_DB_PATH)[String(userId)] || null;
 }
@@ -45,4 +65,13 @@ function setLanguage(userId, lang) {
   writeJson(LANG_DB_PATH, all);
 }
 
-module.exports = { getProfile, saveProfile, deleteProfile, getLanguage, setLanguage };
+module.exports = {
+  getProfile,
+  saveProfile,
+  deleteProfile,
+  getAllProfiles,
+  getLanguage,
+  setLanguage,
+  recordLike,
+  getLikers,
+};

@@ -3,8 +3,10 @@ const express = require("express");
 const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
+const { registerDiscoverHandlers, handleUnlockDeepLink } = require("./discover");
 const { getProfile, getLanguage, setLanguage } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
+const { setUsername } = require("./botInfo");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -37,7 +39,15 @@ function languageKeyboard() {
 
 // Every /start shows the language picker first, even for returning users --
 // the choice is re-confirmed (and can be changed) on every fresh start.
+// The one exception is a "start=unlock_<id>" deep link (tapped from a
+// candidate card's unlock link), which skips straight to that flow.
 bot.start(async (ctx) => {
+  const payload = ctx.startPayload;
+  if (payload && payload.startsWith("unlock_")) {
+    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    await handleUnlockDeepLink(ctx, lang);
+    return;
+  }
   await ctx.reply("Choose your language", languageKeyboard());
 });
 
@@ -62,6 +72,12 @@ bot.command("anketa", async (ctx) => {
 });
 
 registerMenuHandlers(bot);
+registerDiscoverHandlers(bot);
+
+bot.telegram
+  .getMe()
+  .then((me) => setUsername(me.username))
+  .catch((err) => console.error("getMe failed:", err));
 
 bot.catch((err, ctx) => {
   console.error(`Bot error for update ${ctx.updateType}:`, err);
