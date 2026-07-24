@@ -1,5 +1,5 @@
 const { Markup } = require("telegraf");
-const { getProfile, getLikers, getLanguage } = require("./db");
+const { getProfile, getLikers, getLanguage, hasLiked } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const {
   sendCandidate,
@@ -8,6 +8,7 @@ const {
   viewProfileKeyboard,
   recordLikeWithMatchNotification,
 } = require("./discover");
+const { safeAnswerCbQuery } = require("./telegramSafety");
 
 const LIKE = "❤️";
 const DISLIKE = "👎";
@@ -41,9 +42,18 @@ function registerLikesHandlers(bot) {
 
     await ctx.reply(t(lang, "likesIntro")(likers.length));
     for (const { id, profile } of likers) {
-      const matched = canViewProfile(myId, id);
-      const keyboard = matched ? viewProfileKeyboard(lang, id) : respondKeyboard(id);
-      await sendCandidate(ctx, lang, id, profile, keyboard, { includeUnlock: !matched });
+      // Whether to show ❤️/👎 vs. the view button depends ONLY on whether
+      // it's a genuine mutual like -- NOT on canViewProfile (which also
+      // covers Premium/paid-unlock). Otherwise a Premium user would never
+      // see the ❤️ button here at all, could never like a liker back, and
+      // the other person would never get notified of a real match.
+      // includeUnlock, separately, is fine to base on canViewProfile: it
+      // just controls whether the caption still pitches the paywall to
+      // someone who doesn't need to pay.
+      const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
+      const freeAccess = canViewProfile(myId, id);
+      const keyboard = mutualMatch ? viewProfileKeyboard(lang, id) : respondKeyboard(id);
+      await sendCandidate(ctx, lang, id, profile, keyboard, { includeUnlock: !freeAccess });
     }
   });
 
@@ -52,7 +62,7 @@ function registerLikesHandlers(bot) {
     const myId = ctx.from.id;
     const lang = getLanguage(myId) || DEFAULT_LANG;
     await recordLikeWithMatchNotification(ctx, myId, candidateId);
-    await ctx.answerCbQuery(t(lang, "matchedToast"));
+    await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
     const candidate = getProfile(candidateId);
     if (!candidate) return;
@@ -67,7 +77,7 @@ function registerLikesHandlers(bot) {
   });
 
   bot.action(/^likeback:dislike:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
     try {
       await ctx.deleteMessage();
     } catch (err) {

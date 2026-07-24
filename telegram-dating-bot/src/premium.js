@@ -3,6 +3,7 @@ const { Markup } = require("telegraf");
 const { getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { createOrder, buildCheckoutUrl, PREMIUM_PRICE_SOM } = require("./click");
+const { safeAnswerCbQuery } = require("./telegramSafety");
 
 // Shared by the "💎 Premium" menu button and the "👑 Premium'ga ulanish"
 // button shown on the pay-per-view paywall (discover.js) -- both should open
@@ -30,13 +31,13 @@ function registerPremiumHandlers(bot) {
   bot.hears(premiumLabels, sendPremiumOffer);
 
   bot.action("premium:offer", async (ctx) => {
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
     await sendPremiumOffer(ctx);
   });
 
   bot.action("premium:pay:click:noop", async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "premiumPayClickNotConfigured"));
   });
 }

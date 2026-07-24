@@ -248,13 +248,13 @@ function createAdminBot(token) {
       const targetId = ctx.match[1];
       const profile = getProfile(targetId);
       if (!profile) {
-        await ctx.answerCbQuery("Topilmadi");
+        await safeAnswerCbQuery(ctx, "Topilmadi");
         return;
       }
       const newActive = profile.active === false;
       const updated = setProfileActive(targetId, newActive);
-      await ctx.answerCbQuery(newActive ? "Faollashtirildi" : "Faolsizlantirildi");
-      await ctx.editMessageText(userCard(targetId, updated), userActionsKeyboard(targetId, updated));
+      await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
+      await safeEditMessageText(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
     })
   );
 
@@ -263,8 +263,8 @@ function createAdminBot(token) {
     requireAdmin(async (ctx) => {
       const targetId = ctx.match[1];
       deleteProfile(targetId);
-      await ctx.answerCbQuery("O'chirildi");
-      await ctx.editMessageText("🗑 Anketa o'chirildi.");
+      await safeAnswerCbQuery(ctx, "O'chirildi");
+      await safeEditMessageText(ctx, "🗑 Anketa o'chirildi.");
     })
   );
 

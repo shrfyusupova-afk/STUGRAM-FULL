@@ -17,6 +17,11 @@ const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu } = require("./menu");
 const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
+const { safeAnswerCbQuery } = require("./telegramSafety");
+
+function isPremiumProfile(profile) {
+  return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
+}
 
 const LIKE = "❤️";
 const DISLIKE = "👎";
@@ -62,10 +67,13 @@ function pickCandidate(userId, myGender) {
     remaining = pool;
   }
 
+  // Uses the profile object already loaded in `all` rather than calling
+  // hasPremium(id) (which would re-read the entire profiles.json file once
+  // per candidate) -- same check, no redundant I/O.
   const weighted = [];
   for (const entry of remaining) {
-    const [id] = entry;
-    const copies = hasPremium(id) ? PREMIUM_VISIBILITY_WEIGHT : 1;
+    const [, p] = entry;
+    const copies = isPremiumProfile(p) ? PREMIUM_VISIBILITY_WEIGHT : 1;
     for (let i = 0; i < copies; i++) weighted.push(entry);
   }
 
@@ -228,17 +236,19 @@ function registerDiscoverHandlers(bot) {
 
   bot.action("unlock:noop", async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "unlockNotConfigured"));
   });
 
   // Fired by the "👁 Profilni ko'rish" button shown either after a successful
   // Click payment or after a mutual like -- re-checks access before revealing
-  // anything, since a forwarded/stale button could otherwise leak it.
+  // anything, since a forwarded/stale button could otherwise leak it. Uses
+  // safeAnswerCbQuery so a transient ack failure can't silently swallow the
+  // one thing this button exists to do (show what was just paid for).
   bot.action(/^unlock:view:(.+)$/, async (ctx) => {
     const candidateId = ctx.match[1];
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await ctx.answerCbQuery();
+    await safeAnswerCbQuery(ctx);
     if (!canViewProfile(ctx.from.id, candidateId)) {
       await handleUnlockDeepLink(ctx, lang, candidateId);
       return;
