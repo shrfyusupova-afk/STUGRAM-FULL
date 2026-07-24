@@ -12,6 +12,16 @@ const SALES_LABEL = "💰 Sotuvlar";
 // cache, not anything that needs to survive a deploy.
 const loginState = new Map();
 
+// Global (not per-user) throttle on wrong-code attempts: the PIN is a single
+// shared secret, not tied to any one identity, so a per-user lockout would be
+// trivially bypassed by an attacker who forges a different from.id on every
+// guess (possible if they're POSTing straight to the webhook rather than
+// tapping real buttons). One wrong 8-digit code blocks ALL further attempts
+// -- from anyone -- for LOCKOUT_MS, which turns a 10^8-combination brute
+// force into a decades-long affair regardless of who's asking.
+const LOCKOUT_MS = 30000;
+let lockedOutUntil = 0;
+
 // Shows entered digits as-is (not masked) with underscores for the
 // remaining slots, e.g. "1 9 7 5 _ _ _ _".
 function maskCode(entered) {
@@ -108,6 +118,13 @@ function createAdminBot(token) {
       await safeAnswerCbQuery(ctx);
       return;
     }
+
+    if (Date.now() < lockedOutUntil) {
+      const secondsLeft = Math.ceil((lockedOutUntil - Date.now()) / 1000);
+      await safeAnswerCbQuery(ctx, `⏳ ${secondsLeft}s kuting`);
+      return;
+    }
+
     let entered = loginState.get(ctx.from.id) || "";
     if (entered.length >= ADMIN_CODE.length) {
       await safeAnswerCbQuery(ctx);
@@ -129,7 +146,12 @@ function createAdminBot(token) {
       await ctx.reply("Admin panel:", adminMenuKeyboard());
     } else {
       loginState.set(ctx.from.id, "");
-      await safeEditMessageText(ctx, `❌ Noto'g'ri kod. Qaytadan urinib ko'ring:\n${maskCode("")}`, pinKeyboard());
+      lockedOutUntil = Date.now() + LOCKOUT_MS;
+      await safeEditMessageText(
+        ctx,
+        `❌ Noto'g'ri kod. ${LOCKOUT_MS / 1000} soniyadan keyin qayta urinib ko'ring:\n${maskCode("")}`,
+        pinKeyboard()
+      );
     }
   });
 

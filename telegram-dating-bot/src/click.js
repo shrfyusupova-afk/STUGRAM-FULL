@@ -58,8 +58,23 @@ const UNLOCK_PRICE_SOM = 7900;
 // candidate profile the payment grants access to.
 function createOrder(userId, { type = "premium", targetId } = {}) {
   const amount = type === "unlock" ? UNLOCK_PRICE_SOM : PREMIUM_PRICE_SOM;
-  const merchantTransId = `${type}_${userId}_${Date.now()}`;
   const all = readTx();
+
+  // Reopening the same paywall without paying (e.g. tapping the paywall link
+  // again) reuses the still-pending order instead of piling up an abandoned
+  // row every time -- clickTransactions.json would otherwise grow forever.
+  const existingId = Object.keys(all).find((id) => {
+    const tx = all[id];
+    return (
+      tx.status === "pending" &&
+      tx.userId === String(userId) &&
+      tx.type === type &&
+      (type !== "unlock" || tx.targetId === String(targetId))
+    );
+  });
+  if (existingId) return existingId;
+
+  const merchantTransId = `${type}_${userId}_${Date.now()}`;
   all[merchantTransId] = {
     userId: String(userId),
     type,

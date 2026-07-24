@@ -6,3 +6,5 @@ data/likes.json
 data/clickTransactions.json
 data/admins.json
 data/unlocks.json
+data/dislikes.json
+data/discoverState.json

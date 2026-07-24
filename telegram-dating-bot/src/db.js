@@ -6,6 +6,8 @@ const LANG_DB_PATH = path.join(__dirname, "..", "data", "languages.json");
 const LIKES_DB_PATH = path.join(__dirname, "..", "data", "likes.json");
 const ADMINS_DB_PATH = path.join(__dirname, "..", "data", "admins.json");
 const UNLOCKS_DB_PATH = path.join(__dirname, "..", "data", "unlocks.json");
+const DISLIKES_DB_PATH = path.join(__dirname, "..", "data", "dislikes.json");
+const DISCOVER_STATE_PATH = path.join(__dirname, "..", "data", "discoverState.json");
 
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -60,6 +62,11 @@ function setPremiumUntil(userId, untilIso) {
   return all[key];
 }
 
+function hasPremium(userId) {
+  const profile = getProfile(userId);
+  return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
+}
+
 function recordLike(likerId, likedId) {
   const all = readJson(LIKES_DB_PATH);
   const key = String(likedId);
@@ -93,6 +100,42 @@ function grantUnlock(buyerId, candidateId) {
   set.add(String(candidateId));
   all[key] = [...set];
   writeJson(UNLOCKS_DB_PATH, all);
+}
+
+// Dislikes are permanent (unlike the old in-memory-only "shown this session"
+// tracking) so a disliked profile never resurfaces in discovery again, even
+// after the in-memory pool cycles or the process restarts.
+function recordDislike(userId, candidateId) {
+  const all = readJson(DISLIKES_DB_PATH);
+  const key = String(userId);
+  const set = new Set(all[key] || []);
+  set.add(String(candidateId));
+  all[key] = [...set];
+  writeJson(DISLIKES_DB_PATH, all);
+}
+
+function getDislikes(userId) {
+  return readJson(DISLIKES_DB_PATH)[String(userId)] || [];
+}
+
+// Which candidate is currently on screen for a user, and which candidates
+// they've already been shown this pool-cycle. Persisted to disk (not just an
+// in-memory Map) so a Render free-tier restart mid-session doesn't silently
+// disconnect a ❤️/👎 tap from the candidate it was actually about.
+function getDiscoverState(userId) {
+  return readJson(DISCOVER_STATE_PATH)[String(userId)] || null;
+}
+
+function setDiscoverState(userId, state) {
+  const all = readJson(DISCOVER_STATE_PATH);
+  all[String(userId)] = state;
+  writeJson(DISCOVER_STATE_PATH, all);
+}
+
+function clearDiscoverState(userId) {
+  const all = readJson(DISCOVER_STATE_PATH);
+  delete all[String(userId)];
+  writeJson(DISCOVER_STATE_PATH, all);
 }
 
 function isAdmin(userId) {
@@ -131,4 +174,10 @@ module.exports = {
   hasLiked,
   hasUnlocked,
   grantUnlock,
+  hasPremium,
+  recordDislike,
+  getDislikes,
+  getDiscoverState,
+  setDiscoverState,
+  clearDiscoverState,
 };

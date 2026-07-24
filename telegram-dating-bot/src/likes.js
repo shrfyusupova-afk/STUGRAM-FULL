@@ -1,7 +1,13 @@
 const { Markup } = require("telegraf");
-const { getProfile, getLikers, getLanguage, recordLike } = require("./db");
+const { getProfile, getLikers, getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
-const { sendCandidate, buildProfileCaption, canViewProfile, viewProfileKeyboard } = require("./discover");
+const {
+  sendCandidate,
+  buildProfileCaption,
+  canViewProfile,
+  viewProfileKeyboard,
+  recordLikeWithMatchNotification,
+} = require("./discover");
 
 const LIKE = "❤️";
 const DISLIKE = "👎";
@@ -26,7 +32,7 @@ function registerLikesHandlers(bot) {
     const likerIds = getLikers(myId);
     const likers = likerIds
       .map((id) => ({ id, profile: getProfile(id) }))
-      .filter((entry) => entry.profile?.mediaFileId);
+      .filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
 
     if (likers.length === 0) {
       await ctx.reply(t(lang, "noLikesYet"));
@@ -45,7 +51,7 @@ function registerLikesHandlers(bot) {
     const candidateId = ctx.match[1];
     const myId = ctx.from.id;
     const lang = getLanguage(myId) || DEFAULT_LANG;
-    recordLike(myId, candidateId);
+    await recordLikeWithMatchNotification(ctx, myId, candidateId);
     await ctx.answerCbQuery(t(lang, "matchedToast"));
 
     const candidate = getProfile(candidateId);

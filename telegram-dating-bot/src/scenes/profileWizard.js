@@ -163,7 +163,11 @@ async function finish(ctx, lang, profile) {
 const profileWizard = new Scenes.WizardScene(
   "profile-wizard",
   async (ctx) => {
-    ctx.wizard.state.profile = {};
+    // Editing seeds the draft from the existing record so fields the wizard
+    // never touches (active, premiumUntil) survive the save -- a fresh
+    // signup has no prior record, so it really does start blank.
+    const existing = ctx.wizard.state.isEditing ? getProfile(ctx.from.id) : null;
+    ctx.wizard.state.profile = existing ? { ...existing } : {};
     ctx.wizard.state.lang = ctx.wizard.state.lang || DEFAULT_LANG;
     ctx.wizard.state.stepIndex = 0;
     await renderStep(ctx, STEP_ORDER[0]);

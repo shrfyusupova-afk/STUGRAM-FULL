@@ -1,5 +1,18 @@
 const { Markup } = require("telegraf");
-const { getProfile, getAllProfiles, getLanguage, recordLike, hasLiked, hasUnlocked } = require("./db");
+const {
+  getProfile,
+  getAllProfiles,
+  getLanguage,
+  recordLike,
+  hasLiked,
+  hasUnlocked,
+  hasPremium,
+  recordDislike,
+  getDislikes,
+  getDiscoverState,
+  setDiscoverState,
+  clearDiscoverState,
+} = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu } = require("./menu");
@@ -8,11 +21,9 @@ const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 const LIKE = "❤️";
 const DISLIKE = "👎";
 
-// In-memory only: which candidate is currently shown to each user, and which
-// candidates they've already been shown this run (avoids immediate repeats
-// until the pool is exhausted, then cycles again). Resets on restart --
-// acceptable for this early version of the discovery feature.
-const discoverState = new Map();
+// Premium profiles are shown more often: each copy of a premium candidate is
+// added to the random-pick pool this many times over.
+const PREMIUM_VISIBILITY_WEIGHT = 3;
 
 function escapeHtml(value) {
   return String(value)
@@ -28,26 +39,39 @@ function oppositeGender(gender) {
 function pickCandidate(userId, myGender) {
   const all = getAllProfiles();
   const wanted = oppositeGender(myGender);
+  const disliked = new Set(getDislikes(userId));
   const pool = Object.entries(all).filter(
-    ([id, p]) => id !== String(userId) && p.gender === wanted && p.mediaFileId && p.phone && p.active !== false
+    ([id, p]) =>
+      id !== String(userId) &&
+      p.gender === wanted &&
+      p.mediaFileId &&
+      p.phone &&
+      p.active !== false &&
+      !disliked.has(id)
   );
   if (pool.length === 0) return null;
 
-  let state = discoverState.get(userId);
-  if (!state) {
-    state = { currentId: null, shown: new Set() };
-    discoverState.set(userId, state);
-  }
+  // Persisted (not just in-memory) so a Render restart mid-session can't
+  // desync "what's on screen" from the next ❤️/👎 tap.
+  const persisted = getDiscoverState(userId) || { currentId: null, shown: [] };
+  let shown = new Set(persisted.shown);
 
-  let remaining = pool.filter(([id]) => !state.shown.has(id));
+  let remaining = pool.filter(([id]) => !shown.has(id));
   if (remaining.length === 0) {
-    state.shown.clear();
+    shown = new Set();
     remaining = pool;
   }
 
-  const [id, profile] = remaining[Math.floor(Math.random() * remaining.length)];
-  state.currentId = id;
-  state.shown.add(id);
+  const weighted = [];
+  for (const entry of remaining) {
+    const [id] = entry;
+    const copies = hasPremium(id) ? PREMIUM_VISIBILITY_WEIGHT : 1;
+    for (let i = 0; i < copies; i++) weighted.push(entry);
+  }
+
+  const [id, profile] = weighted[Math.floor(Math.random() * weighted.length)];
+  shown.add(id);
+  setDiscoverState(userId, { currentId: id, shown: [...shown] });
   return { id, profile };
 }
 
@@ -94,10 +118,15 @@ async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, cap
   }
 }
 
-// True once the viewer can see this candidate's contact for free: either they
-// paid for a one-time unlock, or both sides have liked each other.
+// True once the viewer can see this candidate's contact for free: they paid
+// for a one-time unlock, both sides have liked each other, or the viewer has
+// an active Premium subscription (its whole point is unlimited access).
 function canViewProfile(viewerId, candidateId) {
-  return hasUnlocked(viewerId, candidateId) || (hasLiked(viewerId, candidateId) && hasLiked(candidateId, viewerId));
+  return (
+    hasUnlocked(viewerId, candidateId) ||
+    hasPremium(viewerId) ||
+    (hasLiked(viewerId, candidateId) && hasLiked(candidateId, viewerId))
+  );
 }
 
 function viewProfileKeyboard(lang, candidateId) {
@@ -111,6 +140,36 @@ async function revealProfile(ctx, lang, candidateId) {
     return;
   }
   await sendCandidate(ctx, lang, candidateId, candidate, undefined, { includeUnlock: false, contactPhone: candidate.phone });
+}
+
+// Shared by the discover swipe (❤️) and the "who liked me" like-back button --
+// records the like, and if that's the like that JUST completed a mutual
+// match (the other side already liked first, and this is the first time we
+// like them back), pushes a "you matched" message with a free view-profile
+// button to both sides. A repeat tap on an already-mutual pair is a no-op
+// here (recordLike is idempotent) and must not re-notify.
+async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
+  const alreadyLikedByMe = hasLiked(likerId, likedId);
+  recordLike(likerId, likedId);
+  if (alreadyLikedByMe || !hasLiked(likedId, likerId)) return;
+
+  const me = getProfile(likerId);
+  const them = getProfile(likedId);
+  if (!me || !them) return;
+
+  const myLang = getLanguage(likerId) || DEFAULT_LANG;
+  const theirLang = getLanguage(likedId) || DEFAULT_LANG;
+
+  try {
+    await ctx.telegram.sendMessage(likerId, t(myLang, "matchNotification")(them.name), viewProfileKeyboard(myLang, likedId));
+  } catch (err) {
+    console.error("match notification (liker) failed:", err.message);
+  }
+  try {
+    await ctx.telegram.sendMessage(likedId, t(theirLang, "matchNotification")(me.name), viewProfileKeyboard(theirLang, likerId));
+  } catch (err) {
+    console.error("match notification (liked) failed:", err.message);
+  }
 }
 
 async function showNextCandidate(ctx, lang, myGender) {
@@ -135,9 +194,9 @@ function registerDiscoverHandlers(bot) {
   });
 
   bot.hears(LIKE, async (ctx) => {
-    const state = discoverState.get(ctx.from.id);
+    const state = getDiscoverState(ctx.from.id);
     if (state?.currentId) {
-      recordLike(ctx.from.id, state.currentId);
+      await recordLikeWithMatchNotification(ctx, ctx.from.id, state.currentId);
     }
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
@@ -145,6 +204,10 @@ function registerDiscoverHandlers(bot) {
   });
 
   bot.hears(DISLIKE, async (ctx) => {
+    const state = getDiscoverState(ctx.from.id);
+    if (state?.currentId) {
+      recordDislike(ctx.from.id, state.currentId);
+    }
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
     await showNextCandidate(ctx, lang, me?.gender);
@@ -157,7 +220,7 @@ function registerDiscoverHandlers(bot) {
   bot.hears(backLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
-    discoverState.delete(ctx.from.id);
+    clearDiscoverState(ctx.from.id);
     if (me) {
       await sendMainMenu(ctx, me, lang);
     }
@@ -214,4 +277,5 @@ module.exports = {
   buildProfileCaption,
   canViewProfile,
   viewProfileKeyboard,
+  recordLikeWithMatchNotification,
 };
