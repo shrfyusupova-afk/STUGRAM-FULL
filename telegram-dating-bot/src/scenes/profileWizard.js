@@ -2,12 +2,13 @@ const { Scenes, Markup } = require("telegraf");
 const { getProfile, saveProfile } = require("../db");
 const { sendMainMenu } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
+const { getUsername } = require("../botInfo");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
 const MAX_BIO_LENGTH = 80;
 
-const STEP_ORDER = ["name", "age", "gender", "media", "location", "bio", "contact"];
+const STEP_ORDER = ["name", "age", "gender", "media", "location", "bio", "contact", "confirm"];
 
 function backKeyboard(lang, extraButtons = []) {
   return Markup.keyboard([...extraButtons.map((b) => [b]), [t(lang, "backButton")]]).resize();
@@ -60,6 +61,19 @@ const RENDERERS = {
       t(lang, "askContact"),
       backKeyboard(lang, [Markup.button.contactRequest(t(lang, "contactButton"))])
     );
+  },
+  // The policy link is a real deep link back into this same bot
+  // (/start policy), so tapping it works the same way as a candidate card's
+  // unlock link -- opens the bot, which then sends the actual document.
+  confirm: async (ctx, lang) => {
+    const username = getUsername();
+    const policyUrl = username ? `https://t.me/${username}?start=policy` : null;
+    const linkLabel = t(lang, "policyLinkText");
+    const linkHtml = policyUrl ? `<a href="${policyUrl}">${linkLabel}</a>` : linkLabel;
+    await ctx.reply(t(lang, "confirmIntro")(linkHtml), {
+      parse_mode: "HTML",
+      ...backKeyboard(lang, [t(lang, "confirmYesButton")]),
+    });
   },
 };
 
@@ -151,6 +165,14 @@ const HANDLERS = {
       return false;
     }
     profile.phone = contact.phone_number;
+    return true;
+  },
+  confirm: async (ctx, lang) => {
+    const text = ctx.message?.text?.trim();
+    if (text !== t(lang, "confirmYesButton")) {
+      await ctx.reply(t(lang, "confirmError"));
+      return false;
+    }
     return true;
   },
 };

@@ -12,6 +12,7 @@ const { createAdminBot } = require("./adminBot");
 const { getProfile, getLanguage, setLanguage, setPremiumUntil, grantUnlock } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
+const { sendPolicyDocument } = require("./policy");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -52,10 +53,17 @@ function languageKeyboard() {
 
 // Every /start shows the language picker first, even for returning users --
 // the choice is re-confirmed (and can be changed) on every fresh start.
-// The one exception is a "start=unlock_<id>" deep link (tapped from a
-// candidate card's unlock link), which skips straight to that flow.
+// The exceptions are a "start=unlock_<id>" deep link (tapped from a
+// candidate card's unlock link) and "start=policy" (tapped from the
+// registration confirmation step's agreement link), both of which skip
+// straight to their own flow instead of showing the language picker.
 bot.start(async (ctx) => {
   const payload = ctx.startPayload;
+  if (payload === "policy") {
+    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    await sendPolicyDocument(ctx, lang);
+    return;
+  }
   if (payload && payload.startsWith("unlock_")) {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const candidateId = payload.slice("unlock_".length);
