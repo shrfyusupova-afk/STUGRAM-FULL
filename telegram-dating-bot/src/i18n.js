@@ -59,15 +59,15 @@ const STRINGS = {
     unlockLinkText: (price) => `🔐 Profilni to'liq ko'rish (${price} so'm)`,
     unlockPaywallIntro:
       "🔐 Bu profilni to'liq ko'rish uchun to'lov talab qilinadi\n\n" +
-      "💳 Narxi: 7 900 so'm — har bir profil uchun alohida\n\n" +
+      "💳 Narxi: 7 900 so'm — har bir profil uchun alohida\n" +
+      "🆓 (Agar tekin yo'ldan foydalanmoqchi bo'lsangiz, u insonning ham sizga layk bosishini kuting 😉)\n\n" +
       "💎 Agar barcha nomzodlarning profilini cheklovsiz ko'rmoqchi bo'lsangiz, Premium tarifga ulanishni tavsiya qilamiz! ✨",
     unlockPayButton: "🔓 Profil egasini ko'rish — 7 900 so'm",
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
-    unlockAlreadyOwned: (name, phone) =>
-      `✅ Siz ${name} anketasiga avval to'lov qilgansiz.\n\n📞 ${phone}\n\nBemalol bog'laning! 🎉`,
-    unlockSuccessContact: (name, phone) =>
-      `🎉 To'lov muvaffaqiyatli o'tdi!\n\n👤 ${name}\n📞 ${phone}\n\nEndi siz bemalol bog'lanishingiz mumkin! 💌`,
+    viewProfileButton: "👁 Profilni ko'rish",
+    unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!\n\n👁 Profilni ko'rish uchun pastdagi tugmani bosing:",
+    matchedToast: "🎉 Mos tushdingiz! Endi profilni bepul ko'rishingiz mumkin.",
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
@@ -143,15 +143,15 @@ const STRINGS = {
     unlockLinkText: (price) => `🔐 Посмотреть анкету полностью (${price} сум)`,
     unlockPaywallIntro:
       "🔐 Чтобы посмотреть эту анкету полностью, требуется оплата\n\n" +
-      "💳 Цена: 7 900 сум — за каждую анкету отдельно\n\n" +
+      "💳 Цена: 7 900 сум — за каждую анкету отдельно\n" +
+      "🆓 (Если хотите бесплатно, дождитесь, пока этот человек тоже поставит вам лайк 😉)\n\n" +
       "💎 Если хотите смотреть анкеты всех кандидатов без ограничений, рекомендуем подключить Premium! ✨",
     unlockPayButton: "🔓 Посмотреть анкету — 7 900 сум",
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
-    unlockAlreadyOwned: (name, phone) =>
-      `✅ Вы уже оплатили доступ к анкете ${name}.\n\n📞 ${phone}\n\nМожете смело написать! 🎉`,
-    unlockSuccessContact: (name, phone) =>
-      `🎉 Оплата прошла успешно!\n\n👤 ${name}\n📞 ${phone}\n\nТеперь вы можете смело связаться! 💌`,
+    viewProfileButton: "👁 Посмотреть анкету",
+    unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!\n\n👁 Нажмите кнопку ниже, чтобы посмотреть анкету:",
+    matchedToast: "🎉 Это совпадение! Теперь вы можете бесплатно посмотреть анкету.",
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
@@ -227,15 +227,15 @@ const STRINGS = {
     unlockLinkText: (price) => `🔐 View full profile (${price} UZS)`,
     unlockPaywallIntro:
       "🔐 Viewing this profile in full requires a payment\n\n" +
-      "💳 Price: 7,900 UZS — per profile\n\n" +
+      "💳 Price: 7,900 UZS — per profile\n" +
+      "🆓 (If you'd like the free way, wait for that person to like you back too 😉)\n\n" +
       "💎 If you'd like unlimited access to every candidate's profile, we recommend subscribing to Premium! ✨",
     unlockPayButton: "🔓 View this profile — 7,900 UZS",
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
-    unlockAlreadyOwned: (name, phone) =>
-      `✅ You've already paid to view ${name}'s profile.\n\n📞 ${phone}\n\nFeel free to reach out! 🎉`,
-    unlockSuccessContact: (name, phone) =>
-      `🎉 Payment successful!\n\n👤 ${name}\n📞 ${phone}\n\nYou can now reach out directly! 💌`,
+    viewProfileButton: "👁 View profile",
+    unlockPaymentSuccessIntro: "🎉 Payment successful!\n\n👁 Tap the button below to view the profile:",
+    matchedToast: "🎉 It's a match! You can now view the profile for free.",
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,

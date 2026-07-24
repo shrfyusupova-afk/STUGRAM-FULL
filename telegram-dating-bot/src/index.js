@@ -121,11 +121,17 @@ if (webhookDomain) {
       if (order.type === "unlock" && order.targetId) {
         grantUnlock(order.userId, order.targetId);
         const candidate = getProfile(order.targetId);
-        const message =
-          candidate && candidate.phone
-            ? t(lang, "unlockSuccessContact")(candidate.name, candidate.phone)
-            : t(lang, "unlockSuccessNoContact");
-        await bot.telegram.sendMessage(order.userId, message);
+        if (candidate) {
+          await bot.telegram.sendMessage(
+            order.userId,
+            t(lang, "unlockPaymentSuccessIntro"),
+            Markup.inlineKeyboard([
+              [Markup.button.callback(t(lang, "viewProfileButton"), `unlock:view:${order.targetId}`)],
+            ])
+          );
+        } else {
+          await bot.telegram.sendMessage(order.userId, t(lang, "unlockSuccessNoContact"));
+        }
         console.log(`Unlock granted: buyer ${order.userId} -> candidate ${order.targetId} (${order.amount} so'm via Click)`);
         return;
       }

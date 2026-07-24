@@ -1,5 +1,5 @@
 const { Markup } = require("telegraf");
-const { getProfile, getAllProfiles, getLanguage, recordLike, hasUnlocked, grantUnlock } = require("./db");
+const { getProfile, getAllProfiles, getLanguage, recordLike, hasLiked, hasUnlocked } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu } = require("./menu");
@@ -55,11 +55,18 @@ function discoverKeyboard(lang) {
   return Markup.keyboard([[LIKE, DISLIKE], [t(lang, "backButton")]]).resize();
 }
 
-function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true } = {}) {
+// contactPhone is set once the viewer has actual access to this candidate
+// (paid unlock or mutual like) -- it replaces the paywall line with the
+// candidate's verified phone number, regardless of includeUnlock.
+function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true, contactPhone } = {}) {
   const base =
     `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
     `📍 ${escapeHtml(profile.location)}\n\n` +
     `${escapeHtml(profile.bio)}`;
+
+  if (contactPhone) {
+    return `${base}\n\n📞 ${escapeHtml(contactPhone)}`;
+  }
 
   if (!includeUnlock) return base;
 
@@ -85,6 +92,25 @@ async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, cap
   } else {
     await ctx.replyWithPhoto(profile.mediaFileId, extra);
   }
+}
+
+// True once the viewer can see this candidate's contact for free: either they
+// paid for a one-time unlock, or both sides have liked each other.
+function canViewProfile(viewerId, candidateId) {
+  return hasUnlocked(viewerId, candidateId) || (hasLiked(viewerId, candidateId) && hasLiked(candidateId, viewerId));
+}
+
+function viewProfileKeyboard(lang, candidateId) {
+  return Markup.inlineKeyboard([[Markup.button.callback(t(lang, "viewProfileButton"), `unlock:view:${candidateId}`)]]);
+}
+
+async function revealProfile(ctx, lang, candidateId) {
+  const candidate = getProfile(candidateId);
+  if (!candidate) {
+    await ctx.reply(t(lang, "unlockSuccessNoContact"));
+    return;
+  }
+  await sendCandidate(ctx, lang, candidateId, candidate, undefined, { includeUnlock: false, contactPhone: candidate.phone });
 }
 
 async function showNextCandidate(ctx, lang, myGender) {
@@ -142,19 +168,32 @@ function registerDiscoverHandlers(bot) {
     await ctx.answerCbQuery();
     await ctx.reply(t(lang, "unlockNotConfigured"));
   });
+
+  // Fired by the "👁 Profilni ko'rish" button shown either after a successful
+  // Click payment or after a mutual like -- re-checks access before revealing
+  // anything, since a forwarded/stale button could otherwise leak it.
+  bot.action(/^unlock:view:(.+)$/, async (ctx) => {
+    const candidateId = ctx.match[1];
+    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    await ctx.answerCbQuery();
+    if (!canViewProfile(ctx.from.id, candidateId)) {
+      await handleUnlockDeepLink(ctx, lang, candidateId);
+      return;
+    }
+    await revealProfile(ctx, lang, candidateId);
+  });
 }
 
 // Reached via the "🔐 ... (7 900 so'm)" link inside a candidate's card,
-// which deep-links back into the bot as /start unlock_<candidateId>.
+// which deep-links back into the bot as /start unlock_<candidateId>. If the
+// viewer already has access (paid before, or a mutual like happened since),
+// this skips the paywall entirely and shows the profile straight away.
 async function handleUnlockDeepLink(ctx, lang, candidateId) {
   const buyerId = ctx.from.id;
 
-  if (candidateId && hasUnlocked(buyerId, candidateId)) {
-    const candidate = getProfile(candidateId);
-    if (candidate?.phone) {
-      await ctx.reply(t(lang, "unlockAlreadyOwned")(candidate.name, candidate.phone));
-      return;
-    }
+  if (candidateId && canViewProfile(buyerId, candidateId)) {
+    await revealProfile(ctx, lang, candidateId);
+    return;
   }
 
   const orderId = candidateId ? createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
@@ -168,4 +207,11 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
   await ctx.reply(t(lang, "unlockPaywallIntro"), Markup.inlineKeyboard([[premiumButton], [unlockButton]]));
 }
 
-module.exports = { registerDiscoverHandlers, handleUnlockDeepLink, sendCandidate };
+module.exports = {
+  registerDiscoverHandlers,
+  handleUnlockDeepLink,
+  sendCandidate,
+  buildProfileCaption,
+  canViewProfile,
+  viewProfileKeyboard,
+};

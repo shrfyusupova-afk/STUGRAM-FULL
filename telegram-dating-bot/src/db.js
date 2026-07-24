@@ -73,6 +73,10 @@ function getLikers(userId) {
   return readJson(LIKES_DB_PATH)[String(userId)] || [];
 }
 
+function hasLiked(likerId, likedId) {
+  return getLikers(likedId).includes(String(likerId));
+}
+
 // Per-profile paid unlocks: { [buyerId]: [candidateId, ...] }. Once a buyer
 // has paid for a candidate's contact once, they never have to pay again for
 // that same candidate.
@@ -124,6 +128,7 @@ module.exports = {
   setLanguage,
   recordLike,
   getLikers,
+  hasLiked,
   hasUnlocked,
   grantUnlock,
 };
