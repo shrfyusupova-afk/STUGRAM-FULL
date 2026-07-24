@@ -79,6 +79,8 @@ const STRINGS = {
     profileActivated: "✅ Anketangiz faollashtirildi. Endi boshqalarga ko'rinasiz.",
     profileStatusActive: "🟢 Faol",
     profileStatusInactive: "🔴 Faolsiz",
+    profilePremiumActive: (date) => `💎 Premium: faol (${date} gacha)`,
+    profilePremiumNone: "💎 Premium: yo'q",
     noProfileYet: "Sizda hali anketa yo'q. Avval /start orqali anketa to'ldiring.",
   },
   ru: {
@@ -151,6 +153,8 @@ const STRINGS = {
     profileActivated: "✅ Ваша анкета активирована. Теперь она видна другим.",
     profileStatusActive: "🟢 Активна",
     profileStatusInactive: "🔴 Неактивна",
+    profilePremiumActive: (date) => `💎 Премиум: активен (до ${date})`,
+    profilePremiumNone: "💎 Премиум: нет",
     noProfileYet: "У вас пока нет анкеты. Сначала заполните её через /start.",
   },
   en: {
@@ -223,6 +227,8 @@ const STRINGS = {
     profileActivated: "✅ Your profile has been activated. Others can see it now.",
     profileStatusActive: "🟢 Active",
     profileStatusInactive: "🔴 Inactive",
+    profilePremiumActive: (date) => `💎 Premium: active (until ${date})`,
+    profilePremiumNone: "💎 Premium: none",
     noProfileYet: "You don't have a profile yet. Fill one out first via /start.",
   },
 };

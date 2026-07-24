@@ -46,7 +46,13 @@ function registerProfileSettingsHandlers(bot) {
       return;
     }
     await sendCandidate(ctx, lang, ctx.from.id, me, undefined, { includeUnlock: false });
-    await ctx.reply(me.active === false ? t(lang, "profileStatusInactive") : t(lang, "profileStatusActive"));
+    const isPremiumNow = !!me.premiumUntil && new Date(me.premiumUntil) > new Date();
+    const premiumLine = isPremiumNow
+      ? t(lang, "profilePremiumActive")(new Date(me.premiumUntil).toISOString().slice(0, 10))
+      : t(lang, "profilePremiumNone");
+    await ctx.reply(
+      `${me.active === false ? t(lang, "profileStatusInactive") : t(lang, "profileStatusActive")}\n${premiumLine}`
+    );
   });
 
   bot.hears(deactivateLabels, async (ctx) => {
