@@ -5,6 +5,7 @@ const { t, DEFAULT_LANG } = require("../i18n");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
+const MAX_BIO_LENGTH = 80;
 
 const STEP_ORDER = ["name", "age", "gender", "media", "location", "bio", "contact"];
 
@@ -130,7 +131,7 @@ const HANDLERS = {
   },
   bio: async (ctx, lang, profile) => {
     const text = ctx.message?.text?.trim();
-    if (!text || text.length > 500) {
+    if (!text || text.length > MAX_BIO_LENGTH) {
       await ctx.reply(t(lang, "errBio"));
       return false;
     }

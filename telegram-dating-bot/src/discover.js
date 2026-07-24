@@ -94,7 +94,7 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
   const base =
     `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
     `📍 ${escapeHtml(profile.location)}\n\n` +
-    `${escapeHtml(profile.bio)}`;
+    `${t(lang, "bioLabel")}\n<i>${escapeHtml(profile.bio)}</i>`;
 
   if (contactPhone) {
     return `${base}\n\n📞 ${escapeHtml(contactPhone)}`;
@@ -104,8 +104,9 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
 
   const username = getUsername();
   const unlockUrl = username ? `https://t.me/${username}?start=unlock_${candidateId}` : null;
+  // unlockLinkText already includes its own 🔐 prefix -- don't add a second one here.
   const unlockLabel = escapeHtml(t(lang, "unlockLinkText")(UNLOCK_PRICE_SOM.toLocaleString("uz-UZ")));
-  const unlockLine = unlockUrl ? `🔐 <a href="${unlockUrl}">${unlockLabel}</a>` : `🔐 ${unlockLabel}`;
+  const unlockLine = unlockUrl ? `<a href="${unlockUrl}">${unlockLabel}</a>` : unlockLabel;
 
   return `${base}\n\n\n${unlockLine}`;
 }
