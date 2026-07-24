@@ -51,13 +51,20 @@ function verifyCompleteSign(body, secretKey) {
 
 const PREMIUM_PRICE_SOM = 69000;
 const PREMIUM_DAYS = 30;
+const UNLOCK_PRICE_SOM = 7900;
 
-function createOrder(userId) {
-  const merchantTransId = `prem_${userId}_${Date.now()}`;
+// type: "premium" (subscription) or "unlock" (pay once to view a single
+// candidate's contact). targetId is only meaningful for "unlock" -- it's the
+// candidate profile the payment grants access to.
+function createOrder(userId, { type = "premium", targetId } = {}) {
+  const amount = type === "unlock" ? UNLOCK_PRICE_SOM : PREMIUM_PRICE_SOM;
+  const merchantTransId = `${type}_${userId}_${Date.now()}`;
   const all = readTx();
   all[merchantTransId] = {
     userId: String(userId),
-    amount: PREMIUM_PRICE_SOM,
+    type,
+    ...(targetId ? { targetId: String(targetId) } : {}),
+    amount,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
@@ -67,7 +74,7 @@ function createOrder(userId) {
 
 // Returns null when CLICK_MERCHANT_ID/CLICK_SERVICE_ID aren't configured yet --
 // callers should fall back to a "not set up yet" message in that case.
-function buildCheckoutUrl(merchantTransId) {
+function buildCheckoutUrl(merchantTransId, amountSom) {
   const merchantId = process.env.CLICK_MERCHANT_ID;
   const serviceId = process.env.CLICK_SERVICE_ID;
   if (!merchantId || !serviceId) return null;
@@ -75,15 +82,16 @@ function buildCheckoutUrl(merchantTransId) {
   const params = new URLSearchParams({
     service_id: serviceId,
     merchant_id: merchantId,
-    amount: String(PREMIUM_PRICE_SOM),
+    amount: String(amountSom),
     transaction_param: merchantTransId,
   });
   return `https://my.click.uz/services/pay?${params.toString()}`;
 }
 
 // Registers Click's two merchant webhook actions on an existing Express app.
-// onPaid(userId, amountSom) is called once, exactly when a transaction first
-// transitions to "paid" (guarded against Click's at-least-once delivery).
+// onPaid(order) is called once, exactly when a transaction first transitions
+// to "paid" (guarded against Click's at-least-once delivery). order is the
+// full stored record: { userId, type, targetId?, amount, ... }.
 function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
   const middleware = bodyParser ? [bodyParser] : [];
@@ -186,7 +194,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 
     if (onPaid) {
       try {
-        await onPaid(order.userId, order.amount);
+        await onPaid(order);
       } catch (err) {
         console.error("Click onPaid handler failed:", err);
       }
@@ -205,8 +213,12 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 function getSalesSummary() {
   const all = Object.values(readTx());
   const paid = all.filter((tx) => tx.status === "paid");
-  const totalRevenue = paid.reduce((sum, tx) => sum + tx.amount, 0);
-  return { count: paid.length, totalRevenue };
+  const premiumPaid = paid.filter((tx) => tx.type !== "unlock");
+  const unlockPaid = paid.filter((tx) => tx.type === "unlock");
+  return {
+    premium: { count: premiumPaid.length, totalRevenue: premiumPaid.reduce((sum, tx) => sum + tx.amount, 0) },
+    unlock: { count: unlockPaid.length, totalRevenue: unlockPaid.reduce((sum, tx) => sum + tx.amount, 0) },
+  };
 }
 
 module.exports = {
@@ -218,4 +230,5 @@ module.exports = {
   verifyCompleteSign,
   PREMIUM_PRICE_SOM,
   PREMIUM_DAYS,
+  UNLOCK_PRICE_SOM,
 };

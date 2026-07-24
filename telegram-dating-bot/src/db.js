@@ -5,6 +5,7 @@ const DB_PATH = path.join(__dirname, "..", "data", "profiles.json");
 const LANG_DB_PATH = path.join(__dirname, "..", "data", "languages.json");
 const LIKES_DB_PATH = path.join(__dirname, "..", "data", "likes.json");
 const ADMINS_DB_PATH = path.join(__dirname, "..", "data", "admins.json");
+const UNLOCKS_DB_PATH = path.join(__dirname, "..", "data", "unlocks.json");
 
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return {};
@@ -72,6 +73,24 @@ function getLikers(userId) {
   return readJson(LIKES_DB_PATH)[String(userId)] || [];
 }
 
+// Per-profile paid unlocks: { [buyerId]: [candidateId, ...] }. Once a buyer
+// has paid for a candidate's contact once, they never have to pay again for
+// that same candidate.
+function hasUnlocked(buyerId, candidateId) {
+  const all = readJson(UNLOCKS_DB_PATH);
+  const list = all[String(buyerId)] || [];
+  return list.includes(String(candidateId));
+}
+
+function grantUnlock(buyerId, candidateId) {
+  const all = readJson(UNLOCKS_DB_PATH);
+  const key = String(buyerId);
+  const set = new Set(all[key] || []);
+  set.add(String(candidateId));
+  all[key] = [...set];
+  writeJson(UNLOCKS_DB_PATH, all);
+}
+
 function isAdmin(userId) {
   return !!readJson(ADMINS_DB_PATH)[String(userId)];
 }
@@ -105,4 +124,6 @@ module.exports = {
   setLanguage,
   recordLike,
   getLikers,
+  hasUnlocked,
+  grantUnlock,
 };

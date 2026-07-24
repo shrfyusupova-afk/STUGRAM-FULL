@@ -1,8 +1,9 @@
 const { Markup } = require("telegraf");
-const { getProfile, getAllProfiles, getLanguage, recordLike } = require("./db");
+const { getProfile, getAllProfiles, getLanguage, recordLike, hasUnlocked, grantUnlock } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu } = require("./menu");
+const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 
 const LIKE = "❤️";
 const DISLIKE = "👎";
@@ -64,7 +65,7 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true 
 
   const username = getUsername();
   const unlockUrl = username ? `https://t.me/${username}?start=unlock_${candidateId}` : null;
-  const unlockLabel = escapeHtml(t(lang, "unlockLinkText"));
+  const unlockLabel = escapeHtml(t(lang, "unlockLinkText")(UNLOCK_PRICE_SOM.toLocaleString("uz-UZ")));
   const unlockLine = unlockUrl ? `🔐 <a href="${unlockUrl}">${unlockLabel}</a>` : `🔐 ${unlockLabel}`;
 
   return `${base}\n\n\n${unlockLine}`;
@@ -139,15 +140,32 @@ function registerDiscoverHandlers(bot) {
   bot.action("unlock:noop", async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     await ctx.answerCbQuery();
-    await ctx.reply(t(lang, "unlockPlaceholder"));
+    await ctx.reply(t(lang, "unlockNotConfigured"));
   });
 }
 
-async function handleUnlockDeepLink(ctx, lang) {
-  await ctx.reply(
-    t(lang, "unlockPlaceholder"),
-    Markup.inlineKeyboard([[Markup.button.callback(t(lang, "unlockButton"), "unlock:noop")]])
-  );
+// Reached via the "🔐 ... (7 900 so'm)" link inside a candidate's card,
+// which deep-links back into the bot as /start unlock_<candidateId>.
+async function handleUnlockDeepLink(ctx, lang, candidateId) {
+  const buyerId = ctx.from.id;
+
+  if (candidateId && hasUnlocked(buyerId, candidateId)) {
+    const candidate = getProfile(candidateId);
+    if (candidate?.phone) {
+      await ctx.reply(t(lang, "unlockAlreadyOwned")(candidate.name, candidate.phone));
+      return;
+    }
+  }
+
+  const orderId = candidateId ? createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
+  const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
+
+  const unlockButton = clickUrl
+    ? Markup.button.url(t(lang, "unlockPayButton"), clickUrl)
+    : Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop");
+  const premiumButton = Markup.button.callback(t(lang, "unlockPremiumButton"), "premium:offer");
+
+  await ctx.reply(t(lang, "unlockPaywallIntro"), Markup.inlineKeyboard([[premiumButton], [unlockButton]]));
 }
 
 module.exports = { registerDiscoverHandlers, handleUnlockDeepLink, sendCandidate };

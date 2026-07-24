@@ -173,21 +173,22 @@ function createAdminBot(token) {
     })
   );
 
-  // "Sotilgan akkauntlar" (private-chat unlock purchases) and "VIP kanallar"
-  // aren't real, purchasable features yet (both are still placeholders
+  // "VIP kanallar" isn't a real, purchasable feature yet (still a placeholder
   // elsewhere in the bot) -- shown as not-yet-launched rather than
-  // fabricating numbers for something nobody can actually buy.
+  // fabricating numbers for something nobody can actually buy. Premium and
+  // per-profile unlocks are both real Click purchases now.
   bot.hears(
     SALES_LABEL,
     requireAdmin(async (ctx) => {
-      const premium = getSalesSummary();
+      const sales = getSalesSummary();
       await ctx.reply(
         `💰 Sotuvlar hisoboti\n\n` +
           `💎 Premium obuna:\n` +
-          `✅ Sotilgan: ${premium.count} ta\n` +
-          `💵 Jami tushum: ${premium.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `🔐 Sotilgan akkauntlar (shaxsiy chat huquqi):\n` +
-          `⏳ Hali ishga tushmagan\n\n` +
+          `✅ Sotilgan: ${sales.premium.count} ta\n` +
+          `💵 Jami tushum: ${sales.premium.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
+          `🔐 Sotilgan akkauntlar (profil ko'rish, 7 900 so'm/dona):\n` +
+          `✅ Sotilgan: ${sales.unlock.count} ta\n` +
+          `💵 Jami tushum: ${sales.unlock.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
           `📢 VIP kanallar:\n` +
           `⏳ Hali ishga tushmagan`
       );

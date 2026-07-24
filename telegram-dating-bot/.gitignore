@@ -5,3 +5,4 @@ data/languages.json
 data/likes.json
 data/clickTransactions.json
 data/admins.json
+data/unlocks.json

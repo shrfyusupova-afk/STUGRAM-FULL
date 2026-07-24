@@ -9,7 +9,7 @@ const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
-const { getProfile, getLanguage, setLanguage, setPremiumUntil } = require("./db");
+const { getProfile, getLanguage, setLanguage, setPremiumUntil, grantUnlock } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername } = require("./botInfo");
 
@@ -58,7 +58,8 @@ bot.start(async (ctx) => {
   const payload = ctx.startPayload;
   if (payload && payload.startsWith("unlock_")) {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await handleUnlockDeepLink(ctx, lang);
+    const candidateId = payload.slice("unlock_".length);
+    await handleUnlockDeepLink(ctx, lang, candidateId);
     return;
   }
   await ctx.reply("Choose your language", languageKeyboard());
@@ -114,12 +115,25 @@ if (webhookDomain) {
   const clickBodyParser = express.urlencoded({ extended: true });
   registerClickRoutes(app, {
     bodyParser: clickBodyParser,
-    onPaid: async (userId, amountSom) => {
+    onPaid: async (order) => {
+      const lang = getLanguage(order.userId) || DEFAULT_LANG;
+
+      if (order.type === "unlock" && order.targetId) {
+        grantUnlock(order.userId, order.targetId);
+        const candidate = getProfile(order.targetId);
+        const message =
+          candidate && candidate.phone
+            ? t(lang, "unlockSuccessContact")(candidate.name, candidate.phone)
+            : t(lang, "unlockSuccessNoContact");
+        await bot.telegram.sendMessage(order.userId, message);
+        console.log(`Unlock granted: buyer ${order.userId} -> candidate ${order.targetId} (${order.amount} so'm via Click)`);
+        return;
+      }
+
       const premiumUntil = new Date(Date.now() + PREMIUM_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      setPremiumUntil(userId, premiumUntil);
-      const lang = getLanguage(userId) || DEFAULT_LANG;
-      await bot.telegram.sendMessage(userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
-      console.log(`Premium activated for user ${userId} (${amountSom} so'm via Click)`);
+      setPremiumUntil(order.userId, premiumUntil);
+      await bot.telegram.sendMessage(order.userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
+      console.log(`Premium activated for user ${order.userId} (${order.amount} so'm via Click)`);
     },
   });
 

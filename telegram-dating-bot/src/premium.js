@@ -2,31 +2,36 @@ const QRCode = require("qrcode");
 const { Markup } = require("telegraf");
 const { getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
-const { createOrder, buildCheckoutUrl } = require("./click");
+const { createOrder, buildCheckoutUrl, PREMIUM_PRICE_SOM } = require("./click");
 
-// Payme was removed at the user's request -- Click is the only payment
-// option now. The checkout link itself only works once
-// CLICK_MERCHANT_ID/CLICK_SERVICE_ID are configured (buildCheckoutUrl
-// returns null until then), so it falls back to a "not configured" message,
-// and no QR code is generated (there's no real link to encode yet).
+// Shared by the "💎 Premium" menu button and the "👑 Premium'ga ulanish"
+// button shown on the pay-per-view paywall (discover.js) -- both should open
+// the exact same checkout, not two slightly different copies of it.
+async function sendPremiumOffer(ctx) {
+  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+  const orderId = createOrder(ctx.from.id, { type: "premium" });
+  const clickUrl = buildCheckoutUrl(orderId, PREMIUM_PRICE_SOM);
+
+  const button = clickUrl
+    ? Markup.button.url(t(lang, "premiumPayClickButton"), clickUrl)
+    : Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop");
+
+  await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard([[button]]));
+
+  if (clickUrl) {
+    const qrBuffer = await QRCode.toBuffer(clickUrl, { width: 400, margin: 2 });
+    await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
+  }
+}
+
 function registerPremiumHandlers(bot) {
   const premiumLabels = Object.values(STRINGS).map((dict) => dict.menu.premium);
 
-  bot.hears(premiumLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const orderId = createOrder(ctx.from.id);
-    const clickUrl = buildCheckoutUrl(orderId);
+  bot.hears(premiumLabels, sendPremiumOffer);
 
-    const button = clickUrl
-      ? Markup.button.url(t(lang, "premiumPayClickButton"), clickUrl)
-      : Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop");
-
-    await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard([[button]]));
-
-    if (clickUrl) {
-      const qrBuffer = await QRCode.toBuffer(clickUrl, { width: 400, margin: 2 });
-      await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
-    }
+  bot.action("premium:offer", async (ctx) => {
+    await ctx.answerCbQuery();
+    await sendPremiumOffer(ctx);
   });
 
   bot.action("premium:pay:click:noop", async (ctx) => {
@@ -36,4 +41,4 @@ function registerPremiumHandlers(bot) {
   });
 }
 
-module.exports = { registerPremiumHandlers };
+module.exports = { registerPremiumHandlers, sendPremiumOffer };
