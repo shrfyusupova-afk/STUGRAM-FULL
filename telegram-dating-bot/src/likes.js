@@ -4,7 +4,6 @@ const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const {
   sendCandidate,
   buildProfileCaption,
-  canViewProfile,
   viewProfileKeyboard,
   recordLikeWithMatchNotification,
 } = require("./discover");
@@ -47,13 +46,12 @@ function registerLikesHandlers(bot) {
       // covers Premium/paid-unlock). Otherwise a Premium user would never
       // see the ❤️ button here at all, could never like a liker back, and
       // the other person would never get notified of a real match.
-      // includeUnlock, separately, is fine to base on canViewProfile: it
-      // just controls whether the caption still pitches the paywall to
-      // someone who doesn't need to pay.
+      // includeUnlock is always false here: liking back is the free path
+      // already offered right on this card via the ❤️ button, so there's
+      // nothing to pitch a paywall for.
       const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
-      const freeAccess = canViewProfile(myId, id);
       const keyboard = mutualMatch ? viewProfileKeyboard(lang, id) : respondKeyboard(id);
-      await sendCandidate(ctx, lang, id, profile, keyboard, { includeUnlock: !freeAccess });
+      await sendCandidate(ctx, lang, id, profile, keyboard, { includeUnlock: false });
     }
   });
 

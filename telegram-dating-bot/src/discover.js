@@ -139,8 +139,19 @@ function canViewProfile(viewerId, candidateId) {
   );
 }
 
+// A real link (deep link into /start unlock_<id>), not a callback button, so
+// tapping it takes the user straight to the profile in one hop -- the
+// bot.start handler's "unlock_" branch already reveals it immediately
+// whenever canViewProfile is true (mutual like, paid unlock, or Premium),
+// which is always the case by the time this button is ever shown. Falls
+// back to the old callback button only if the bot's username isn't cached
+// yet (e.g. right at boot, before getMe() resolves).
 function viewProfileKeyboard(lang, candidateId) {
-  return Markup.inlineKeyboard([[Markup.button.callback(t(lang, "viewProfileButton"), `unlock:view:${candidateId}`)]]);
+  const username = getUsername();
+  const button = username
+    ? Markup.button.url(t(lang, "viewProfileButton"), `https://t.me/${username}?start=unlock_${candidateId}`)
+    : Markup.button.callback(t(lang, "viewProfileButton"), `unlock:view:${candidateId}`);
+  return Markup.inlineKeyboard([[button]]);
 }
 
 async function revealProfile(ctx, lang, candidateId) {
