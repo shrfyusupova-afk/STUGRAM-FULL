@@ -7,6 +7,7 @@ const { registerDiscoverHandlers, handleUnlockDeepLink } = require("./discover")
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
+const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const { getProfile, getLanguage, setLanguage, setPremiumUntil, grantUnlock } = require("./db");
@@ -103,6 +104,7 @@ registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
 registerProfileSettingsHandlers(bot);
 registerPremiumHandlers(bot);
+registerVipChatHandlers(bot);
 
 bot.telegram
   .getMe()
@@ -147,6 +149,12 @@ if (webhookDomain) {
           await bot.telegram.sendMessage(order.userId, t(lang, "unlockSuccessNoContact"));
         }
         console.log(`Unlock granted: buyer ${order.userId} -> candidate ${order.targetId} (${order.amount} so'm via Click)`);
+        return;
+      }
+
+      if (order.type === "vipchat") {
+        await bot.telegram.sendMessage(order.userId, t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
+        console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 

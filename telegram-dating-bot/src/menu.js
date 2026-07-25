@@ -1,6 +1,5 @@
 const { Markup } = require("telegraf");
-const { STRINGS, DEFAULT_LANG, t } = require("./i18n");
-const { getLanguage } = require("./db");
+const { t } = require("./i18n");
 
 // A persistent bottom (reply) keyboard, not an inline keyboard attached to
 // one chat message -- stays docked under the input box across the whole
@@ -20,23 +19,9 @@ async function sendMainMenu(ctx, profile, lang) {
   await ctx.reply(t(lang, "profileSaved")(profile), mainMenuKeyboard(lang));
 }
 
-// Menu button labels are localized, so a single user's keyboard only shows
-// one language's labels -- but bot.hears must recognize the label no matter
-// which language it was rendered in, since different users can be on
-// different languages at the same time.
-// "discover", "likes", "profile", and "premium" are deliberately excluded
-// here -- discover.js, likes.js, profileSettings.js, and premium.js register
-// the real handlers for those buttons instead of a placeholder reply.
-function registerMenuHandlers(bot) {
-  const KEYS = ["vip"];
-
-  for (const key of KEYS) {
-    const labelsForKey = Object.values(STRINGS).map((dict) => dict.menu[key]);
-    bot.hears(labelsForKey, async (ctx) => {
-      const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-      await ctx.reply(t(lang, "menuPlaceholders")[key]);
-    });
-  }
-}
+// Every main-menu button now has a real handler registered by its own
+// module (discover.js, likes.js, profileSettings.js, premium.js, vipChat.js)
+// -- there's nothing left for a generic placeholder loop to cover.
+function registerMenuHandlers() {}
 
 module.exports = { mainMenuKeyboard, sendMainMenu, registerMenuHandlers };

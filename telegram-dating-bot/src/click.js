@@ -52,12 +52,20 @@ function verifyCompleteSign(body, secretKey) {
 const PREMIUM_PRICE_SOM = 69000;
 const PREMIUM_DAYS = 30;
 const UNLOCK_PRICE_SOM = 7900;
+const VIP_CHAT_PRICE_SOM = 59900;
 
-// type: "premium" (subscription) or "unlock" (pay once to view a single
-// candidate's contact). targetId is only meaningful for "unlock" -- it's the
-// candidate profile the payment grants access to.
+function priceForType(type) {
+  if (type === "unlock") return UNLOCK_PRICE_SOM;
+  if (type === "vipchat") return VIP_CHAT_PRICE_SOM;
+  return PREMIUM_PRICE_SOM;
+}
+
+// type: "premium" (subscription), "unlock" (pay once to view a single
+// candidate's contact), or "vipchat" (pay once to join the VIP chat group,
+// men only -- women join free). targetId is only meaningful for "unlock" --
+// it's the candidate profile the payment grants access to.
 function createOrder(userId, { type = "premium", targetId } = {}) {
-  const amount = type === "unlock" ? UNLOCK_PRICE_SOM : PREMIUM_PRICE_SOM;
+  const amount = priceForType(type);
   const all = readTx();
 
   // Reopening the same paywall without paying (e.g. tapping the paywall link
@@ -228,11 +236,13 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 function getSalesSummary() {
   const all = Object.values(readTx());
   const paid = all.filter((tx) => tx.status === "paid");
-  const premiumPaid = paid.filter((tx) => tx.type !== "unlock");
+  const premiumPaid = paid.filter((tx) => tx.type !== "unlock" && tx.type !== "vipchat");
   const unlockPaid = paid.filter((tx) => tx.type === "unlock");
+  const vipchatPaid = paid.filter((tx) => tx.type === "vipchat");
   return {
     premium: { count: premiumPaid.length, totalRevenue: premiumPaid.reduce((sum, tx) => sum + tx.amount, 0) },
     unlock: { count: unlockPaid.length, totalRevenue: unlockPaid.reduce((sum, tx) => sum + tx.amount, 0) },
+    vipchat: { count: vipchatPaid.length, totalRevenue: vipchatPaid.reduce((sum, tx) => sum + tx.amount, 0) },
   };
 }
 
@@ -246,4 +256,5 @@ module.exports = {
   PREMIUM_PRICE_SOM,
   PREMIUM_DAYS,
   UNLOCK_PRICE_SOM,
+  VIP_CHAT_PRICE_SOM,
 };

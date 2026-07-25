@@ -195,10 +195,8 @@ function createAdminBot(token) {
     })
   );
 
-  // "VIP kanallar" isn't a real, purchasable feature yet (still a placeholder
-  // elsewhere in the bot) -- shown as not-yet-launched rather than
-  // fabricating numbers for something nobody can actually buy. Premium and
-  // per-profile unlocks are both real Click purchases now.
+  // Premium, per-profile unlocks, and VIP chat access are all real Click
+  // purchases now.
   bot.hears(
     SALES_LABEL,
     requireAdmin(async (ctx) => {
@@ -211,8 +209,9 @@ function createAdminBot(token) {
           `🔐 Sotilgan akkauntlar (profil ko'rish, 7 900 so'm/dona):\n` +
           `✅ Sotilgan: ${sales.unlock.count} ta\n` +
           `💵 Jami tushum: ${sales.unlock.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `📢 VIP kanallar:\n` +
-          `⏳ Hali ishga tushmagan`
+          `📢 VIP chat (yigitlar, 59 900 so'm/dona):\n` +
+          `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
+          `💵 Jami tushum: ${sales.vipchat.totalRevenue.toLocaleString("uz-UZ")} so'm`
       );
     })
   );

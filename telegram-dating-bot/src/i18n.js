@@ -59,9 +59,25 @@ const STRINGS = {
       vip: "👑 VIP suhbat",
       premium: "💎 Premium",
     },
-    menuPlaceholders: {
-      vip: "👑 Chat bo'limi ustida qattiq ish olib borilmoqda. Tez orada yangilik bo'ladi! 🚧🔥",
-    },
+    vipIntro:
+      "👑 VIP Chat — bu yerda sizni nimalar kutmoqda?\n\n" +
+      "🎉 Yangi do'stlar orttirasiz\n" +
+      "🎲 Mafiya o'yinini o'ynab, ajoyib hordiq chiqarasiz\n" +
+      "💃 Kundan-kunga ko'payib borayotgan qizlar bilan tanishasiz\n" +
+      "💍 Omadingiz kelsa — hayotingizning yarim bo'lagini shu yerda topishingiz mumkin!\n\n" +
+      "⏳ Hoziroq ulgurib qoling — qizlar ko'paygani sari, kirish narxi ham oshib boradi!\n\n" +
+      "💵 Narxi:\n" +
+      "👦 Yigitlar uchun — 59 900 so'm\n" +
+      "👧 Qizlar uchun — 🆓 Mutlaqo bepul\n\n" +
+      "😉 Va'da beraman — bu yerda zerikishga vaqtingiz bo'lmaydi!",
+    vipPayButton: "💳 To'lov qilmoqchiman",
+    vipJoinFreeButton: "🔗 Bepul qo'shilish",
+    vipChoosePaymentIntro: "💳 To'lov usulini tanlang:",
+    vipClickButton: "💳 Click orqali to'lash",
+    vipPaymeButton: "💳 Payme orqali to'lash",
+    vipClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
+    vipPaymeNotConfigured: "💳 Payme to'lovi hali ulanmagan. Tez orada qo'shiladi! 🚧",
+    vipJoinMessage: (link) => `🎉 Xush kelibsiz! Guruhga qo'shilish uchun havola:\n${link}`,
     discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
     unlockLinkText: (price) => `🔐 Profilni to'liq ko'rish (${price} so'm)`,
     unlockPaywallIntro:
@@ -152,9 +168,25 @@ const STRINGS = {
       vip: "👑 VIP чат",
       premium: "💎 Премиум",
     },
-    menuPlaceholders: {
-      vip: "👑 Ведётся активная работа над разделом чата. Совсем скоро новости! 🚧🔥",
-    },
+    vipIntro:
+      "👑 VIP Chat — что вас здесь ждёт?\n\n" +
+      "🎉 Заведёте новых друзей\n" +
+      "🎲 Сыграете в Мафию и отлично отдохнёте\n" +
+      "💃 Познакомитесь с девушками, которых с каждым днём становится всё больше\n" +
+      "💍 Если повезёт — найдёте свою вторую половинку прямо здесь!\n\n" +
+      "⏳ Успейте сейчас — чем больше девушек, тем выше становится цена входа!\n\n" +
+      "💵 Цена:\n" +
+      "👦 Для парней — 59 900 сум\n" +
+      "👧 Для девушек — 🆓 Совершенно бесплатно\n\n" +
+      "😉 Обещаю — скучать здесь не придётся!",
+    vipPayButton: "💳 Хочу оплатить",
+    vipJoinFreeButton: "🔗 Присоединиться бесплатно",
+    vipChoosePaymentIntro: "💳 Выберите способ оплаты:",
+    vipClickButton: "💳 Оплатить через Click",
+    vipPaymeButton: "💳 Оплатить через Payme",
+    vipClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена. Скоро заработает! 🚧",
+    vipPaymeNotConfigured: "💳 Оплата через Payme ещё не подключена. Скоро появится! 🚧",
+    vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
     discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
     unlockLinkText: (price) => `🔐 Посмотреть анкету полностью (${price} сум)`,
     unlockPaywallIntro:
@@ -245,9 +277,25 @@ const STRINGS = {
       vip: "👑 VIP chat",
       premium: "💎 Premium",
     },
-    menuPlaceholders: {
-      vip: "👑 We're working hard on the chat feature. Big news coming soon! 🚧🔥",
-    },
+    vipIntro:
+      "👑 VIP Chat — what's waiting for you here?\n\n" +
+      "🎉 Make new friends\n" +
+      "🎲 Play Mafia and have a great time\n" +
+      "💃 Meet girls — and there are more of them every day\n" +
+      "💍 If you're lucky, you might just find your other half right here!\n\n" +
+      "⏳ Join now — the price goes up as more girls join!\n\n" +
+      "💵 Price:\n" +
+      "👦 For guys — 59,900 UZS\n" +
+      "👧 For girls — 🆓 Completely free\n\n" +
+      "😉 I promise — you won't be bored here!",
+    vipPayButton: "💳 I want to pay",
+    vipJoinFreeButton: "🔗 Join for free",
+    vipChoosePaymentIntro: "💳 Choose a payment method:",
+    vipClickButton: "💳 Pay with Click",
+    vipPaymeButton: "💳 Pay with Payme",
+    vipClickNotConfigured: "💳 Click payments aren't fully set up yet. Coming soon! 🚧",
+    vipPaymeNotConfigured: "💳 Payme payments aren't connected yet. Coming soon! 🚧",
+    vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
     discoverNoCandidates: "No matching candidates found yet. Try again later.",
     unlockLinkText: (price) => `🔐 View full profile (${price} UZS)`,
     unlockPaywallIntro:
