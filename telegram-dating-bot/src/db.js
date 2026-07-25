@@ -76,8 +76,12 @@ function setAnonGenderFilterUntil(userId, untilIso) {
   return all[key];
 }
 
+// Active Premium includes free gender-filter access in anonymous chat (a
+// separate paid perk on its own, 12,900 so'm/week) for as long as Premium
+// lasts -- no separate anongender purchase needed while Premium is active.
 function hasAnonGenderFilter(userId) {
   const profile = getProfile(userId);
+  if (hasPremium(userId)) return true;
   return !!profile?.anonGenderUntil && new Date(profile.anonGenderUntil) > new Date();
 }
 

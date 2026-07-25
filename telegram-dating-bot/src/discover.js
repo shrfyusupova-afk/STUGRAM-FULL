@@ -139,19 +139,20 @@ function canViewProfile(viewerId, candidateId) {
   );
 }
 
-// A real link (deep link into /start unlock_<id>), not a callback button, so
-// tapping it takes the user straight to the profile in one hop -- the
-// bot.start handler's "unlock_" branch already reveals it immediately
-// whenever canViewProfile is true (mutual like, paid unlock, or Premium),
-// which is always the case by the time this button is ever shown. Falls
-// back to the old callback button only if the bot's username isn't cached
-// yet (e.g. right at boot, before getMe() resolves).
-function viewProfileKeyboard(lang, candidateId) {
-  const username = getUsername();
-  const button = username
-    ? Markup.button.url(t(lang, "viewProfileButton"), `https://t.me/${username}?start=unlock_${candidateId}`)
-    : Markup.button.callback(t(lang, "viewProfileButton"), `unlock:view:${candidateId}`);
-  return Markup.inlineKeyboard([[button]]);
+// Sends a candidate's profile straight to an arbitrary chat (not necessarily
+// the current ctx's chat) with the contact phone already revealed -- no
+// "View profile" button/tap in between. Used to show both sides of a match
+// their new profile immediately, right under the "matched!" text.
+async function sendProfileToChat(telegram, chatId, lang, candidateId) {
+  const candidate = getProfile(candidateId);
+  if (!candidate) return;
+  const caption = buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false, contactPhone: candidate.phone });
+  const extra = { caption, parse_mode: "HTML" };
+  if (candidate.mediaType === "video") {
+    await telegram.sendVideo(chatId, candidate.mediaFileId, extra);
+  } else {
+    await telegram.sendPhoto(chatId, candidate.mediaFileId, extra);
+  }
 }
 
 async function revealProfile(ctx, lang, candidateId) {
@@ -166,9 +167,10 @@ async function revealProfile(ctx, lang, candidateId) {
 // Shared by the discover swipe (❤️) and the "who liked me" like-back button --
 // records the like, and if that's the like that JUST completed a mutual
 // match (the other side already liked first, and this is the first time we
-// like them back), pushes a "you matched" message with a free view-profile
-// button to both sides. A repeat tap on an already-mutual pair is a no-op
-// here (recordLike is idempotent) and must not re-notify.
+// like them back), pushes a "you matched" message straight to both sides,
+// with the other person's profile (contact revealed) sent right underneath
+// -- no "View profile" tap required. A repeat tap on an already-mutual pair
+// is a no-op here (recordLike is idempotent) and must not re-notify.
 async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const alreadyLikedByMe = hasLiked(likerId, likedId);
   recordLike(likerId, likedId);
@@ -182,12 +184,20 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const theirLang = getLanguage(likedId) || DEFAULT_LANG;
 
   try {
-    await ctx.telegram.sendMessage(likerId, t(myLang, "matchNotification")(them.name), viewProfileKeyboard(myLang, likedId));
+    await ctx.telegram.sendMessage(
+      likerId,
+      `${t(myLang, "matchNotification")(them.name)}\n\n${t(myLang, "profileBelowIntro")}`
+    );
+    await sendProfileToChat(ctx.telegram, likerId, myLang, likedId);
   } catch (err) {
     console.error("match notification (liker) failed:", err.message);
   }
   try {
-    await ctx.telegram.sendMessage(likedId, t(theirLang, "matchNotification")(me.name), viewProfileKeyboard(theirLang, likerId));
+    await ctx.telegram.sendMessage(
+      likedId,
+      `${t(theirLang, "matchNotification")(me.name)}\n\n${t(theirLang, "profileBelowIntro")}`
+    );
+    await sendProfileToChat(ctx.telegram, likedId, theirLang, likerId);
   } catch (err) {
     console.error("match notification (liked) failed:", err.message);
   }
@@ -257,11 +267,9 @@ function registerDiscoverHandlers(bot) {
     await ctx.reply(t(lang, "unlockNotConfigured"));
   });
 
-  // Fired by the "👁 Profilni ko'rish" button shown either after a successful
-  // Click payment or after a mutual like -- re-checks access before revealing
-  // anything, since a forwarded/stale button could otherwise leak it. Uses
-  // safeAnswerCbQuery so a transient ack failure can't silently swallow the
-  // one thing this button exists to do (show what was just paid for).
+  // Kept for messages sent before profile reveals became direct (no button) --
+  // re-checks access before revealing anything, since a forwarded/stale
+  // button could otherwise leak it.
   bot.action(/^unlock:view:(.+)$/, async (ctx) => {
     const candidateId = ctx.match[1];
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
@@ -301,8 +309,8 @@ module.exports = {
   registerDiscoverHandlers,
   handleUnlockDeepLink,
   sendCandidate,
+  sendProfileToChat,
   buildProfileCaption,
   canViewProfile,
-  viewProfileKeyboard,
   recordLikeWithMatchNotification,
 };

@@ -4,7 +4,6 @@ const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const {
   sendCandidate,
   buildProfileCaption,
-  viewProfileKeyboard,
   recordLikeWithMatchNotification,
 } = require("./discover");
 const { safeAnswerCbQuery } = require("./telegramSafety");
@@ -41,17 +40,19 @@ function registerLikesHandlers(bot) {
 
     await ctx.reply(t(lang, "likesIntro")(likers.length));
     for (const { id, profile } of likers) {
-      // Whether to show ❤️/👎 vs. the view button depends ONLY on whether
-      // it's a genuine mutual like -- NOT on canViewProfile (which also
-      // covers Premium/paid-unlock). Otherwise a Premium user would never
-      // see the ❤️ button here at all, could never like a liker back, and
-      // the other person would never get notified of a real match.
+      // Whether to show ❤️/👎 vs. the contact directly depends ONLY on
+      // whether it's a genuine mutual like -- NOT on canViewProfile (which
+      // also covers Premium/paid-unlock). Otherwise a Premium user would
+      // never see the ❤️ button here at all, could never like a liker back,
+      // and the other person would never get notified of a real match.
       // includeUnlock is always false here: liking back is the free path
       // already offered right on this card via the ❤️ button, so there's
-      // nothing to pitch a paywall for.
+      // nothing to pitch a paywall for. A mutual match reveals the contact
+      // directly on the card -- no separate "View profile" tap needed.
       const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
-      const keyboard = mutualMatch ? viewProfileKeyboard(lang, id) : respondKeyboard(id);
-      await sendCandidate(ctx, lang, id, profile, keyboard, { includeUnlock: false });
+      const captionOptions = mutualMatch ? { includeUnlock: false, contactPhone: profile.phone } : { includeUnlock: false };
+      const keyboard = mutualMatch ? undefined : respondKeyboard(id);
+      await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
     }
   });
 
@@ -59,6 +60,9 @@ function registerLikesHandlers(bot) {
     const candidateId = ctx.match[1];
     const myId = ctx.from.id;
     const lang = getLanguage(myId) || DEFAULT_LANG;
+    // Sends the "matched!" text + the other person's profile (contact
+    // revealed) directly to both sides -- nothing further needed from this
+    // card, so it's just cleaned up below (buttons removed).
     await recordLikeWithMatchNotification(ctx, myId, candidateId);
     await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
@@ -67,7 +71,6 @@ function registerLikesHandlers(bot) {
     try {
       await ctx.editMessageCaption(buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false }), {
         parse_mode: "HTML",
-        reply_markup: viewProfileKeyboard(lang, candidateId).reply_markup,
       });
     } catch (err) {
       console.error("likeback:like editMessageCaption failed (ignored):", err.message);

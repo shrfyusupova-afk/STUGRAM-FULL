@@ -49,7 +49,7 @@ function verifyCompleteSign(body, secretKey) {
   return expected === body.sign_string;
 }
 
-const PREMIUM_PRICE_SOM = 69000;
+const PREMIUM_PRICE_SOM = 79900;
 const PREMIUM_DAYS = 30;
 const UNLOCK_PRICE_SOM = 7900;
 const VIP_CHAT_PRICE_SOM = 59900;

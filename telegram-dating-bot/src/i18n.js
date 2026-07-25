@@ -72,6 +72,7 @@ const STRINGS = {
       "🔒 Muayyan jins bilan suhbatlashish — maxsus xizmat!\n\n" +
       "💳 Narxi: atigi 12 900 so'm / hafta\n" +
       "📅 Ushbu tarif faollashtirilgan kundan boshlab 7 kun davomida amal qiladi — shu muddat ichida xohlagan jinsni tanlab, cheklovsiz suhbatlashishingiz mumkin.\n\n" +
+      "💎 (Premium obunangiz bo'lsa, bu funksiya sizga avtomatik ravishda BEPUL!)\n\n" +
       "To'lov qilmoqchimisiz? 😊",
     anonPayButton: "💳 To'lov qilish",
     anonNotConfigured: "💳 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
@@ -108,25 +109,27 @@ const STRINGS = {
     discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
     unlockLinkText: (price) => `🔐 Profilni to'liq ko'rish (${price} so'm)`,
     unlockPaywallIntro:
-      "🔐 Bu profilni to'liq ko'rish uchun to'lov talab qilinadi\n\n" +
-      "💳 Narxi: 7 900 so'm — har bir profil uchun alohida\n" +
+      "🔐 Bu profilni ko'rish huquqini olishni xohlaysizmi?\n\n" +
+      "💳 Xizmatimiz pullik va bu 7 900 so'mni tashkil qiladi — har bir profil uchun alohida.\n" +
       "🆓 (Agar tekin yo'ldan foydalanmoqchi bo'lsangiz, u insonning ham sizga layk bosishini kuting 😉)\n\n" +
-      "💎 Agar barcha nomzodlarning profilini cheklovsiz ko'rmoqchi bo'lsangiz, Premium tarifga ulanishni tavsiya qilamiz! ✨",
-    unlockPayButton: "🔓 Profil egasini ko'rish — 7 900 so'm",
+      "💎 Agar barcha profillarni bepul, cheklovsiz ko'rmoqchi bo'lsangiz — Premium tarifga ulanishingizni maslahat beramiz! ✨",
+    unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
-    viewProfileButton: "👁 Profilni ko'rish",
-    unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!\n\n👁 Profilni ko'rish uchun pastdagi tugmani bosing:",
+    profileBelowIntro: "👇 Bu insonning profili pastda:",
+    unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!",
     matchedToast: "🎉 Mos tushdingiz! Endi profilni bepul ko'rishingiz mumkin.",
-    matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz! Profilni bepul ko'rishingiz mumkin.`,
+    matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz!`,
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
     premiumDetails:
       "💎 Premium obuna — 1 oy\n\n" +
-      "✅ Har bir nomzodning shaxsiy chatiga cheksiz kirish huquqi (🔐 alohida to'lovsiz)\n" +
-      "✅ Profilingiz boshqa foydalanuvchilarga ko'proq va tez-tez ko'rsatiladi\n\n" +
-      "💵 Narxi: 69 000 so'm / 1 oy",
+      "Premium bilan sizga nima beriladi? 👇\n\n" +
+      "🔓 Har bir nomzodning shaxsiy chatiga cheksiz kirish (🔐 alohida to'lovsiz)\n" +
+      "🔥 Profilingiz boshqalarga ko'proq va tez-tez ko'rsatiladi\n" +
+      "🕵️ Anonim chatda xohlagan jinsni (qiz yoki o'g'il) tanlab suhbatlashish huquqi — 1 oy davomida BEPUL! (odatda 12 900 so'm/hafta turadi)\n\n" +
+      "💵 Narxi: 79 900 so'm / 1 oy",
     premiumPayClickButton: "💳 Click orqali to'lash",
     premiumPayClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan (Merchant ID / Service ID kutilmoqda).",
     premiumQrCaption: "📷 Yoki shu QR kodni skanerlab to'lang",
@@ -208,6 +211,7 @@ const STRINGS = {
       "🔒 Выбор конкретного пола — платная услуга!\n\n" +
       "💳 Цена: всего 12 900 сум / неделя\n" +
       "📅 Этот тариф действует 7 дней с момента активации — в течение этого времени вы можете выбирать пол собеседника без ограничений.\n\n" +
+      "💎 (Если у вас есть Premium, эта функция уже БЕСПЛАТНА для вас!)\n\n" +
       "Хотите оплатить? 😊",
     anonPayButton: "💳 Оплатить",
     anonNotConfigured: "💳 Оплата ещё не полностью настроена. Скоро заработает! 🚧",
@@ -244,25 +248,27 @@ const STRINGS = {
     discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
     unlockLinkText: (price) => `🔐 Посмотреть анкету полностью (${price} сум)`,
     unlockPaywallIntro:
-      "🔐 Чтобы посмотреть эту анкету полностью, требуется оплата\n\n" +
-      "💳 Цена: 7 900 сум — за каждую анкету отдельно\n" +
+      "🔐 Хотите получить доступ к просмотру этой анкеты?\n\n" +
+      "💳 Наша услуга платная и стоит 7 900 сум — за каждую анкету отдельно.\n" +
       "🆓 (Если хотите бесплатно, дождитесь, пока этот человек тоже поставит вам лайк 😉)\n\n" +
-      "💎 Если хотите смотреть анкеты всех кандидатов без ограничений, рекомендуем подключить Premium! ✨",
-    unlockPayButton: "🔓 Посмотреть анкету — 7 900 сум",
+      "💎 Если хотите смотреть все анкеты бесплатно и без ограничений — рекомендуем подключить Premium! ✨",
+    unlockPayButton: "🔓 Получить доступ к анкете",
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
-    viewProfileButton: "👁 Посмотреть анкету",
-    unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!\n\n👁 Нажмите кнопку ниже, чтобы посмотреть анкету:",
+    profileBelowIntro: "👇 Профиль этого человека ниже:",
+    unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!",
     matchedToast: "🎉 Это совпадение! Теперь вы можете бесплатно посмотреть анкету.",
-    matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}! Теперь вы можете бесплатно посмотреть анкету.`,
+    matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}!`,
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
     premiumDetails:
       "💎 Премиум подписка — 1 месяц\n\n" +
-      "✅ Неограниченный доступ к личному чату каждого кандидата (без отдельной оплаты 🔐)\n" +
-      "✅ Ваш профиль показывается другим пользователям чаще и заметнее\n\n" +
-      "💵 Цена: 69 000 сум / 1 месяц",
+      "Что вы получаете с Premium? 👇\n\n" +
+      "🔓 Неограниченный доступ к личному чату каждого кандидата (без отдельной оплаты 🔐)\n" +
+      "🔥 Ваш профиль показывается другим пользователям чаще и заметнее\n" +
+      "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n\n" +
+      "💵 Цена: 79 900 сум / 1 месяц",
     premiumPayClickButton: "💳 Оплатить через Click",
     premiumPayClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена (ожидаются Merchant ID / Service ID).",
     premiumQrCaption: "📷 Или отсканируйте этот QR-код для оплаты",
@@ -344,6 +350,7 @@ const STRINGS = {
       "🔒 Choosing a specific gender is a paid feature!\n\n" +
       "💳 Price: only 12,900 UZS / week\n" +
       "📅 This plan lasts 7 days from activation — during that time you can pick either gender with no limits.\n\n" +
+      "💎 (If you have Premium, this feature is already FREE for you!)\n\n" +
       "Would you like to pay? 😊",
     anonPayButton: "💳 Pay",
     anonNotConfigured: "💳 Payments aren't fully set up yet. Coming soon! 🚧",
@@ -380,25 +387,27 @@ const STRINGS = {
     discoverNoCandidates: "No matching candidates found yet. Try again later.",
     unlockLinkText: (price) => `🔐 View full profile (${price} UZS)`,
     unlockPaywallIntro:
-      "🔐 Viewing this profile in full requires a payment\n\n" +
-      "💳 Price: 7,900 UZS — per profile\n" +
+      "🔐 Want to get access to view this profile?\n\n" +
+      "💳 Our service is paid and costs 7,900 UZS — per profile.\n" +
       "🆓 (If you'd like the free way, wait for that person to like you back too 😉)\n\n" +
-      "💎 If you'd like unlimited access to every candidate's profile, we recommend subscribing to Premium! ✨",
-    unlockPayButton: "🔓 View this profile — 7,900 UZS",
+      "💎 If you'd like unlimited free access to every profile — we recommend subscribing to Premium! ✨",
+    unlockPayButton: "🔓 Get access to this profile",
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
-    viewProfileButton: "👁 View profile",
-    unlockPaymentSuccessIntro: "🎉 Payment successful!\n\n👁 Tap the button below to view the profile:",
+    profileBelowIntro: "👇 Their profile is below:",
+    unlockPaymentSuccessIntro: "🎉 Payment successful!",
     matchedToast: "🎉 It's a match! You can now view the profile for free.",
-    matchNotification: (name) => `🎉 You and ${name} matched! You can now view the profile for free.`,
+    matchNotification: (name) => `🎉 You and ${name} matched!`,
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,
     premiumDetails:
       "💎 Premium subscription — 1 month\n\n" +
-      "✅ Unlimited access to every candidate's private chat (no separate 🔐 payments)\n" +
-      "✅ Your profile is shown to other users more often and more prominently\n\n" +
-      "💵 Price: 69,000 UZS / month",
+      "What do you get with Premium? 👇\n\n" +
+      "🔓 Unlimited access to every candidate's private chat (no separate 🔐 payments)\n" +
+      "🔥 Your profile is shown to other users more often and more prominently\n" +
+      "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n\n" +
+      "💵 Price: 79,900 UZS / month",
     premiumPayClickButton: "💳 Pay with Click",
     premiumPayClickNotConfigured: "💳 Click payments aren't fully set up yet (waiting on Merchant ID / Service ID).",
     premiumQrCaption: "📷 Or scan this QR code to pay",

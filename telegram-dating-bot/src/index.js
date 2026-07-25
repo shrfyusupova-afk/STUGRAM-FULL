@@ -3,7 +3,7 @@ const express = require("express");
 const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
-const { registerDiscoverHandlers, handleUnlockDeepLink, viewProfileKeyboard } = require("./discover");
+const { registerDiscoverHandlers, handleUnlockDeepLink, sendProfileToChat } = require("./discover");
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
@@ -146,9 +146,9 @@ if (webhookDomain) {
         if (candidate) {
           await bot.telegram.sendMessage(
             order.userId,
-            t(lang, "unlockPaymentSuccessIntro"),
-            viewProfileKeyboard(lang, order.targetId)
+            `${t(lang, "unlockPaymentSuccessIntro")}\n\n${t(lang, "profileBelowIntro")}`
           );
+          await sendProfileToChat(bot.telegram, order.userId, lang, order.targetId);
         } else {
           await bot.telegram.sendMessage(order.userId, t(lang, "unlockSuccessNoContact"));
         }
