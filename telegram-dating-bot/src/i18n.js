@@ -44,6 +44,7 @@ const STRINGS = {
     confirmYesButton: "✅ Ha",
     confirmError: 'Iltimos, pastdagi "✅ Ha" tugmasini bosing.',
     policyLinkText: "Maxfiylik siyosati va Foydalanuvchi kelishuviga",
+    mainMenuIntro: "🏠 Bosh menyu",
     profileSaved: (p) =>
       `✅ Anketangiz saqlandi!\n\n` +
       `👤 Ism: ${p.name}\n` +
@@ -153,6 +154,7 @@ const STRINGS = {
     confirmYesButton: "✅ Да",
     confirmError: 'Пожалуйста, нажмите кнопку "✅ Да" ниже.',
     policyLinkText: "Политикой конфиденциальности и Пользовательским соглашением",
+    mainMenuIntro: "🏠 Главное меню",
     profileSaved: (p) =>
       `✅ Ваша анкета сохранена!\n\n` +
       `👤 Имя: ${p.name}\n` +
@@ -262,6 +264,7 @@ const STRINGS = {
     confirmYesButton: "✅ Yes",
     confirmError: 'Please tap the "✅ Yes" button below.',
     policyLinkText: "Privacy Policy and User Agreement",
+    mainMenuIntro: "🏠 Main menu",
     profileSaved: (p) =>
       `✅ Your profile has been saved!\n\n` +
       `👤 Name: ${p.name}\n` +

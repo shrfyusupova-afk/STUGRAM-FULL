@@ -231,7 +231,7 @@ function registerDiscoverHandlers(bot) {
     const me = getProfile(ctx.from.id);
     clearDiscoverState(ctx.from.id);
     if (me) {
-      await sendMainMenu(ctx, me, lang);
+      await sendMainMenu(ctx, lang);
     }
   });
 

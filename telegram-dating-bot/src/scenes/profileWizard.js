@@ -1,6 +1,6 @@
 const { Scenes, Markup } = require("telegraf");
 const { getProfile, saveProfile } = require("../db");
-const { sendMainMenu } = require("../menu");
+const { sendMainMenu, mainMenuKeyboard } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
 
@@ -183,7 +183,7 @@ const HANDLERS = {
 async function finish(ctx, lang, profile) {
   profile.genderLabel = profile.gender === "male" ? t(lang, "genderMaleValue") : t(lang, "genderFemaleValue");
   const saved = saveProfile(ctx.from.id, profile);
-  await sendMainMenu(ctx, saved, lang);
+  await ctx.reply(t(lang, "profileSaved")(saved), mainMenuKeyboard(lang));
 }
 
 const profileWizard = new Scenes.WizardScene(
@@ -209,7 +209,7 @@ const profileWizard = new Scenes.WizardScene(
         if (ctx.wizard.state.isEditing) {
           const existing = getProfile(ctx.from.id);
           if (existing) {
-            await sendMainMenu(ctx, existing, lang);
+            await sendMainMenu(ctx, lang);
           }
           return ctx.scene.leave();
         }

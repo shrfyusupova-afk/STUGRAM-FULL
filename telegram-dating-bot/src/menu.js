@@ -15,8 +15,12 @@ function mainMenuKeyboard(lang) {
     .persistent();
 }
 
-async function sendMainMenu(ctx, profile, lang) {
-  await ctx.reply(t(lang, "profileSaved")(profile), mainMenuKeyboard(lang));
+// Neutral "you're at the main menu" -- used whenever we're just returning
+// someone here (Back button, re-selecting a language, backing out of an
+// edit). Does NOT claim anything was just saved -- only profileWizard.js's
+// finish() does that, and only right after it actually happened.
+async function sendMainMenu(ctx, lang) {
+  await ctx.reply(t(lang, "mainMenuIntro"), mainMenuKeyboard(lang));
 }
 
 // Every main-menu button now has a real handler registered by its own

@@ -87,7 +87,7 @@ bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
   const existing = getProfile(ctx.from.id);
   if (existing) {
     await ctx.reply(t(lang, "welcomeBack")(existing.name));
-    await sendMainMenu(ctx, existing, lang);
+    await sendMainMenu(ctx, lang);
     return;
   }
   await ctx.reply(t(lang, "welcomeNew"));
