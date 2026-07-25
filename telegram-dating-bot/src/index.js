@@ -175,16 +175,37 @@ if (webhookDomain) {
     console.log(`HTTP server listening on port ${port}`);
   });
 
-  bot.telegram
-    .setWebhook(`${webhookDomain}${webhookPath}`, webhookSecret ? { secret_token: webhookSecret } : undefined)
-    .then(() => console.log(`ForOneForever_bot webhook rejimida: ${webhookDomain}${webhookPath}`))
-    .catch((err) => console.error("setWebhook failed:", err));
+  // A transient hiccup right at container boot (DNS/networking not fully up
+  // yet) can make the very first setWebhook call fail, silently leaving the
+  // bot with NO webhook registered until someone notices and fixes it by
+  // hand. Retries with backoff so a boot-time blip self-heals instead of
+  // requiring manual intervention.
+  async function setWebhookWithRetry(telegram, url, options, label, attempt = 1, maxAttempts = 5) {
+    try {
+      await telegram.setWebhook(url, options);
+      console.log(`${label} webhook rejimida: ${url}`);
+    } catch (err) {
+      console.error(`${label} setWebhook failed (attempt ${attempt}/${maxAttempts}):`, err.message);
+      if (attempt >= maxAttempts) return;
+      const delayMs = 2 ** attempt * 1000;
+      setTimeout(() => setWebhookWithRetry(telegram, url, options, label, attempt + 1, maxAttempts), delayMs);
+    }
+  }
+
+  setWebhookWithRetry(
+    bot.telegram,
+    `${webhookDomain}${webhookPath}`,
+    webhookSecret ? { secret_token: webhookSecret } : undefined,
+    "ForOneForever_bot"
+  );
 
   if (adminBot) {
-    adminBot.telegram
-      .setWebhook(`${webhookDomain}${adminWebhookPath}`, adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined)
-      .then(() => console.log(`ForOneAdmin_bot webhook rejimida: ${webhookDomain}${adminWebhookPath}`))
-      .catch((err) => console.error("admin setWebhook failed:", err));
+    setWebhookWithRetry(
+      adminBot.telegram,
+      `${webhookDomain}${adminWebhookPath}`,
+      adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined,
+      "ForOneAdmin_bot"
+    );
   }
 } else {
   bot.launch().then(() => {
