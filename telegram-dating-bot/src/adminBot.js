@@ -211,7 +211,10 @@ function createAdminBot(token) {
           `💵 Jami tushum: ${sales.unlock.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
           `📢 VIP chat (yigitlar, 59 900 so'm/dona):\n` +
           `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
-          `💵 Jami tushum: ${sales.vipchat.totalRevenue.toLocaleString("uz-UZ")} so'm`
+          `💵 Jami tushum: ${sales.vipchat.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
+          `🕵️ Anonim chat -- jins tanlash (haftalik, 12 900 so'm):\n` +
+          `✅ Sotilgan: ${sales.anongender.count} ta\n` +
+          `💵 Jami tushum: ${sales.anongender.totalRevenue.toLocaleString("uz-UZ")} so'm`
       );
     })
   );
