@@ -232,11 +232,32 @@ if (webhookDomain) {
   }
 }
 
+// Telegraf's own .stop() throws "Bot is not running!" unless launch() or
+// startWebhook() set its internal polling/webhookServer state -- neither
+// ever happens here, since webhook mode mounts bot.webhookCallback() on our
+// OWN Express app instead. That made every single SIGTERM (i.e. every
+// Render deploy/restart) crash with an uncaught exception instead of
+// exiting cleanly.
+function safeStop(botInstance, reason) {
+  try {
+    botInstance.stop(reason);
+  } catch (err) {
+    console.error(`Bot stop() failed (${reason}, likely webhook mode -- harmless):`, err.message);
+  }
+}
+
+// process.once(...) replaces Node's default "terminate immediately" SIGINT/
+// SIGTERM behavior, so an explicit process.exit() is required afterward --
+// previously the crash from bot.stop() accidentally caused that exit; now
+// that it's caught cleanly, without this call the process would just hang
+// past the signal forever instead of shutting down.
 process.once("SIGINT", () => {
-  bot.stop("SIGINT");
-  if (adminBot) adminBot.stop("SIGINT");
+  safeStop(bot, "SIGINT");
+  if (adminBot) safeStop(adminBot, "SIGINT");
+  process.exit(0);
 });
 process.once("SIGTERM", () => {
-  bot.stop("SIGTERM");
-  if (adminBot) adminBot.stop("SIGTERM");
+  safeStop(bot, "SIGTERM");
+  if (adminBot) safeStop(adminBot, "SIGTERM");
+  process.exit(0);
 });
