@@ -3,6 +3,7 @@ const { getProfile, getLanguage, hasAnonGenderFilter } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { createOrder, buildCheckoutUrl, ANON_GENDER_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
+const { mainMenuKeyboard } = require("./menu");
 
 const CHAT_DURATION_MS = 3 * 60 * 1000;
 
@@ -20,6 +21,12 @@ function anonSubmenuKeyboard(lang) {
     [t(lang, "anonRandomButton")],
     [t(lang, "backButton")],
   ]).resize();
+}
+
+// The ONLY button shown once actually matched -- swaps out the girl/boy/
+// random/back submenu for the duration of the live chat.
+function anonChatKeyboard(lang) {
+  return Markup.keyboard([[t(lang, "anonStopButton")]]).resize();
 }
 
 // Real, unweighted matching -- "wants" must be mutually satisfied both ways.
@@ -53,12 +60,12 @@ async function endChatByTimeout(telegram, userId) {
   const lang1 = getLanguage(userId) || DEFAULT_LANG;
   const lang2 = getLanguage(partnerId) || DEFAULT_LANG;
   try {
-    await telegram.sendMessage(userId, t(lang1, "anonChatEnded"));
+    await telegram.sendMessage(userId, t(lang1, "anonChatEnded"), mainMenuKeyboard(lang1));
   } catch (err) {
     console.error("anon chat end notify failed:", err.message);
   }
   try {
-    await telegram.sendMessage(partnerId, t(lang2, "anonChatEnded"));
+    await telegram.sendMessage(partnerId, t(lang2, "anonChatEnded"), mainMenuKeyboard(lang2));
   } catch (err) {
     console.error("anon chat end notify failed:", err.message);
   }
@@ -77,7 +84,7 @@ async function leaveAnonQueueOrChat(telegram, userId) {
   activeChats.delete(partnerId);
   const lang = getLanguage(partnerId) || DEFAULT_LANG;
   try {
-    await telegram.sendMessage(partnerId, t(lang, "anonPartnerLeft"));
+    await telegram.sendMessage(partnerId, t(lang, "anonPartnerLeft"), mainMenuKeyboard(lang));
   } catch (err) {
     console.error("anon partner-left notify failed:", err.message);
   }
@@ -103,9 +110,9 @@ async function attemptJoin(ctx, wants) {
     waitingQueue.delete(partnerId);
     startChat(ctx.telegram, userId, partnerId);
     const partnerLang = getLanguage(partnerId) || DEFAULT_LANG;
-    await ctx.reply(t(lang, "anonMatched"));
+    await ctx.reply(t(lang, "anonMatched"), anonChatKeyboard(lang));
     try {
-      await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonMatched"));
+      await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonMatched"), anonChatKeyboard(partnerLang));
     } catch (err) {
       console.error("anon match notify failed:", err.message);
     }
@@ -130,13 +137,36 @@ function registerAnonChatHandlers(bot) {
   const girlLabels = Object.values(STRINGS).map((dict) => dict.anonGirlButton);
   const boyLabels = Object.values(STRINGS).map((dict) => dict.anonBoyButton);
   const randomLabels = Object.values(STRINGS).map((dict) => dict.anonRandomButton);
+  const stopLabels = Object.values(STRINGS).map((dict) => dict.anonStopButton);
 
   // Registered before any other text handler so a message from someone
-  // currently in an active anon chat is ALWAYS relayed, never accidentally
-  // matched by an unrelated button handler (e.g. the partner typing "❤️").
+  // currently in an active anon chat is ALWAYS caught here first, never
+  // accidentally matched by an unrelated button handler (e.g. the partner
+  // typing "❤️"). The stop-button check has to live INSIDE this same
+  // handler (not a separate bot.hears registered later) -- otherwise this
+  // relay would intercept and forward the stop button's own text as a
+  // regular chat message before a later handler ever saw it.
   bot.on("text", async (ctx, next) => {
-    const chat = activeChats.get(ctx.from.id);
+    const userId = ctx.from.id;
+    const chat = activeChats.get(userId);
     if (!chat) return next();
+
+    if (stopLabels.includes(ctx.message.text)) {
+      const partnerId = chat.partnerId;
+      clearTimeout(chat.timer);
+      activeChats.delete(userId);
+      activeChats.delete(partnerId);
+      const lang = getLanguage(userId) || DEFAULT_LANG;
+      const partnerLang = getLanguage(partnerId) || DEFAULT_LANG;
+      await ctx.reply(t(lang, "anonChatEnded"), mainMenuKeyboard(lang));
+      try {
+        await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonPartnerLeft"), mainMenuKeyboard(partnerLang));
+      } catch (err) {
+        console.error("anon stop notify failed:", err.message);
+      }
+      return;
+    }
+
     try {
       await ctx.telegram.sendMessage(chat.partnerId, ctx.message.text);
     } catch (err) {

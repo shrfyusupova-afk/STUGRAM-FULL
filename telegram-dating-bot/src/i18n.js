@@ -84,7 +84,8 @@ const STRINGS = {
     anonChatEnded: "⏰ Vaqt tugadi! Suhbat yakunlandi. 👋\n\nYana anonim suhbat qurishni xohlaysizmi? Anonim chat tugmasini bosing!",
     anonPartnerLeft: "😔 Suhbatdoshingiz chatdan chiqib ketdi.\n\nYangi suhbat boshlash uchun qaytadan urinib ko'ring!",
     anonAlreadySearching: "🔍 Siz allaqachon qidiruvda turibsiz, biroz kuting...",
-    anonAlreadyInChat: "💬 Siz hozir anonim suhbatdasiz. Suhbatni tugatish uchun ⬅️ Orqaga tugmasini bosing.",
+    anonAlreadyInChat: "💬 Siz hozir anonim suhbatdasiz. Suhbatni tugatish uchun 🛑 Suhbatni to'xtatish tugmasini bosing.",
+    anonStopButton: "🛑 Suhbatni to'xtatish",
     vipIntro:
       "👑 VIP Chat — bu yerda sizni nimalar kutmoqda?\n\n" +
       "🎉 Yangi do'stlar orttirasiz\n" +
@@ -219,7 +220,8 @@ const STRINGS = {
     anonChatEnded: "⏰ Время вышло! Чат завершён. 👋\n\nХотите начать новый анонимный чат? Нажмите на кнопку!",
     anonPartnerLeft: "😔 Собеседник покинул чат.\n\nПопробуйте начать новый разговор!",
     anonAlreadySearching: "🔍 Вы уже в поиске, немного подождите...",
-    anonAlreadyInChat: "💬 Вы сейчас в анонимном чате. Чтобы завершить его, нажмите ⬅️ Назад.",
+    anonAlreadyInChat: "💬 Вы сейчас в анонимном чате. Чтобы завершить его, нажмите 🛑 Завершить чат.",
+    anonStopButton: "🛑 Завершить чат",
     vipIntro:
       "👑 VIP Chat — что вас здесь ждёт?\n\n" +
       "🎉 Заведёте новых друзей\n" +
@@ -354,7 +356,8 @@ const STRINGS = {
     anonChatEnded: "⏰ Time's up! The chat has ended. 👋\n\nWant to start a new anonymous chat? Tap the button!",
     anonPartnerLeft: "😔 Your chat partner left.\n\nTry starting a new conversation!",
     anonAlreadySearching: "🔍 You're already searching, hang on...",
-    anonAlreadyInChat: "💬 You're currently in an anonymous chat. Tap ⬅️ Back to end it.",
+    anonAlreadyInChat: "💬 You're currently in an anonymous chat. Tap 🛑 Stop the chat to end it.",
+    anonStopButton: "🛑 Stop the chat",
     vipIntro:
       "👑 VIP Chat — what's waiting for you here?\n\n" +
       "🎉 Make new friends\n" +
