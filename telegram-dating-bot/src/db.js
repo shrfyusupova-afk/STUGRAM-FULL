@@ -67,6 +67,20 @@ function hasPremium(userId) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
 }
 
+function setAnonGenderFilterUntil(userId, untilIso) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return null;
+  all[key] = { ...all[key], anonGenderUntil: untilIso, updatedAt: new Date().toISOString() };
+  writeJson(DB_PATH, all);
+  return all[key];
+}
+
+function hasAnonGenderFilter(userId) {
+  const profile = getProfile(userId);
+  return !!profile?.anonGenderUntil && new Date(profile.anonGenderUntil) > new Date();
+}
+
 function recordLike(likerId, likedId) {
   const all = readJson(LIKES_DB_PATH);
   const key = String(likedId);
@@ -165,6 +179,9 @@ module.exports = {
   getAllProfiles,
   setProfileActive,
   setPremiumUntil,
+  hasPremium,
+  setAnonGenderFilterUntil,
+  hasAnonGenderFilter,
   isAdmin,
   addAdmin,
   getLanguage,
@@ -174,7 +191,6 @@ module.exports = {
   hasLiked,
   hasUnlocked,
   grantUnlock,
-  hasPremium,
   recordDislike,
   getDislikes,
   getDiscoverState,

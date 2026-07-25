@@ -59,7 +59,32 @@ const STRINGS = {
       likes: "💌 Kimlar yoqtirdi",
       vip: "👑 VIP suhbat",
       premium: "💎 Premium",
+      anonChat: "🕵️ Anonim chat",
     },
+    anonChatIntro:
+      "🕵️ Anonim chat\n\n" +
+      "Bu yerda hech kim sizning shaxsingizni bilmaydi — profilingiz ko'rsatilmaydi! Suhbat aynan 3 daqiqa davom etadi.\n\n" +
+      "Kim bilan suhbatlashmoqchisiz? 👇",
+    anonGirlButton: "👧 Qiz bola bilan",
+    anonBoyButton: "👦 O'g'il bola bilan",
+    anonRandomButton: "🎲 Random",
+    anonGenderPaywallIntro:
+      "🔒 Muayyan jins bilan suhbatlashish — maxsus xizmat!\n\n" +
+      "💳 Narxi: atigi 12 900 so'm / hafta\n" +
+      "📅 Ushbu tarif faollashtirilgan kundan boshlab 7 kun davomida amal qiladi — shu muddat ichida xohlagan jinsni tanlab, cheklovsiz suhbatlashishingiz mumkin.\n\n" +
+      "To'lov qilmoqchimisiz? 😊",
+    anonPayButton: "💳 To'lov qilish",
+    anonNotConfigured: "💳 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
+    anonSubscriptionActivated: (days) =>
+      `🎉 Tabriklaymiz! Endi ${days} kun davomida xohlagan jinsni tanlab, anonim suhbatlashishingiz mumkin.\n\n👧 yoki 👦 tugmasini qayta bosing!`,
+    anonSearching: "🔍 Qidirilmoqda...\n\nBiroz kuting, tez orada suhbatdosh topiladi! 🤞✨",
+    anonMatched:
+      "🎉 Topildi! Suhbatlashishni boshlang! 💬\n\n" +
+      "⏳ Sizda 3 daqiqa vaqt bor. Suhbatdoshingiz haqida hech narsa bilmaysiz — u ham sizni bilmaydi. Shunchaki erkin yozavering! 😉",
+    anonChatEnded: "⏰ Vaqt tugadi! Suhbat yakunlandi. 👋\n\nYana anonim suhbat qurishni xohlaysizmi? Anonim chat tugmasini bosing!",
+    anonPartnerLeft: "😔 Suhbatdoshingiz chatdan chiqib ketdi.\n\nYangi suhbat boshlash uchun qaytadan urinib ko'ring!",
+    anonAlreadySearching: "🔍 Siz allaqachon qidiruvda turibsiz, biroz kuting...",
+    anonAlreadyInChat: "💬 Siz hozir anonim suhbatdasiz. Suhbatni tugatish uchun ⬅️ Orqaga tugmasini bosing.",
     vipIntro:
       "👑 VIP Chat — bu yerda sizni nimalar kutmoqda?\n\n" +
       "🎉 Yangi do'stlar orttirasiz\n" +
@@ -169,7 +194,32 @@ const STRINGS = {
       likes: "💌 Кому я понравился",
       vip: "👑 VIP чат",
       premium: "💎 Премиум",
+      anonChat: "🕵️ Анонимный чат",
     },
+    anonChatIntro:
+      "🕵️ Анонимный чат\n\n" +
+      "Здесь никто не узнает, кто вы — ваш профиль не показывается! Разговор длится ровно 3 минуты.\n\n" +
+      "С кем хотите пообщаться? 👇",
+    anonGirlButton: "👧 С девушкой",
+    anonBoyButton: "👦 С парнем",
+    anonRandomButton: "🎲 Случайно",
+    anonGenderPaywallIntro:
+      "🔒 Выбор конкретного пола — платная услуга!\n\n" +
+      "💳 Цена: всего 12 900 сум / неделя\n" +
+      "📅 Этот тариф действует 7 дней с момента активации — в течение этого времени вы можете выбирать пол собеседника без ограничений.\n\n" +
+      "Хотите оплатить? 😊",
+    anonPayButton: "💳 Оплатить",
+    anonNotConfigured: "💳 Оплата ещё не полностью настроена. Скоро заработает! 🚧",
+    anonSubscriptionActivated: (days) =>
+      `🎉 Поздравляем! Теперь в течение ${days} дней вы можете выбирать пол собеседника для анонимного чата.\n\nНажмите 👧 или 👦 ещё раз!`,
+    anonSearching: "🔍 Идёт поиск...\n\nПодождите немного, скоро найдётся собеседник! 🤞✨",
+    anonMatched:
+      "🎉 Найден собеседник! Начинайте общаться! 💬\n\n" +
+      "⏳ У вас есть 3 минуты. Вы ничего не знаете о собеседнике — и он о вас тоже. Пишите свободно! 😉",
+    anonChatEnded: "⏰ Время вышло! Чат завершён. 👋\n\nХотите начать новый анонимный чат? Нажмите на кнопку!",
+    anonPartnerLeft: "😔 Собеседник покинул чат.\n\nПопробуйте начать новый разговор!",
+    anonAlreadySearching: "🔍 Вы уже в поиске, немного подождите...",
+    anonAlreadyInChat: "💬 Вы сейчас в анонимном чате. Чтобы завершить его, нажмите ⬅️ Назад.",
     vipIntro:
       "👑 VIP Chat — что вас здесь ждёт?\n\n" +
       "🎉 Заведёте новых друзей\n" +
@@ -279,7 +329,32 @@ const STRINGS = {
       likes: "💌 Who liked me",
       vip: "👑 VIP chat",
       premium: "💎 Premium",
+      anonChat: "🕵️ Anonymous chat",
     },
+    anonChatIntro:
+      "🕵️ Anonymous chat\n\n" +
+      "No one will know who you are here — your profile isn't shown! The conversation lasts exactly 3 minutes.\n\n" +
+      "Who would you like to chat with? 👇",
+    anonGirlButton: "👧 With a girl",
+    anonBoyButton: "👦 With a guy",
+    anonRandomButton: "🎲 Random",
+    anonGenderPaywallIntro:
+      "🔒 Choosing a specific gender is a paid feature!\n\n" +
+      "💳 Price: only 12,900 UZS / week\n" +
+      "📅 This plan lasts 7 days from activation — during that time you can pick either gender with no limits.\n\n" +
+      "Would you like to pay? 😊",
+    anonPayButton: "💳 Pay",
+    anonNotConfigured: "💳 Payments aren't fully set up yet. Coming soon! 🚧",
+    anonSubscriptionActivated: (days) =>
+      `🎉 Congrats! For the next ${days} days you can pick either gender for anonymous chat.\n\nTap 👧 or 👦 again!`,
+    anonSearching: "🔍 Searching...\n\nHang tight, a chat partner will be found soon! 🤞✨",
+    anonMatched:
+      "🎉 Found someone! Start chatting! 💬\n\n" +
+      "⏳ You have 3 minutes. You know nothing about them, and they know nothing about you. Just write freely! 😉",
+    anonChatEnded: "⏰ Time's up! The chat has ended. 👋\n\nWant to start a new anonymous chat? Tap the button!",
+    anonPartnerLeft: "😔 Your chat partner left.\n\nTry starting a new conversation!",
+    anonAlreadySearching: "🔍 You're already searching, hang on...",
+    anonAlreadyInChat: "💬 You're currently in an anonymous chat. Tap ⬅️ Back to end it.",
     vipIntro:
       "👑 VIP Chat — what's waiting for you here?\n\n" +
       "🎉 Make new friends\n" +

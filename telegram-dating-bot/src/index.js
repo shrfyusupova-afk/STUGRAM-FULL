@@ -8,9 +8,10 @@ const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
-const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
+const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
+const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
-const { getProfile, getLanguage, setLanguage, setPremiumUntil, grantUnlock } = require("./db");
+const { getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil, grantUnlock } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
 const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
@@ -99,6 +100,11 @@ bot.command("anketa", async (ctx) => {
   await ctx.scene.enter("profile-wizard", { lang, isEditing: !!getProfile(ctx.from.id) });
 });
 
+// registerAnonChatHandlers is first: its bot.on("text", ...) relay check
+// must run before any other hears()/on("text") handler, so a message from
+// someone in an active anon chat is always forwarded, never accidentally
+// matched by an unrelated button (e.g. the partner typing "❤️").
+registerAnonChatHandlers(bot);
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
@@ -155,6 +161,14 @@ if (webhookDomain) {
       if (order.type === "vipchat") {
         await bot.telegram.sendMessage(order.userId, t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
+        return;
+      }
+
+      if (order.type === "anongender") {
+        const anonGenderUntil = new Date(Date.now() + ANON_GENDER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        setAnonGenderFilterUntil(order.userId, anonGenderUntil);
+        await bot.telegram.sendMessage(order.userId, t(lang, "anonSubscriptionActivated")(ANON_GENDER_DAYS));
+        console.log(`Anon gender filter granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 

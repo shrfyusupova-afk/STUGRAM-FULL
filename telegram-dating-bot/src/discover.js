@@ -18,6 +18,7 @@ const { getUsername } = require("./botInfo");
 const { sendMainMenu } = require("./menu");
 const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
+const { leaveAnonQueueOrChat } = require("./anonChat");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -225,11 +226,15 @@ function registerDiscoverHandlers(bot) {
   // Scoped to whichever screen actually shows this label: while the profile
   // wizard scene is active, its own internal handler intercepts it first
   // (Telegraf runs scene middleware before this), so this only fires when
-  // "Back" is tapped from the discover keyboard.
+  // "Back" is tapped from the discover keyboard (or any other screen using
+  // this same shared label, e.g. anon chat's submenu -- also cleans up any
+  // pending anon search or active chat, since backing out of ANY screen
+  // should end an in-progress anon session too).
   bot.hears(backLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
     clearDiscoverState(ctx.from.id);
+    await leaveAnonQueueOrChat(ctx.telegram, ctx.from.id);
     if (me) {
       await sendMainMenu(ctx, lang);
     }

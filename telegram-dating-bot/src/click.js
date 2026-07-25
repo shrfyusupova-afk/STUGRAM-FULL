@@ -53,17 +53,22 @@ const PREMIUM_PRICE_SOM = 69000;
 const PREMIUM_DAYS = 30;
 const UNLOCK_PRICE_SOM = 7900;
 const VIP_CHAT_PRICE_SOM = 59900;
+const ANON_GENDER_PRICE_SOM = 12900;
+const ANON_GENDER_DAYS = 7;
 
 function priceForType(type) {
   if (type === "unlock") return UNLOCK_PRICE_SOM;
   if (type === "vipchat") return VIP_CHAT_PRICE_SOM;
+  if (type === "anongender") return ANON_GENDER_PRICE_SOM;
   return PREMIUM_PRICE_SOM;
 }
 
 // type: "premium" (subscription), "unlock" (pay once to view a single
-// candidate's contact), or "vipchat" (pay once to join the VIP chat group,
-// men only -- women join free). targetId is only meaningful for "unlock" --
-// it's the candidate profile the payment grants access to.
+// candidate's contact), "vipchat" (pay once to join the VIP chat group, men
+// only -- women join free), or "anongender" (weekly subscription to pick a
+// specific gender in anonymous chat instead of random). targetId is only
+// meaningful for "unlock" -- it's the candidate profile the payment grants
+// access to.
 function createOrder(userId, { type = "premium", targetId } = {}) {
   const amount = priceForType(type);
   const all = readTx();
@@ -236,13 +241,16 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 function getSalesSummary() {
   const all = Object.values(readTx());
   const paid = all.filter((tx) => tx.status === "paid");
-  const premiumPaid = paid.filter((tx) => tx.type !== "unlock" && tx.type !== "vipchat");
+  const specialTypes = ["unlock", "vipchat", "anongender"];
+  const premiumPaid = paid.filter((tx) => !specialTypes.includes(tx.type));
   const unlockPaid = paid.filter((tx) => tx.type === "unlock");
   const vipchatPaid = paid.filter((tx) => tx.type === "vipchat");
+  const anongenderPaid = paid.filter((tx) => tx.type === "anongender");
   return {
     premium: { count: premiumPaid.length, totalRevenue: premiumPaid.reduce((sum, tx) => sum + tx.amount, 0) },
     unlock: { count: unlockPaid.length, totalRevenue: unlockPaid.reduce((sum, tx) => sum + tx.amount, 0) },
     vipchat: { count: vipchatPaid.length, totalRevenue: vipchatPaid.reduce((sum, tx) => sum + tx.amount, 0) },
+    anongender: { count: anongenderPaid.length, totalRevenue: anongenderPaid.reduce((sum, tx) => sum + tx.amount, 0) },
   };
 }
 
@@ -257,4 +265,6 @@ module.exports = {
   PREMIUM_DAYS,
   UNLOCK_PRICE_SOM,
   VIP_CHAT_PRICE_SOM,
+  ANON_GENDER_PRICE_SOM,
+  ANON_GENDER_DAYS,
 };

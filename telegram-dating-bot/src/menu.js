@@ -9,7 +9,7 @@ function mainMenuKeyboard(lang) {
   return Markup.keyboard([
     [m.discover, m.profile],
     [m.likes, m.vip],
-    [m.premium],
+    [m.premium, m.anonChat],
   ])
     .resize()
     .persistent();
@@ -24,8 +24,9 @@ async function sendMainMenu(ctx, lang) {
 }
 
 // Every main-menu button now has a real handler registered by its own
-// module (discover.js, likes.js, profileSettings.js, premium.js, vipChat.js)
-// -- there's nothing left for a generic placeholder loop to cover.
+// module (discover.js, likes.js, profileSettings.js, premium.js, vipChat.js,
+// anonChat.js) -- there's nothing left for a generic placeholder loop to
+// cover.
 function registerMenuHandlers() {}
 
 module.exports = { mainMenuKeyboard, sendMainMenu, registerMenuHandlers };
