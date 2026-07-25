@@ -11,8 +11,8 @@ const { registerClickRoutes, PREMIUM_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const { getProfile, getLanguage, setLanguage, setPremiumUntil, grantUnlock } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
-const { setUsername } = require("./botInfo");
-const { sendPolicyDocument } = require("./policy");
+const { setUsername, setPublicUrl } = require("./botInfo");
+const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -28,6 +28,11 @@ const webhookDomain = process.env.RENDER_EXTERNAL_URL || process.env.WEBHOOK_DOM
 const webhookPath = "/telegram/webhook";
 const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || undefined;
 const port = process.env.PORT || 3000;
+
+// Lets the wizard's confirmation step link straight to a real page
+// (GET /policy below) instead of a deep link back into the chat, whenever a
+// public HTTPS domain actually exists.
+setPublicUrl(webhookDomain);
 
 // The admin bot is optional -- runs in this same process/service so it
 // shares the exact same data/ files as the main bot (no sync, no
@@ -111,6 +116,7 @@ bot.catch((err, ctx) => {
 if (webhookDomain) {
   const app = express();
   app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+  app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
 
   // Click's Prepare/Complete callbacks are form-encoded POST requests, but
   // this parser MUST be scoped to only those two routes (not app.use()'d

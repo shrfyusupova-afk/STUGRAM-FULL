@@ -2,7 +2,7 @@ const { Scenes, Markup } = require("telegraf");
 const { getProfile, saveProfile } = require("../db");
 const { sendMainMenu } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
-const { getUsername } = require("../botInfo");
+const { getUsername, getPublicUrl } = require("../botInfo");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
@@ -62,12 +62,15 @@ const RENDERERS = {
       backKeyboard(lang, [Markup.button.contactRequest(t(lang, "contactButton"))])
     );
   },
-  // The policy link is a real deep link back into this same bot
-  // (/start policy), so tapping it works the same way as a candidate card's
-  // unlock link -- opens the bot, which then sends the actual document.
+  // Prefers a real standalone page (GET /policy, served by this bot's own
+  // Express app) so tapping the link opens an actual separate browser
+  // window/tab -- falls back to a deep link back into this chat
+  // (/start policy) only when there's no public HTTPS domain to link to
+  // (e.g. local long-polling).
   confirm: async (ctx, lang) => {
+    const publicUrl = getPublicUrl();
     const username = getUsername();
-    const policyUrl = username ? `https://t.me/${username}?start=policy` : null;
+    const policyUrl = publicUrl ? `${publicUrl}/policy` : username ? `https://t.me/${username}?start=policy` : null;
     const linkLabel = t(lang, "policyLinkText");
     const linkHtml = policyUrl ? `<a href="${policyUrl}">${linkLabel}</a>` : linkLabel;
     await ctx.reply(t(lang, "confirmIntro")(linkHtml), {
