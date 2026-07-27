@@ -38,6 +38,9 @@ function registerVipChatHandlers(bot) {
     await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
   });
 
+  // Click is the only payment provider wired into the codebase -- no
+  // second option to choose between, so this goes straight to the
+  // checkout button instead of showing a payment-method picker.
   bot.action("vip:pay:choose", async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
@@ -47,23 +50,14 @@ function registerVipChatHandlers(bot) {
     const clickButton = clickUrl
       ? Markup.button.url(t(lang, "vipClickButton"), clickUrl)
       : Markup.button.callback(t(lang, "vipClickButton"), "vip:pay:click:noop");
-    const paymeButton = Markup.button.callback(t(lang, "vipPaymeButton"), "vip:pay:payme:noop");
 
-    await ctx.reply(t(lang, "vipChoosePaymentIntro"), Markup.inlineKeyboard([[clickButton], [paymeButton]]));
+    await ctx.reply(t(lang, "vipPayIntro"), Markup.inlineKeyboard([[clickButton]]));
   });
 
   bot.action("vip:pay:click:noop", async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "vipClickNotConfigured"));
-  });
-
-  // Payme isn't wired into the codebase at all yet (only Click is) -- this
-  // is a placeholder until that integration is actually built.
-  bot.action("vip:pay:payme:noop", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
-    await ctx.reply(t(lang, "vipPaymeNotConfigured"));
   });
 }
 
