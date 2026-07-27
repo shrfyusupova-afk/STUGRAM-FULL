@@ -1,8 +1,22 @@
+const crypto = require("crypto");
 const { Telegraf, Markup } = require("telegraf");
 const { getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin } = require("./db");
 const { getSalesSummary } = require("./click");
 
-const ADMIN_CODE = "19752901";
+// This file is committed to git -- a PIN hardcoded here would be readable
+// by anyone with repo access, making the brute-force lockout below pointless
+// (no guessing needed if you can just read the source). Prefers an env var;
+// falls back to the old hardcoded value ONLY so an existing deploy doesn't
+// lose admin access before ADMIN_PIN_CODE is actually set on the host --
+// that fallback is itself insecure and logs a warning every time it's used.
+const ADMIN_CODE = process.env.ADMIN_PIN_CODE || "19752901";
+if (!process.env.ADMIN_PIN_CODE) {
+  console.warn(
+    "ADMIN_PIN_CODE is not set -- falling back to the default admin PIN, which is readable by " +
+      "anyone with access to this repository's source code. Set ADMIN_PIN_CODE in your environment " +
+      "to a private value as soon as possible."
+  );
+}
 const STATS_LABEL = "📊 Statistika";
 const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
@@ -139,7 +153,7 @@ function createAdminBot(token) {
       return;
     }
 
-    if (entered === ADMIN_CODE) {
+    if (crypto.timingSafeEqual(Buffer.from(entered), Buffer.from(ADMIN_CODE))) {
       addAdmin(ctx.from.id);
       loginState.delete(ctx.from.id);
       await safeEditMessageText(ctx, "✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");

@@ -4,12 +4,17 @@ const path = require("path");
 
 const TX_PATH = path.join(__dirname, "..", "data", "clickTransactions.json");
 
+// Null-prototype, not plain {} -- merchant_trans_id in Click's
+// Prepare/Complete requests is echoed straight back to us and used as a
+// lookup key here; a null-prototype object means a key like "__proto__"
+// just behaves like any other unknown key instead of hitting the special
+// exotic accessor that plain objects have.
 function readTx() {
-  if (!fs.existsSync(TX_PATH)) return {};
+  if (!fs.existsSync(TX_PATH)) return Object.create(null);
   try {
-    return JSON.parse(fs.readFileSync(TX_PATH, "utf8"));
+    return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(TX_PATH, "utf8")));
   } catch {
-    return {};
+    return Object.create(null);
   }
 }
 
@@ -33,12 +38,25 @@ function md5(str) {
   return crypto.createHash("md5").update(str).digest("hex");
 }
 
+// Plain === leaks how many leading characters matched via response-time
+// differences -- crypto.timingSafeEqual instead, so guessing the signature
+// can't be sped up by timing the comparison itself. Length is checked first
+// since timingSafeEqual throws (rather than returning false) on a mismatch,
+// and the length check itself leaks nothing secret (signatures are always
+// fixed-length hex, so length alone tells an attacker nothing).
+function timingSafeEqualStr(a, b) {
+  const bufA = Buffer.from(String(a ?? ""));
+  const bufB = Buffer.from(String(b ?? ""));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 // Prepare (action=0): md5(click_trans_id + service_id + SECRET_KEY + merchant_trans_id + amount + action + sign_time)
 function verifyPrepareSign(body, secretKey) {
   const expected = md5(
     `${body.click_trans_id}${body.service_id}${secretKey}${body.merchant_trans_id}${body.amount}${body.action}${body.sign_time}`
   );
-  return expected === body.sign_string;
+  return timingSafeEqualStr(expected, body.sign_string);
 }
 
 // Complete (action=1): same as Prepare but with merchant_prepare_id inserted before amount.
@@ -46,7 +64,7 @@ function verifyCompleteSign(body, secretKey) {
   const expected = md5(
     `${body.click_trans_id}${body.service_id}${secretKey}${body.merchant_trans_id}${body.merchant_prepare_id}${body.amount}${body.action}${body.sign_time}`
   );
-  return expected === body.sign_string;
+  return timingSafeEqualStr(expected, body.sign_string);
 }
 
 const PREMIUM_PRICE_SOM = 79900;

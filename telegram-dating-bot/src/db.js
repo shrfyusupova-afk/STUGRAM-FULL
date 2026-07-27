@@ -9,12 +9,21 @@ const UNLOCKS_DB_PATH = path.join(__dirname, "..", "data", "unlocks.json");
 const DISLIKES_DB_PATH = path.join(__dirname, "..", "data", "dislikes.json");
 const DISCOVER_STATE_PATH = path.join(__dirname, "..", "data", "discoverState.json");
 
+// Null-prototype objects, not plain {} -- every ID here (candidateId,
+// targetId) can originate from callback_data or a /start deep-link payload,
+// both of which a technically capable client can set to ANY string, not
+// just what a button/link the bot actually sent. On a plain object, a key
+// like "__proto__" hits the special exotic accessor instead of a normal
+// property (on read, silently returns Object.prototype instead of the
+// real "not found"; on write, changes this object's actual [[Prototype]]).
+// A null-prototype object has no such accessor at all, so those keys just
+// behave like any other unknown key.
 function readJson(filePath) {
-  if (!fs.existsSync(filePath)) return {};
+  if (!fs.existsSync(filePath)) return Object.create(null);
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(filePath, "utf8")));
   } catch {
-    return {};
+    return Object.create(null);
   }
 }
 

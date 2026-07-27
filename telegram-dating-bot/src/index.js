@@ -1,4 +1,5 @@
 require("dotenv").config();
+const crypto = require("crypto");
 const express = require("express");
 const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
@@ -28,7 +29,22 @@ if (!token) {
 // back to long-polling so local development still works without ngrok.
 const webhookDomain = process.env.RENDER_EXTERNAL_URL || process.env.WEBHOOK_DOMAIN;
 const webhookPath = "/telegram/webhook";
-const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || undefined;
+// This path is a fixed constant (visible in this very file on GitHub) --
+// without a secret token, Telegraf accepts ANY request that hits it, which
+// would let anyone who knows the domain forge fake Telegram updates (fake
+// messages, fake button taps, impersonating any user). Auto-generate one if
+// the operator forgot to set TELEGRAM_WEBHOOK_SECRET, so the bot is never
+// accidentally left wide open -- the app re-registers its own webhook with
+// whichever value it picks on every boot, so there's no need for this to
+// stay stable across restarts.
+let webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+if (!webhookSecret && webhookDomain) {
+  webhookSecret = crypto.randomBytes(32).toString("hex");
+  console.warn(
+    "TELEGRAM_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
+      "Set it explicitly in your environment to silence this warning."
+  );
+}
 const port = process.env.PORT || 3000;
 
 // Lets the wizard's confirmation step link straight to a real page
@@ -42,7 +58,14 @@ setPublicUrl(webhookDomain);
 const adminToken = process.env.ADMIN_BOT_TOKEN;
 const adminBot = adminToken ? createAdminBot(adminToken) : null;
 const adminWebhookPath = "/telegram/admin-webhook";
-const adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET || undefined;
+let adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET;
+if (adminBot && !adminWebhookSecret && webhookDomain) {
+  adminWebhookSecret = crypto.randomBytes(32).toString("hex");
+  console.warn(
+    "ADMIN_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
+      "Set it explicitly in your environment to silence this warning."
+  );
+}
 
 const bot = new Telegraf(token);
 const stage = new Scenes.Stage([profileWizard]);
