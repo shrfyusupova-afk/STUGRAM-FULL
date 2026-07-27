@@ -12,7 +12,7 @@ const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
 const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
-const { getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil, grantUnlock } = require("./db");
+const { getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil, grantUnlock, grantVipChat } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
 const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
@@ -157,6 +157,16 @@ if (webhookDomain) {
   // it as-is instead of reading the real JSON payload, so a global
   // urlencoded() parser silently turned every Telegram update into {},
   // breaking /start and everything else.
+  // Renewing while a subscription is still running must ADD to it, not reset
+  // it to "days from today" -- otherwise someone who renews early silently
+  // throws away every day they had left and effectively pays to lose time.
+  function extendFrom(currentUntilIso, days) {
+    const now = Date.now();
+    const current = currentUntilIso ? new Date(currentUntilIso).getTime() : 0;
+    const base = Number.isFinite(current) && current > now ? current : now;
+    return new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
   const clickBodyParser = express.urlencoded({ extended: true });
   registerClickRoutes(app, {
     bodyParser: clickBodyParser,
@@ -180,20 +190,25 @@ if (webhookDomain) {
       }
 
       if (order.type === "vipchat") {
+        // Recorded BEFORE the message goes out: if sending the invite link
+        // fails (user temporarily unreachable, network blip), the paid access
+        // still exists and pressing the VIP button again hands the link back,
+        // instead of the payment simply vanishing.
+        grantVipChat(order.userId);
         await bot.telegram.sendMessage(order.userId, t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 
       if (order.type === "anongender") {
-        const anonGenderUntil = new Date(Date.now() + ANON_GENDER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const anonGenderUntil = extendFrom(getProfile(order.userId)?.anonGenderUntil, ANON_GENDER_DAYS);
         setAnonGenderFilterUntil(order.userId, anonGenderUntil);
         await bot.telegram.sendMessage(order.userId, t(lang, "anonSubscriptionActivated")(ANON_GENDER_DAYS));
         console.log(`Anon gender filter granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 
-      const premiumUntil = new Date(Date.now() + PREMIUM_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const premiumUntil = extendFrom(getProfile(order.userId)?.premiumUntil, PREMIUM_DAYS);
       setPremiumUntil(order.userId, premiumUntil);
       await bot.telegram.sendMessage(order.userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
       console.log(`Premium activated for user ${order.userId} (${order.amount} so'm via Click)`);

@@ -220,7 +220,12 @@ function registerDiscoverHandlers(bot) {
   bot.hears(discoverLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
-    if (!me?.gender) return;
+    // Says so out loud rather than silently doing nothing -- a tap that
+    // produces no response at all just reads as "the bot is broken".
+    if (!me?.gender) {
+      await ctx.reply(t(lang, "noProfileYet"));
+      return;
+    }
     await showNextCandidate(ctx, lang, me.gender);
   });
 

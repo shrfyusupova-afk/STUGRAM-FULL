@@ -93,7 +93,10 @@ async function leaveAnonQueueOrChat(telegram, userId) {
 async function attemptJoin(ctx, wants) {
   const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
   const me = getProfile(ctx.from.id);
-  if (!me?.gender) return;
+  if (!me?.gender) {
+    await ctx.reply(t(lang, "noProfileYet"));
+    return;
+  }
   const userId = ctx.from.id;
 
   if (activeChats.has(userId)) {
@@ -177,7 +180,10 @@ function registerAnonChatHandlers(bot) {
   bot.hears(anonChatLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = getProfile(ctx.from.id);
-    if (!me?.gender) return;
+    if (!me?.gender) {
+      await ctx.reply(t(lang, "noProfileYet"));
+      return;
+    }
     await ctx.reply(t(lang, "anonChatIntro"), anonSubmenuKeyboard(lang));
   });
 

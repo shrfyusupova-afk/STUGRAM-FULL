@@ -103,7 +103,19 @@ function createOrder(userId, { type = "premium", targetId } = {}) {
       (type !== "unlock" || tx.targetId === String(targetId))
     );
   });
-  if (existingId) return existingId;
+  if (existingId) {
+    // The checkout URL is always built from the CURRENT price constant, but a
+    // reused pending order still carries whatever the price was when it was
+    // first opened. If a price ever changes between those two moments, Click
+    // sends the new amount while Prepare compares against the old stored one
+    // and rejects the whole payment with AMOUNT_MISMATCH. Re-sync it here so
+    // a price change can never strand someone mid-checkout.
+    if (all[existingId].amount !== amount) {
+      all[existingId].amount = amount;
+      writeTx(all);
+    }
+    return existingId;
+  }
 
   const merchantTransId = `${type}_${userId}_${Date.now()}`;
   all[merchantTransId] = {
@@ -221,6 +233,18 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
         merchant_confirm_id: body.merchant_trans_id,
         error: ERROR.ALREADY_PAID,
         error_note: "Already paid",
+      });
+    }
+    // Same amount check Prepare already does -- the signature covers the
+    // amount, so this can't be tampered with by an outsider, but re-checking
+    // here means a mismatch is caught before anything is marked paid and a
+    // paid feature is handed out for the wrong price.
+    if (Number(body.amount) !== order.amount) {
+      return res.json({
+        click_trans_id: body.click_trans_id,
+        merchant_trans_id: body.merchant_trans_id,
+        error: ERROR.AMOUNT_MISMATCH,
+        error_note: "Incorrect amount",
       });
     }
     if (Number(body.error) < 0) {

@@ -8,6 +8,7 @@ const ADMINS_DB_PATH = path.join(__dirname, "..", "data", "admins.json");
 const UNLOCKS_DB_PATH = path.join(__dirname, "..", "data", "unlocks.json");
 const DISLIKES_DB_PATH = path.join(__dirname, "..", "data", "dislikes.json");
 const DISCOVER_STATE_PATH = path.join(__dirname, "..", "data", "discoverState.json");
+const VIP_CHAT_PATH = path.join(__dirname, "..", "data", "vipChatAccess.json");
 
 // Null-prototype objects, not plain {} -- every ID here (candidateId,
 // targetId) can originate from callback_data or a /start deep-link payload,
@@ -62,11 +63,17 @@ function setProfileActive(userId, active) {
   return all[key];
 }
 
+// Upserts rather than no-opping when there's no profile yet. A paid entitlement
+// must never be silently dropped just because the buyer hasn't finished (or has
+// since deleted) their anketa -- that's real money taken with nothing delivered.
+// A record created this way holds only the entitlement: it has no name/photo/
+// phone/gender, so discovery, the likes list and the anketa screens all skip it
+// exactly as they already skip incomplete profiles, and it fills in normally
+// once that person completes registration.
 function setPremiumUntil(userId, untilIso) {
   const all = readJson(DB_PATH);
   const key = String(userId);
-  if (!all[key]) return null;
-  all[key] = { ...all[key], premiumUntil: untilIso, updatedAt: new Date().toISOString() };
+  all[key] = { ...(all[key] || {}), premiumUntil: untilIso, updatedAt: new Date().toISOString() };
   writeJson(DB_PATH, all);
   return all[key];
 }
@@ -76,11 +83,11 @@ function hasPremium(userId) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
 }
 
+// Upserts for the same reason setPremiumUntil does -- see the note there.
 function setAnonGenderFilterUntil(userId, untilIso) {
   const all = readJson(DB_PATH);
   const key = String(userId);
-  if (!all[key]) return null;
-  all[key] = { ...all[key], anonGenderUntil: untilIso, updatedAt: new Date().toISOString() };
+  all[key] = { ...(all[key] || {}), anonGenderUntil: untilIso, updatedAt: new Date().toISOString() };
   writeJson(DB_PATH, all);
   return all[key];
 }
@@ -165,6 +172,20 @@ function clearDiscoverState(userId) {
   writeJson(DISCOVER_STATE_PATH, all);
 }
 
+// Paid VIP chat access. Kept in its own file (not on the profile) so it's
+// recorded even for someone who hasn't finished registering, and so a failed
+// "here's your invite link" message can never lose what was paid for -- the
+// buyer just presses the VIP button again and gets the link back.
+function grantVipChat(userId) {
+  const all = readJson(VIP_CHAT_PATH);
+  all[String(userId)] = { grantedAt: new Date().toISOString() };
+  writeJson(VIP_CHAT_PATH, all);
+}
+
+function hasVipChat(userId) {
+  return !!readJson(VIP_CHAT_PATH)[String(userId)];
+}
+
 function isAdmin(userId) {
   return !!readJson(ADMINS_DB_PATH)[String(userId)];
 }
@@ -195,6 +216,8 @@ module.exports = {
   hasPremium,
   setAnonGenderFilterUntil,
   hasAnonGenderFilter,
+  grantVipChat,
+  hasVipChat,
   isAdmin,
   addAdmin,
   getLanguage,

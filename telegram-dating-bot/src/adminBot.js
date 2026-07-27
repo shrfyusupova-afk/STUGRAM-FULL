@@ -72,12 +72,24 @@ function requireAdmin(handler) {
   };
 }
 
+// A record can exist with only an entitlement on it (someone paid before
+// finishing -- or after deleting -- their anketa), so every displayed field
+// has to tolerate being absent instead of rendering "undefined".
+function isRegistered(profile) {
+  return !!profile?.name;
+}
+
 function userCard(id, profile) {
   const status = profile.active === false ? "🔴 Faolsiz" : "🟢 Faol";
   const premium =
     profile.premiumUntil && new Date(profile.premiumUntil) > new Date()
       ? `\n💎 Premium: ${new Date(profile.premiumUntil).toISOString().slice(0, 10)} gacha`
       : "";
+
+  if (!isRegistered(profile)) {
+    return `👤 (anketa to'ldirilmagan — faqat to'lov yozuvi)\n🆔 ${id}${premium}`;
+  }
+
   return (
     `👤 ${profile.name}, ${profile.age}\n` +
     `🆔 ${id}\n` +
@@ -184,11 +196,17 @@ function createAdminBot(token) {
     STATS_LABEL,
     requireAdmin(async (ctx) => {
       const entries = Object.values(getAllProfiles());
-      const total = entries.length;
-      const male = entries.filter((p) => p.gender === "male").length;
-      const female = entries.filter((p) => p.gender === "female").length;
-      const active = entries.filter((p) => p.active !== false).length;
+      // Anketa counts only cover real registered profiles -- a record holding
+      // nothing but a paid entitlement isn't a user with an anketa and would
+      // otherwise silently inflate "Jami" and "Faol". Premium is counted over
+      // everyone, since such a person IS a paying customer either way.
+      const registered = entries.filter(isRegistered);
+      const total = registered.length;
+      const male = registered.filter((p) => p.gender === "male").length;
+      const female = registered.filter((p) => p.gender === "female").length;
+      const active = registered.filter((p) => p.active !== false).length;
       const premiumNow = entries.filter((p) => p.premiumUntil && new Date(p.premiumUntil) > new Date()).length;
+      const pendingAnketa = entries.length - total;
 
       await ctx.reply(
         `📊 Statistika\n\n` +
@@ -197,7 +215,8 @@ function createAdminBot(token) {
           `👩 Ayol: ${female}\n` +
           `🟢 Faol: ${active}\n` +
           `🔴 Faolsiz: ${total - active}\n` +
-          `💎 Premium (hozir faol): ${premiumNow}`
+          `💎 Premium (hozir faol): ${premiumNow}` +
+          (pendingAnketa > 0 ? `\n\n⚠️ Anketasiz to'lov yozuvlari: ${pendingAnketa}` : "")
       );
     })
   );

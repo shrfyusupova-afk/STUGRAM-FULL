@@ -1,5 +1,5 @@
 const { Markup } = require("telegraf");
-const { getProfile, getLanguage } = require("./db");
+const { getProfile, getLanguage, hasVipChat } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { createOrder, buildCheckoutUrl, VIP_CHAT_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
@@ -17,6 +17,13 @@ function registerVipChatHandlers(bot) {
 
   bot.hears(vipLabels, async (ctx) => {
     const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    // Already paid before? Hand the link straight back instead of asking for
+    // money a second time -- this is also the recovery path if the original
+    // "here's your link" message failed to send right after payment.
+    if (hasVipChat(ctx.from.id)) {
+      await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
+      return;
+    }
     const profile = getProfile(ctx.from.id);
     const isFemale = profile?.gender === "female";
     const button = isFemale
