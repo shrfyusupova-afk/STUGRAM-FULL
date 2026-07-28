@@ -185,32 +185,53 @@ function pendingLikerCount(userId) {
   return getLikers(userId).filter((likerId) => !hasLiked(userId, likerId)).length;
 }
 
-// Telegram rate-limits a bot to roughly one message per second per chat, and
-// someone popular can collect likes far faster than that. Notifying on every
-// single like would both spam them and risk hitting that limit, so bursts are
-// collapsed: the next like after this window sends one message carrying the
-// updated total, rather than one message per like.
-const LIKE_NOTIFY_THROTTLE_MS = 60 * 1000;
-const lastLikeNotifyAt = new Map();
+// EVERY like gets its own notification -- none are ever dropped. Telegram
+// allows roughly one message per second to the same chat and starts returning
+// 429 (and eventually throttles the bot itself) past that, so instead of
+// skipping messages, notifications for one person are queued and spaced out.
+// Someone receiving a burst of likes therefore gets every message, just
+// paced; almost always the queue is empty and the message goes out instantly.
+const MIN_NOTIFY_GAP_MS = 1100;
+const notifyChains = new Map();
 
-async function notifyNewLike(telegram, likedId) {
-  const last = lastLikeNotifyAt.get(String(likedId)) || 0;
-  if (Date.now() - last < LIKE_NOTIFY_THROTTLE_MS) return;
-  lastLikeNotifyAt.set(String(likedId), Date.now());
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  const lang = getLanguage(likedId) || DEFAULT_LANG;
-  const count = pendingLikerCount(likedId);
-  try {
+// One promise chain per recipient: messages to different people still go out
+// in parallel, only messages to the SAME person are serialised.
+function queueNotification(chatKey, task) {
+  const prev = notifyChains.get(chatKey) || Promise.resolve();
+  const chain = prev
+    .then(task)
+    .catch((err) => {
+      // Blocked the bot, deleted their account, etc. -- the like itself is
+      // already recorded, so it simply shows up in their list later.
+      console.error("new-like notification failed:", err.message);
+    })
+    .then(() => sleep(MIN_NOTIFY_GAP_MS));
+
+  notifyChains.set(chatKey, chain);
+  // Drop the entry once this chain is the last one still pending, so the map
+  // doesn't grow forever as people come and go.
+  chain.finally(() => {
+    if (notifyChains.get(chatKey) === chain) notifyChains.delete(chatKey);
+  });
+  return chain;
+}
+
+function notifyNewLike(telegram, likedId) {
+  return queueNotification(String(likedId), async () => {
+    const lang = getLanguage(likedId) || DEFAULT_LANG;
+    // Counted at send time, not queue time, so the number is current even if
+    // several likes were waiting ahead of this one.
+    const count = pendingLikerCount(likedId);
     await telegram.sendMessage(
       likedId,
       t(lang, "newLikeNotification")(count),
       Markup.inlineKeyboard([[Markup.button.callback(t(lang, "seeWhoLikedButton"), "likes:show")]])
     );
-  } catch (err) {
-    // Blocked the bot, deleted their account, etc. -- the like is already
-    // recorded either way, they'll simply see it next time they open the list.
-    console.error("new-like notification failed:", err.message);
-  }
+  });
 }
 
 async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
@@ -223,7 +244,9 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   // come back and decide instead of only finding out if they happen to open
   // the bot on their own.
   if (!hasLiked(likedId, likerId)) {
-    await notifyNewLike(ctx.telegram, likedId);
+    // Deliberately not awaited: the person doing the liking shouldn't sit
+    // waiting on someone else's notification being paced out of a queue.
+    notifyNewLike(ctx.telegram, likedId);
     return;
   }
 
