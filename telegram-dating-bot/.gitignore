@@ -11,3 +11,4 @@ data/discoverState.json
 data/vipChatAccess.json
 data/*.tmp
 data/*.corrupt
+data/complaints.json

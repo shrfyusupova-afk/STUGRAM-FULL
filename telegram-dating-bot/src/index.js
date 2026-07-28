@@ -10,6 +10,7 @@ const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
+const { registerComplaintHandlers } = require("./complaints");
 const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const {
@@ -99,7 +100,11 @@ setPublicUrl(webhookDomain);
 // shares the exact same data/ files as the main bot (no sync, no
 // duplication, no risk of losing account data across two separate deploys).
 const adminToken = process.env.ADMIN_BOT_TOKEN;
-const adminBot = adminToken ? createAdminBot(adminToken) : null;
+// The main bot is constructed first because the admin bot needs its Telegram
+// client: a reply to a complaint must be delivered to the reporter through
+// the bot they actually use, not through the admin bot.
+const bot = new Telegraf(token);
+const adminBot = adminToken ? createAdminBot(adminToken, bot.telegram) : null;
 const adminWebhookPath = "/telegram/admin-webhook";
 let adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET;
 if (adminBot && !adminWebhookSecret && webhookDomain) {
@@ -110,7 +115,6 @@ if (adminBot && !adminWebhookSecret && webhookDomain) {
   );
 }
 
-const bot = new Telegraf(token);
 const stage = new Scenes.Stage([profileWizard]);
 
 bot.use(session());
@@ -171,6 +175,10 @@ bot.command("anketa", async (ctx) => {
 // someone in an active anon chat is always forwarded, never accidentally
 // matched by an unrelated button (e.g. the partner typing "❤️").
 registerAnonChatHandlers(bot);
+// Second, for the same reason: someone who has tapped "report" and is typing
+// their complaint must have that message taken as the complaint, not matched
+// against a menu label that happens to appear in what they wrote.
+registerComplaintHandlers(bot);
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);

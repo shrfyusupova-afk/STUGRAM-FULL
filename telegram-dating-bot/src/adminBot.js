@@ -1,7 +1,11 @@
 const crypto = require("crypto");
 const { Telegraf, Markup } = require("telegraf");
-const { getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin } = require("./db");
+const {
+  getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin,
+  listComplaints, getComplaint, setComplaintReply,
+} = require("./db");
 const { getSalesSummary } = require("./click");
+const { deliverAdminReply } = require("./complaints");
 
 // This file is committed to git -- a PIN hardcoded here would be readable
 // by anyone with repo access, making the brute-force lockout below pointless
@@ -20,6 +24,18 @@ if (!process.env.ADMIN_PIN_CODE) {
 const STATS_LABEL = "📊 Statistika";
 const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
+const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
+const NEXT_LABEL = "➡️ Keyingisi";
+const RESTART_LABEL = "🔄 Boshidan ko'rish";
+const BACK_LABEL = "⬅️ Orqaga";
+
+// What the reporter was looking at when they filed, used for the one-line
+// label in the list so an admin can triage without opening each one.
+const SOURCE_LABEL = {
+  discover: "shubhali rasm shikoyati",
+  anon: "anonim chatdan shikoyat",
+  general: "umumiy shikoyat",
+};
 
 // In-memory only: which digits an unauthenticated user has entered so far.
 // Resets on restart -- acceptable, it's just a login-attempt-in-progress
@@ -60,7 +76,80 @@ function pinKeyboard() {
 }
 
 function adminMenuKeyboard() {
-  return Markup.keyboard([[STATS_LABEL, USERS_LABEL], [SALES_LABEL]]).resize();
+  return Markup.keyboard([[STATS_LABEL, USERS_LABEL], [SALES_LABEL, COMPLAINTS_LABEL]]).resize();
+}
+
+// Shown while stepping through complaints one at a time.
+function complaintNavKeyboard() {
+  return Markup.keyboard([[NEXT_LABEL, BACK_LABEL], [RESTART_LABEL]]).resize();
+}
+
+// Where each admin currently is in the complaint list, and which complaint
+// their next typed message should answer.
+//
+// In memory: it's a cursor over a list, not data. A restart just means the
+// admin taps Shikoyatlar again and starts from the top -- nothing is lost,
+// since replies are written straight to storage.
+const complaintCursor = new Map();
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// One line per complaint: the code the reporter was given, plus what kind of
+// complaint it is, so the admin can pick one to jump straight to.
+function complaintListText(complaints) {
+  const lines = complaints.map((c) => {
+    const mark = c.status === "answered" ? "✅" : "🆕";
+    return `${mark} <code>${escapeHtml(c.id)}</code> — ${SOURCE_LABEL[c.source] || c.source}`;
+  });
+  return (
+    `🚨 Shikoyatlar (${complaints.length} ta)\n\n` +
+    `${lines.join("\n")}\n\n` +
+    `Bittasini ochish uchun uning raqamini yuboring, yoki "${NEXT_LABEL}" bilan ketma-ket ko'ring.`
+  );
+}
+
+// A person's details as the admin needs to see them: who they are, plus a tap
+// target to message them directly. tg://user works for anyone who has talked
+// to a bot, which both the reporter and the reported person have.
+function personBlock(title, id, profile) {
+  if (!id) return `${title}: —`;
+  const link = `<a href="tg://user?id=${encodeURIComponent(id)}">✍️ To'g'ridan-to'g'ri yozish</a>`;
+  if (!profile || !isRegistered(profile)) {
+    return `${title}:\n🆔 <code>${escapeHtml(id)}</code> (anketa yo'q)\n${link}`;
+  }
+  return (
+    `${title}:\n` +
+    `👤 ${escapeHtml(profile.name)}, ${escapeHtml(profile.age)}\n` +
+    `🆔 <code>${escapeHtml(id)}</code>\n` +
+    `📍 ${escapeHtml(profile.location)}\n` +
+    (profile.phone ? `📞 ${escapeHtml(profile.phone)}\n` : "") +
+    `${link}`
+  );
+}
+
+async function complaintDetailText(complaint, position, total) {
+  const reporter = await getProfile(complaint.reporterId);
+  const target = complaint.targetId ? await getProfile(complaint.targetId) : null;
+  const when = complaint.createdAt ? new Date(complaint.createdAt).toISOString().slice(0, 16).replace("T", " ") : "—";
+
+  return (
+    `🚨 Shikoyat <code>${escapeHtml(complaint.id)}</code>  (${position}/${total})\n` +
+    `📂 Turi: ${SOURCE_LABEL[complaint.source] || complaint.source}\n` +
+    `🕒 ${when}\n` +
+    `${complaint.status === "answered" ? "✅ Javob berilgan" : "🆕 Javob kutilmoqda"}\n\n` +
+    `${personBlock("🙋 Kim shikoyat qilgan", complaint.reporterId, reporter)}\n\n` +
+    `${personBlock("🎯 Kimning ustidan", complaint.targetId, target)}\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `💬 <b>Shikoyat matni:</b>\n${escapeHtml(complaint.text)}\n` +
+    `━━━━━━━━━━━━━━\n\n` +
+    (complaint.adminReply ? `📤 <b>Sizning javobingiz:</b>\n${escapeHtml(complaint.adminReply)}\n\n` : "") +
+    `✍️ <b>Javobingizni yozing</b> — shu yerga yozsangiz, to'g'ridan-to'g'ri shikoyatchiga yetib boradi.`
+  );
 }
 
 // Wraps a handler so it silently no-ops for anyone not in data/admins.json --
@@ -127,7 +216,10 @@ async function safeEditMessageText(ctx, text, extra) {
   }
 }
 
-function createAdminBot(token) {
+// mainBotTelegram is the MAIN bot's Telegram client, not this one's. A reply
+// to a complaint has to reach the reporter in the bot they actually use --
+// sending it from the admin bot would land in a chat they've never opened.
+function createAdminBot(token, mainBotTelegram) {
   const bot = new Telegraf(token);
 
   bot.start(async (ctx) => {
@@ -252,13 +344,125 @@ function createAdminBot(token) {
     })
   );
 
+  // Opens the list and puts the admin at the top of it.
+  bot.hears(
+    COMPLAINTS_LABEL,
+    requireAdmin(async (ctx) => {
+      const complaints = await listComplaints();
+      if (complaints.length === 0) {
+        complaintCursor.delete(ctx.from.id);
+        await ctx.reply("🚨 Hozircha shikoyatlar yo'q.", adminMenuKeyboard());
+        return;
+      }
+      complaintCursor.set(ctx.from.id, { ids: complaints.map((c) => c.id), index: 0, viewing: null });
+      await ctx.reply(complaintListText(complaints), { parse_mode: "HTML", ...complaintNavKeyboard() });
+      await showComplaintAt(ctx, 0);
+    })
+  );
+
+  // Re-reads the list from storage each time rather than trusting the cursor's
+  // snapshot, so a complaint filed since the admin opened the list still shows
+  // up and a deleted one doesn't 404.
+  async function showComplaintAt(ctx, index) {
+    const complaints = await listComplaints();
+    if (complaints.length === 0) {
+      complaintCursor.delete(ctx.from.id);
+      await ctx.reply("🚨 Shikoyatlar tugadi.", adminMenuKeyboard());
+      return;
+    }
+    const bounded = Math.max(0, Math.min(index, complaints.length - 1));
+    const complaint = complaints[bounded];
+    complaintCursor.set(ctx.from.id, {
+      ids: complaints.map((c) => c.id),
+      index: bounded,
+      viewing: complaint.id,
+    });
+    await ctx.reply(await complaintDetailText(complaint, bounded + 1, complaints.length), {
+      parse_mode: "HTML",
+      ...complaintNavKeyboard(),
+    });
+  }
+
+  bot.hears(
+    NEXT_LABEL,
+    requireAdmin(async (ctx) => {
+      const cursor = complaintCursor.get(ctx.from.id);
+      if (!cursor) {
+        await ctx.reply(`Avval "${COMPLAINTS_LABEL}" tugmasini bosing.`, adminMenuKeyboard());
+        return;
+      }
+      const nextIndex = cursor.index + 1;
+      if (nextIndex >= cursor.ids.length) {
+        complaintCursor.delete(ctx.from.id);
+        await ctx.reply("✅ Barcha shikoyatlarni ko'rib chiqdingiz.", adminMenuKeyboard());
+        return;
+      }
+      await showComplaintAt(ctx, nextIndex);
+    })
+  );
+
+  bot.hears(
+    RESTART_LABEL,
+    requireAdmin(async (ctx) => {
+      await showComplaintAt(ctx, 0);
+    })
+  );
+
+  bot.hears(
+    BACK_LABEL,
+    requireAdmin(async (ctx) => {
+      complaintCursor.delete(ctx.from.id);
+      await ctx.reply("Admin panel:", adminMenuKeyboard());
+    })
+  );
+
   // Registered after the hears() calls above, so it only catches text that
-  // didn't match a menu button -- i.e. an actual search query.
+  // didn't match a menu button -- i.e. a complaint id, a reply, or a search.
   bot.on(
     "text",
     requireAdmin(async (ctx) => {
       const query = ctx.message.text.trim();
       if (!query) return;
+
+      // Jumping straight to a complaint by the code the reporter was given.
+      if (/^\d{5}$/.test(query)) {
+        const complaint = await getComplaint(query);
+        if (complaint) {
+          const all = await listComplaints();
+          await showComplaintAt(ctx, all.findIndex((c) => c.id === complaint.id));
+          return;
+        }
+        // Not a complaint code -- fall through and treat it as a search term,
+        // since a 5-digit Telegram id is unlikely but a typo'd code is not.
+      }
+
+      // While a complaint is open on screen, anything typed is the answer to
+      // it. That is the whole "javobingizni yozing" box.
+      const cursor = complaintCursor.get(ctx.from.id);
+      if (cursor?.viewing) {
+        const updated = await setComplaintReply(cursor.viewing, query);
+        if (!updated) {
+          await ctx.reply("Bu shikoyat topilmadi (o'chirilgan bo'lishi mumkin).");
+          return;
+        }
+        try {
+          await deliverAdminReply(mainBotTelegram, updated);
+          await ctx.reply(
+            `✅ Javob yuborildi.\n🆔 Shikoyat: ${updated.id}\n👤 Qabul qildi: ${updated.reporterId}`,
+            complaintNavKeyboard()
+          );
+        } catch (err) {
+          // Saved either way -- only the delivery failed, and the admin needs
+          // to know that so they can reach the person another way.
+          console.error("complaint reply delivery failed:", err.message);
+          await ctx.reply(
+            `⚠️ Javob saqlandi, lekin foydalanuvchiga yetkazib bo'lmadi ` +
+              `(botni bloklagan bo'lishi mumkin).\n🆔 ${updated.id}`,
+            complaintNavKeyboard()
+          );
+        }
+        return;
+      }
 
       const all = await getAllProfiles();
       const lowerQuery = query.toLowerCase();

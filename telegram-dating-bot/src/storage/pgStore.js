@@ -130,6 +130,22 @@ async function init() {
       current_id TEXT,
       shown JSONB NOT NULL DEFAULT '[]'::jsonb
     )`);
+  // id is the short code shown to the person who filed it, so they can quote
+  // it back later -- it's the primary key rather than a surrogate precisely
+  // so the code they were told is the one that identifies the row.
+  await query(`
+    CREATE TABLE IF NOT EXISTS complaints (
+      id           TEXT PRIMARY KEY,
+      reporter_id  TEXT NOT NULL,
+      target_id    TEXT,
+      source       TEXT NOT NULL,
+      text         TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'open',
+      admin_reply  TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      answered_at  TIMESTAMPTZ
+    )`);
+  await query(`CREATE INDEX IF NOT EXISTS complaints_created_idx ON complaints (created_at)`);
   await query(`
     CREATE TABLE IF NOT EXISTS click_transactions (
       merchant_trans_id TEXT PRIMARY KEY,
@@ -362,6 +378,62 @@ async function setLanguage(userId, lang) {
   );
 }
 
+// --- Complaints ------------------------------------------------------------
+
+function rowToComplaint(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    reporterId: row.reporter_id,
+    targetId: row.target_id,
+    source: row.source,
+    text: row.text,
+    status: row.status,
+    adminReply: row.admin_reply,
+    createdAt: row.created_at ? row.created_at.toISOString() : undefined,
+    answeredAt: row.answered_at ? row.answered_at.toISOString() : undefined,
+  };
+}
+
+// Returns false when the id is already taken, so the caller can pick another
+// short code instead of silently overwriting somebody else's complaint.
+async function createComplaint(id, complaint) {
+  const { rows } = await query(
+    `INSERT INTO complaints (id, reporter_id, target_id, source, text)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (id) DO NOTHING
+     RETURNING *`,
+    [id, String(complaint.reporterId), complaint.targetId ? String(complaint.targetId) : null, complaint.source, complaint.text]
+  );
+  return rows.length > 0;
+}
+
+async function getComplaint(id) {
+  const { rows } = await query(`SELECT * FROM complaints WHERE id = $1`, [String(id)]);
+  return rowToComplaint(rows[0]);
+}
+
+// Unanswered ones first so the admin always lands on work that still needs
+// doing, then oldest-first within each group.
+async function listComplaints() {
+  const { rows } = await query(
+    `SELECT * FROM complaints
+      ORDER BY (status = 'answered'), created_at`
+  );
+  return rows.map(rowToComplaint);
+}
+
+async function setComplaintReply(id, reply) {
+  const { rows } = await query(
+    `UPDATE complaints
+        SET admin_reply = $2, status = 'answered', answered_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [String(id), reply]
+  );
+  return rowToComplaint(rows[0]);
+}
+
 // --- Click transaction ledger (used by click.js when Postgres is active) ---
 
 function rowToTx(row) {
@@ -443,6 +515,7 @@ module.exports = {
   grantVipChat, hasVipChat, isAdmin, addAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
+  createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
   markTransaction, getSalesRows,
 };

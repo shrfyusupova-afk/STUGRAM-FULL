@@ -20,6 +20,7 @@ const { sendMainMenu } = require("./menu");
 const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
+const { promptForComplaint, SOURCE } = require("./complaints");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -84,8 +85,15 @@ async function pickCandidate(userId, myGender) {
   return { id, profile };
 }
 
+// The report button sits directly above Back, as a normal keyboard button.
+// It carries no id of its own -- which candidate it refers to is simply
+// whoever is currently on screen, which discoverState already tracks.
 function discoverKeyboard(lang) {
-  return Markup.keyboard([[LIKE, DISLIKE], [t(lang, "backButton")]]).resize();
+  return Markup.keyboard([
+    [LIKE, DISLIKE],
+    [t(lang, "reportUserButton")],
+    [t(lang, "backButton")],
+  ]).resize();
 }
 
 // contactPhone is set once the viewer has actual access to this candidate
@@ -293,6 +301,7 @@ async function showNextCandidate(ctx, lang, myGender) {
 function registerDiscoverHandlers(bot) {
   const discoverLabels = Object.values(STRINGS).map((dict) => dict.menu.discover);
   const backLabels = Object.values(STRINGS).map((dict) => dict.backButton);
+  const reportLabels = Object.values(STRINGS).map((dict) => dict.reportUserButton);
 
   bot.hears(discoverLabels, async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
@@ -341,6 +350,20 @@ function registerDiscoverHandlers(bot) {
     if (me) {
       await sendMainMenu(ctx, lang);
     }
+  });
+
+  // Reports whoever is currently on screen. Reading the id from discoverState
+  // (rather than putting it on the button) is also what keeps this correct
+  // after a restart -- that state is persisted, so the button never ends up
+  // pointing at a candidate the person can no longer see.
+  bot.hears(reportLabels, async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    const state = await getDiscoverState(ctx.from.id);
+    if (!state?.currentId) {
+      await ctx.reply(t(lang, "reportNoCandidate"));
+      return;
+    }
+    await promptForComplaint(ctx, lang, { targetId: state.currentId, source: SOURCE.DISCOVER });
   });
 
   bot.action("unlock:noop", async (ctx) => {

@@ -9,6 +9,7 @@ const UNLOCKS_DB_PATH = path.join(__dirname, "..", "..", "data", "unlocks.json")
 const DISLIKES_DB_PATH = path.join(__dirname, "..", "..", "data", "dislikes.json");
 const DISCOVER_STATE_PATH = path.join(__dirname, "..", "..", "data", "discoverState.json");
 const VIP_CHAT_PATH = path.join(__dirname, "..", "..", "data", "vipChatAccess.json");
+const COMPLAINTS_PATH = path.join(__dirname, "..", "..", "data", "complaints.json");
 
 // Null-prototype objects, not plain {} -- every ID here (candidateId,
 // targetId) can originate from callback_data or a /start deep-link payload,
@@ -248,6 +249,56 @@ async function hasVipChat(userId) {
   return !!readJson(VIP_CHAT_PATH)[String(userId)];
 }
 
+// --- Complaints ------------------------------------------------------------
+// Keyed by the short code the reporter is told, so the code they quote back is
+// literally the lookup key.
+
+// Returns false when the id is already taken, so the caller can pick another
+// short code instead of silently overwriting somebody else's complaint.
+async function createComplaint(id, complaint) {
+  const all = readJson(COMPLAINTS_PATH);
+  if (all[String(id)]) return false;
+  all[String(id)] = {
+    id: String(id),
+    reporterId: String(complaint.reporterId),
+    targetId: complaint.targetId ? String(complaint.targetId) : null,
+    source: complaint.source,
+    text: complaint.text,
+    status: "open",
+    adminReply: null,
+    createdAt: new Date().toISOString(),
+    answeredAt: null,
+  };
+  writeJson(COMPLAINTS_PATH, all);
+  return true;
+}
+
+async function getComplaint(id) {
+  return readJson(COMPLAINTS_PATH)[String(id)] || null;
+}
+
+// Unanswered ones first so the admin always lands on work that still needs
+// doing, then oldest-first within each group.
+async function listComplaints() {
+  return Object.values(readJson(COMPLAINTS_PATH)).sort((a, b) => {
+    const aDone = a.status === "answered" ? 1 : 0;
+    const bDone = b.status === "answered" ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    return String(a.createdAt).localeCompare(String(b.createdAt));
+  });
+}
+
+async function setComplaintReply(id, reply) {
+  const all = readJson(COMPLAINTS_PATH);
+  const row = all[String(id)];
+  if (!row) return null;
+  row.adminReply = reply;
+  row.status = "answered";
+  row.answeredAt = new Date().toISOString();
+  writeJson(COMPLAINTS_PATH, all);
+  return { ...row };
+}
+
 async function isAdmin(userId) {
   return !!readJson(ADMINS_DB_PATH)[String(userId)];
 }
@@ -294,4 +345,8 @@ module.exports = {
   getDiscoverState,
   setDiscoverState,
   clearDiscoverState,
+  createComplaint,
+  getComplaint,
+  listComplaints,
+  setComplaintReply,
 };

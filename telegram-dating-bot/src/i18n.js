@@ -60,6 +60,7 @@ const STRINGS = {
       vip: "👑 VIP suhbat",
       premium: "💎 Premium",
       anonChat: "🕵️ Anonim chat",
+      complaint: "🚨 Shikoyat qilmoqchiman",
     },
     anonChatIntro:
       "🕵️ Anonim chat\n\n" +
@@ -150,6 +151,28 @@ const STRINGS = {
     profileStatusInactive: "🔴 Faolsiz",
     profilePremiumActive: (date) => `💎 Premium: faol (${date} gacha)`,
     profilePremiumNone: "💎 Premium: yo'q",
+    reportUserButton: "🚨 Foydalanuvchi ustidan shikoyat qilish",
+    reportPartnerButton: "🚨 Suhbatdosh ustidan shikoyat qilish",
+    reportNoCandidate: "Hozir ekranda hech kim yo'q. Avval anketani oching, keyin shikoyat qilishingiz mumkin.",
+    anonReportOffer: "Suhbatdoshdan norozi bo'lsangiz, quyidagi tugma orqali shikoyat qoldirishingiz mumkin 👇",
+    complaintPromptAbout:
+      "🚨 Shu rasmdagi insondan nima shikoyatingiz bo'lsa, shu yerda yozib qoldiring.\n\n" +
+      "⏱ 24 soat ichida natijasi bo'ladi, albatta!\n\n" +
+      "✍️ Shikoyatingizni yozing:",
+    complaintPromptGeneral:
+      "🚨 Nimadan shikoyatingiz bor? Shu yerda batafsil yozib qoldiring.\n\n" +
+      "⏱ 24 soat ichida natijasi bo'ladi, albatta!\n\n" +
+      "✍️ Shikoyatingizni yozing:",
+    complaintTooShort: "Iltimos, shikoyatingizni biroz batafsilroq yozing.",
+    complaintCancelled: "Shikoyat bekor qilindi.",
+    complaintFailed: "Kechirasiz, shikoyatni qabul qilib bo'lmadi. Biroz keyin qayta urinib ko'ring.",
+    complaintReceived: (id) =>
+      "✅ Shikoyatingiz qabul qilindi!\n\n" +
+      `🆔 Shikoyat raqami: <b>${id}</b>\n` +
+      "Bu raqamni saqlab qo'ying — shikoyatingizni shu raqam orqali eslatishingiz mumkin.\n\n" +
+      "Uni adminga yuboramiz va uni tekshirgan holda sizga javobini aytamiz. 🙏",
+    complaintAnswered: (id, reply) =>
+      `📬 <b>${id}</b> raqamli shikoyatingizga javob keldi:\n\n${reply}`,
     noProfileYet: "Sizda hali anketa yo'q. Avval /start orqali anketa to'ldiring.",
   },
   ru: {
@@ -203,6 +226,7 @@ const STRINGS = {
       vip: "👑 VIP чат",
       premium: "💎 Премиум",
       anonChat: "🕵️ Анонимный чат",
+      complaint: "🚨 Хочу пожаловаться",
     },
     anonChatIntro:
       "🕵️ Анонимный чат\n\n" +
@@ -293,6 +317,28 @@ const STRINGS = {
     profileStatusInactive: "🔴 Неактивна",
     profilePremiumActive: (date) => `💎 Премиум: активен (до ${date})`,
     profilePremiumNone: "💎 Премиум: нет",
+    reportUserButton: "🚨 Пожаловаться на пользователя",
+    reportPartnerButton: "🚨 Пожаловаться на собеседника",
+    reportNoCandidate: "Сейчас на экране никого нет. Сначала откройте анкету, потом сможете пожаловаться.",
+    anonReportOffer: "Если собеседник вас чем-то не устроил, можете оставить жалобу по кнопке ниже 👇",
+    complaintPromptAbout:
+      "🚨 Напишите здесь, что именно вас не устроило в человеке с этого фото.\n\n" +
+      "⏱ Результат будет в течение 24 часов, обязательно!\n\n" +
+      "✍️ Опишите жалобу:",
+    complaintPromptGeneral:
+      "🚨 На что вы хотите пожаловаться? Опишите подробно здесь.\n\n" +
+      "⏱ Результат будет в течение 24 часов, обязательно!\n\n" +
+      "✍️ Опишите жалобу:",
+    complaintTooShort: "Пожалуйста, опишите жалобу чуть подробнее.",
+    complaintCancelled: "Жалоба отменена.",
+    complaintFailed: "Извините, не удалось принять жалобу. Попробуйте чуть позже.",
+    complaintReceived: (id) =>
+      "✅ Ваша жалоба принята!\n\n" +
+      `🆔 Номер жалобы: <b>${id}</b>\n` +
+      "Сохраните этот номер — по нему вы сможете сослаться на свою жалобу.\n\n" +
+      "Мы передадим её администратору, он всё проверит и мы сообщим вам ответ. 🙏",
+    complaintAnswered: (id, reply) =>
+      `📬 Пришёл ответ на вашу жалобу <b>${id}</b>:\n\n${reply}`,
     noProfileYet: "У вас пока нет анкеты. Сначала заполните её через /start.",
   },
   en: {
@@ -346,6 +392,7 @@ const STRINGS = {
       vip: "👑 VIP chat",
       premium: "💎 Premium",
       anonChat: "🕵️ Anonymous chat",
+      complaint: "🚨 I want to report",
     },
     anonChatIntro:
       "🕵️ Anonymous chat\n\n" +
@@ -436,6 +483,28 @@ const STRINGS = {
     profileStatusInactive: "🔴 Inactive",
     profilePremiumActive: (date) => `💎 Premium: active (until ${date})`,
     profilePremiumNone: "💎 Premium: none",
+    reportUserButton: "🚨 Report this user",
+    reportPartnerButton: "🚨 Report your chat partner",
+    reportNoCandidate: "There's nobody on screen right now. Open a profile first, then you can report it.",
+    anonReportOffer: "If something was wrong with your chat partner, you can report them with the button below 👇",
+    complaintPromptAbout:
+      "🚨 Write here what exactly is wrong with the person in this photo.\n\n" +
+      "⏱ You'll get a result within 24 hours, guaranteed!\n\n" +
+      "✍️ Describe your report:",
+    complaintPromptGeneral:
+      "🚨 What would you like to report? Describe it in detail here.\n\n" +
+      "⏱ You'll get a result within 24 hours, guaranteed!\n\n" +
+      "✍️ Describe your report:",
+    complaintTooShort: "Please describe your report in a little more detail.",
+    complaintCancelled: "Report cancelled.",
+    complaintFailed: "Sorry, the report couldn't be filed. Please try again shortly.",
+    complaintReceived: (id) =>
+      "✅ Your report has been received!\n\n" +
+      `🆔 Report number: <b>${id}</b>\n` +
+      "Keep this number -- you can use it to refer back to your report.\n\n" +
+      "We'll pass it to an admin, they'll review it and we'll get back to you with an answer. 🙏",
+    complaintAnswered: (id, reply) =>
+      `📬 There's a reply to your report <b>${id}</b>:\n\n${reply}`,
     noProfileYet: "You don't have a profile yet. Fill one out first via /start.",
   },
 };

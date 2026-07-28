@@ -10,6 +10,7 @@ function mainMenuKeyboard(lang) {
     [m.discover, m.profile],
     [m.likes, m.vip],
     [m.premium, m.anonChat],
+    [m.complaint],
   ])
     .resize()
     .persistent();

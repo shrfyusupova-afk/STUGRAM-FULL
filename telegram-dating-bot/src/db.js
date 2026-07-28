@@ -61,6 +61,11 @@ module.exports = {
   getDiscoverState: store.getDiscoverState,
   setDiscoverState: store.setDiscoverState,
   clearDiscoverState: store.clearDiscoverState,
+  // Complaints
+  createComplaint: store.createComplaint,
+  getComplaint: store.getComplaint,
+  listComplaints: store.listComplaints,
+  setComplaintReply: store.setComplaintReply,
   // Admin + language
   isAdmin: store.isAdmin,
   addAdmin: store.addAdmin,

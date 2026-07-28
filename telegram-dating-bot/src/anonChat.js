@@ -29,6 +29,16 @@ function anonChatKeyboard(lang) {
   return Markup.keyboard([[t(lang, "anonStopButton")]]).resize();
 }
 
+// Offered once a chat is over rather than during it: the live chat keyboard is
+// deliberately just the stop button, so the way to report a partner is on the
+// message that tells you the chat ended. Inline, because it has to carry which
+// partner it was -- by then they're gone from activeChats.
+function anonReportKeyboard(lang, partnerId) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(t(lang, "reportPartnerButton"), `report:anon:${partnerId}`)],
+  ]);
+}
+
 // Real, unweighted matching -- "wants" must be mutually satisfied both ways.
 // No gender is ever favored over another here; "Random" (wants: "any") gets
 // an honestly random pick among everyone currently compatible.
@@ -50,6 +60,20 @@ function startChat(telegram, userAId, userBId) {
   activeChats.set(userBId, { partnerId: userAId, timer });
 }
 
+// Tells someone their chat is over and offers to report who they were talking
+// to. Two messages rather than one because the first has to restore the main
+// reply keyboard and the second carries an inline button -- Telegram allows
+// only one keyboard per message.
+async function sendChatEnded(telegram, userId, partnerId, textKey) {
+  const lang = (await getLanguage(userId)) || DEFAULT_LANG;
+  try {
+    await telegram.sendMessage(userId, t(lang, textKey), mainMenuKeyboard(lang));
+    await telegram.sendMessage(userId, t(lang, "anonReportOffer"), anonReportKeyboard(lang, partnerId));
+  } catch (err) {
+    console.error("anon chat end notify failed:", err.message);
+  }
+}
+
 async function endChatByTimeout(telegram, userId) {
   const chat = activeChats.get(userId);
   if (!chat) return;
@@ -57,18 +81,8 @@ async function endChatByTimeout(telegram, userId) {
   activeChats.delete(userId);
   activeChats.delete(partnerId);
 
-  const lang1 = await getLanguage(userId) || DEFAULT_LANG;
-  const lang2 = await getLanguage(partnerId) || DEFAULT_LANG;
-  try {
-    await telegram.sendMessage(userId, t(lang1, "anonChatEnded"), mainMenuKeyboard(lang1));
-  } catch (err) {
-    console.error("anon chat end notify failed:", err.message);
-  }
-  try {
-    await telegram.sendMessage(partnerId, t(lang2, "anonChatEnded"), mainMenuKeyboard(lang2));
-  } catch (err) {
-    console.error("anon chat end notify failed:", err.message);
-  }
+  await sendChatEnded(telegram, userId, partnerId, "anonChatEnded");
+  await sendChatEnded(telegram, partnerId, userId, "anonChatEnded");
 }
 
 // Used by discover.js's shared "Orqaga" handler so leaving the anon chat
@@ -82,12 +96,7 @@ async function leaveAnonQueueOrChat(telegram, userId) {
   clearTimeout(chat.timer);
   activeChats.delete(userId);
   activeChats.delete(partnerId);
-  const lang = await getLanguage(partnerId) || DEFAULT_LANG;
-  try {
-    await telegram.sendMessage(partnerId, t(lang, "anonPartnerLeft"), mainMenuKeyboard(lang));
-  } catch (err) {
-    console.error("anon partner-left notify failed:", err.message);
-  }
+  await sendChatEnded(telegram, partnerId, userId, "anonPartnerLeft");
 }
 
 async function attemptJoin(ctx, wants) {
@@ -159,14 +168,10 @@ function registerAnonChatHandlers(bot) {
       clearTimeout(chat.timer);
       activeChats.delete(userId);
       activeChats.delete(partnerId);
-      const lang = await getLanguage(userId) || DEFAULT_LANG;
-      const partnerLang = await getLanguage(partnerId) || DEFAULT_LANG;
-      await ctx.reply(t(lang, "anonChatEnded"), mainMenuKeyboard(lang));
-      try {
-        await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonPartnerLeft"), mainMenuKeyboard(partnerLang));
-      } catch (err) {
-        console.error("anon stop notify failed:", err.message);
-      }
+      // Both sides get the same treatment: their keyboard back, plus the
+      // option to report the person they were just talking to.
+      await sendChatEnded(ctx.telegram, userId, partnerId, "anonChatEnded");
+      await sendChatEnded(ctx.telegram, partnerId, userId, "anonPartnerLeft");
       return;
     }
 
