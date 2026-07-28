@@ -22,6 +22,7 @@ const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
 const { promptForComplaint, SOURCE } = require("./complaints");
+const { profileLinkHref } = require("./profileLink");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -151,12 +152,13 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
     `${t(lang, "bioLabel")}\n<i>${escapeHtml(profile.bio)}</i>`;
 
   if (contactPhone) {
-    // tg://user?id=... opens that person's Telegram profile straight from the
-    // caption, so the viewer can message them in one tap instead of copying a
-    // phone number into their contacts first. Telegram only guarantees these
-    // mention links resolve for users who have interacted with the bot --
-    // which is exactly who ends up here, since both sides are registered.
-    const openLink = `<a href="tg://user?id=${encodeURIComponent(candidateId)}">${escapeHtml(t(lang, "openProfileLink"))}</a>`;
+    // Opens that person's Telegram straight from the caption, so the viewer
+    // can message them in one tap instead of copying a phone number into
+    // their contacts first. profileLinkHref picks a form that actually
+    // renders as a link -- see the note there about tg://user silently
+    // degrading to plain text.
+    const href = profileLinkHref(candidateId, profile);
+    const openLink = `<a href="${href}">${escapeHtml(t(lang, "openProfileLink"))}</a>`;
     return `${base}\n\n📞 ${escapeHtml(contactPhone)}\n${openLink}`;
   }
 

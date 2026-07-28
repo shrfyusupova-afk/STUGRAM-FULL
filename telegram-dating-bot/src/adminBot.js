@@ -6,6 +6,7 @@ const {
 } = require("./db");
 const { getSalesSummary } = require("./click");
 const { deliverAdminReply } = require("./complaints");
+const { profileLinkHref, profileLinkKind } = require("./profileLink");
 
 // This file is committed to git -- a PIN hardcoded here would be readable
 // by anyone with repo access, making the brute-force lockout below pointless
@@ -244,23 +245,25 @@ function complaintListText(complaints) {
   );
 }
 
-// How to reach this person in one tap.
-//
-// t.me/<handle> is used whenever a @username is known, because it opens for
-// anyone. tg://user?id= is only a fallback: Telegram resolves those mention
-// links only for people the VIEWING client already knows, which is why it
-// worked for one person in a complaint and rendered as dead text for the
-// other. When neither is possible, the phone number is offered instead so
-// there is always some way through.
+// How to reach this person in one tap. profileLink.js decides which form of
+// link actually works; this only words it.
 function contactLine(id, profile) {
-  if (profile?.username) {
-    return `✍️ <a href="https://t.me/${encodeURIComponent(profile.username)}">@${escapeHtml(profile.username)} — yozish</a>`;
+  const href = profileLinkHref(id, profile);
+  const kind = profileLinkKind(profile);
+
+  if (kind === "username") {
+    return `✍️ <a href="${href}">@${escapeHtml(profile.username)} — yozish</a>`;
   }
-  const fallback = `✍️ <a href="tg://user?id=${encodeURIComponent(id)}">To'g'ridan-to'g'ri yozish</a>`;
-  if (profile?.phone) {
-    return `${fallback}\n📱 Ochilmasa, raqam orqali: <code>${escapeHtml(profile.phone)}</code>`;
+  if (kind === "phone") {
+    return (
+      `✍️ <a href="${href}">To'g'ridan-to'g'ri yozish</a>\n` +
+      `📱 Raqam: <code>${escapeHtml(profile.phone)}</code>`
+    );
   }
-  return `${fallback}\n<i>(username yo'q — havola ochilmasligi mumkin)</i>`;
+  return (
+    `✍️ <a href="${href}">To'g'ridan-to'g'ri yozish</a>\n` +
+    `<i>(username ham, raqam ham yo'q — havola ochilmasligi mumkin)</i>`
+  );
 }
 
 // A person's details as the admin needs to see them.
@@ -379,9 +382,9 @@ function birthYearLabel(profile) {
 // inside the list itself -- which is exactly "the id is the link". Tapping it
 // sends the command back and the profile is posted underneath.
 function searchResultLine(position, id, profile) {
-  const link = profile?.username
-    ? `<a href="https://t.me/${encodeURIComponent(profile.username)}">@${escapeHtml(profile.username)}</a>`
-    : `<a href="tg://user?id=${encodeURIComponent(id)}">profilga o'tish</a>`;
+  const href = profileLinkHref(id, profile);
+  const label = profile?.username ? `@${escapeHtml(profile.username)}` : "profilga o'tish";
+  const link = `<a href="${href}">${label}</a>`;
   const name = isRegistered(profile) ? escapeHtml(profile.name) : "(anketa to'ldirilmagan)";
   return (
     `${position}. /u_${escapeHtml(id)}\n` +
