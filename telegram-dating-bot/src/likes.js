@@ -20,40 +20,51 @@ function respondKeyboard(candidateId) {
 // Reuses discover.js's card renderer. Each liker gets its own inline
 // ❤️/👎 pair (not the reply-keyboard swipe buttons, which can't tell which
 // of several cards on screen they refer to) unless it's already a mutual
-// match, in which case there's nothing left to decide -- just a button to
-// view the profile.
+// match, in which case there's nothing left to decide.
+//
+// Shared by the "💌 Kimlar yoqtirdi" menu button AND the "Kim layk bosganini
+// ko'rish" button attached to a new-like notification -- both must open the
+// exact same list, not two drifting copies of it.
+async function showLikers(ctx) {
+  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+  const myId = ctx.from.id;
+  const likerIds = getLikers(myId);
+  const likers = likerIds
+    .map((id) => ({ id, profile: getProfile(id) }))
+    .filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+
+  if (likers.length === 0) {
+    await ctx.reply(t(lang, "noLikesYet"));
+    return;
+  }
+
+  await ctx.reply(t(lang, "likesIntro")(likers.length));
+  for (const { id, profile } of likers) {
+    // Whether to show ❤️/👎 vs. the contact directly depends ONLY on
+    // whether it's a genuine mutual like -- NOT on canViewProfile (which
+    // also covers Premium/paid-unlock). Otherwise a Premium user would
+    // never see the ❤️ button here at all, could never like a liker back,
+    // and the other person would never get notified of a real match.
+    // includeUnlock is always false here: liking back is the free path
+    // already offered right on this card via the ❤️ button, so there's
+    // nothing to pitch a paywall for. A mutual match reveals the contact
+    // directly on the card -- no separate "View profile" tap needed.
+    const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
+    const captionOptions = mutualMatch ? { includeUnlock: false, contactPhone: profile.phone } : { includeUnlock: false };
+    const keyboard = mutualMatch ? undefined : respondKeyboard(id);
+    await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
+  }
+}
+
 function registerLikesHandlers(bot) {
   const likesLabels = Object.values(STRINGS).map((dict) => dict.menu.likes);
 
-  bot.hears(likesLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const myId = ctx.from.id;
-    const likerIds = getLikers(myId);
-    const likers = likerIds
-      .map((id) => ({ id, profile: getProfile(id) }))
-      .filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+  bot.hears(likesLabels, showLikers);
 
-    if (likers.length === 0) {
-      await ctx.reply(t(lang, "noLikesYet"));
-      return;
-    }
-
-    await ctx.reply(t(lang, "likesIntro")(likers.length));
-    for (const { id, profile } of likers) {
-      // Whether to show ❤️/👎 vs. the contact directly depends ONLY on
-      // whether it's a genuine mutual like -- NOT on canViewProfile (which
-      // also covers Premium/paid-unlock). Otherwise a Premium user would
-      // never see the ❤️ button here at all, could never like a liker back,
-      // and the other person would never get notified of a real match.
-      // includeUnlock is always false here: liking back is the free path
-      // already offered right on this card via the ❤️ button, so there's
-      // nothing to pitch a paywall for. A mutual match reveals the contact
-      // directly on the card -- no separate "View profile" tap needed.
-      const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
-      const captionOptions = mutualMatch ? { includeUnlock: false, contactPhone: profile.phone } : { includeUnlock: false };
-      const keyboard = mutualMatch ? undefined : respondKeyboard(id);
-      await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
-    }
+  // Fired by the button under a "someone liked you" notification.
+  bot.action("likes:show", async (ctx) => {
+    await safeAnswerCbQuery(ctx);
+    await showLikers(ctx);
   });
 
   bot.action(/^likeback:like:(.+)$/, async (ctx) => {

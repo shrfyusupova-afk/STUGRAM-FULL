@@ -121,6 +121,12 @@ const STRINGS = {
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
+    newLikeNotification: (count) =>
+      `❤️ Sizga bitta odam layk bosdi!\n\n` +
+      `💌 Sizni layk bosganlar soni: ${count} ta\n\n` +
+      `Kim ekanini bilmoqchimisiz? Pastdagi tugmani bosing 👇`,
+    seeWhoLikedButton: "👀 Kim layk bosganini ko'rish",
+    openProfileLink: "💬 Profilga o'tish va yozish",
     premiumDetails:
       "💎 Premium obuna — 1 oy\n\n" +
       "Premium bilan sizga nima beriladi? 👇\n\n" +
@@ -258,6 +264,12 @@ const STRINGS = {
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
+    newLikeNotification: (count) =>
+      `❤️ Вам поставили лайк!\n\n` +
+      `💌 Всего лайков вас ждёт: ${count}\n\n` +
+      `Хотите узнать, кто это? Нажмите кнопку ниже 👇`,
+    seeWhoLikedButton: "👀 Посмотреть, кто лайкнул",
+    openProfileLink: "💬 Перейти в профиль и написать",
     premiumDetails:
       "💎 Премиум подписка — 1 месяц\n\n" +
       "Что вы получаете с Premium? 👇\n\n" +
@@ -395,6 +407,12 @@ const STRINGS = {
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,
+    newLikeNotification: (count) =>
+      `❤️ Someone liked you!\n\n` +
+      `💌 Likes waiting for you: ${count}\n\n` +
+      `Want to see who? Tap the button below 👇`,
+    seeWhoLikedButton: "👀 See who liked me",
+    openProfileLink: "💬 Open profile and message",
     premiumDetails:
       "💎 Premium subscription — 1 month\n\n" +
       "What do you get with Premium? 👇\n\n" +

@@ -4,6 +4,7 @@ const {
   getAllProfiles,
   getLanguage,
   recordLike,
+  getLikers,
   hasLiked,
   hasUnlocked,
   hasPremium,
@@ -98,7 +99,13 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
     `${t(lang, "bioLabel")}\n<i>${escapeHtml(profile.bio)}</i>`;
 
   if (contactPhone) {
-    return `${base}\n\n📞 ${escapeHtml(contactPhone)}`;
+    // tg://user?id=... opens that person's Telegram profile straight from the
+    // caption, so the viewer can message them in one tap instead of copying a
+    // phone number into their contacts first. Telegram only guarantees these
+    // mention links resolve for users who have interacted with the bot --
+    // which is exactly who ends up here, since both sides are registered.
+    const openLink = `<a href="tg://user?id=${encodeURIComponent(candidateId)}">${escapeHtml(t(lang, "openProfileLink"))}</a>`;
+    return `${base}\n\n📞 ${escapeHtml(contactPhone)}\n${openLink}`;
   }
 
   if (!includeUnlock) return base;
@@ -171,10 +178,54 @@ async function revealProfile(ctx, lang, candidateId) {
 // with the other person's profile (contact revealed) sent right underneath
 // -- no "View profile" tap required. A repeat tap on an already-mutual pair
 // is a no-op here (recordLike is idempotent) and must not re-notify.
+// How many people have liked this user WITHOUT being liked back yet -- i.e.
+// how many are still waiting for a decision. That's the number worth showing,
+// since already-matched people need no further action.
+function pendingLikerCount(userId) {
+  return getLikers(userId).filter((likerId) => !hasLiked(userId, likerId)).length;
+}
+
+// Telegram rate-limits a bot to roughly one message per second per chat, and
+// someone popular can collect likes far faster than that. Notifying on every
+// single like would both spam them and risk hitting that limit, so bursts are
+// collapsed: the next like after this window sends one message carrying the
+// updated total, rather than one message per like.
+const LIKE_NOTIFY_THROTTLE_MS = 60 * 1000;
+const lastLikeNotifyAt = new Map();
+
+async function notifyNewLike(telegram, likedId) {
+  const last = lastLikeNotifyAt.get(String(likedId)) || 0;
+  if (Date.now() - last < LIKE_NOTIFY_THROTTLE_MS) return;
+  lastLikeNotifyAt.set(String(likedId), Date.now());
+
+  const lang = getLanguage(likedId) || DEFAULT_LANG;
+  const count = pendingLikerCount(likedId);
+  try {
+    await telegram.sendMessage(
+      likedId,
+      t(lang, "newLikeNotification")(count),
+      Markup.inlineKeyboard([[Markup.button.callback(t(lang, "seeWhoLikedButton"), "likes:show")]])
+    );
+  } catch (err) {
+    // Blocked the bot, deleted their account, etc. -- the like is already
+    // recorded either way, they'll simply see it next time they open the list.
+    console.error("new-like notification failed:", err.message);
+  }
+}
+
 async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const alreadyLikedByMe = hasLiked(likerId, likedId);
   recordLike(likerId, likedId);
-  if (alreadyLikedByMe || !hasLiked(likedId, likerId)) return;
+  // A repeat tap on someone already liked is not news -- never re-notify.
+  if (alreadyLikedByMe) return;
+
+  // Not mutual (yet): tell the other person they've been liked, so they can
+  // come back and decide instead of only finding out if they happen to open
+  // the bot on their own.
+  if (!hasLiked(likedId, likerId)) {
+    await notifyNewLike(ctx.telegram, likedId);
+    return;
+  }
 
   const me = getProfile(likerId);
   const them = getProfile(likedId);
