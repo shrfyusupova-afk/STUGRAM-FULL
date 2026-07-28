@@ -356,7 +356,15 @@ function userCard(id, profile) {
 // name like "Jahongir" buried the admin under a dozen photos before they
 // could tell which one they wanted. Now a search answers with a compact list
 // and the cards are opened one at a time, on request.
-const SEARCH_RESULT_LIMIT = 20;
+const SEARCH_PAGE_SIZE = 10;
+// Everything past this is noise -- the admin should narrow the search instead.
+const SEARCH_RESULT_LIMIT = 300;
+
+// The open search list, per admin: which query, the hits, and which page is
+// on screen. In memory because it lives for as long as one list is being
+// browsed; if the process restarts mid-browse the buttons say so and the
+// admin searches again.
+const searchState = new Map();
 
 // The anketa asks for an age, not a date of birth -- nothing on file can
 // produce a day and month. The birth YEAR is the closest honest answer, and
@@ -384,17 +392,37 @@ function searchResultLine(position, id, profile) {
   );
 }
 
-// Numbered buttons alongside the /u_ commands: same destination, but they
-// work even where the command text isn't convenient to tap (narrow screens,
-// long lists). Five per row keeps twenty results to four short rows.
-function searchResultKeyboard(matches) {
-  const rows = [];
-  for (let i = 0; i < matches.length; i += 5) {
-    rows.push(
-      matches.slice(i, i + 5).map(([id], j) => Markup.button.callback(String(i + j + 1), `admin:show:${id}`))
-    );
-  }
-  return Markup.inlineKeyboard(rows);
+// Ten people per screen, moved through with back/forward. The buttons EDIT
+// the list that is already on screen rather than posting another one, so
+// browsing a long result set leaves a single message in the chat.
+function searchPageKeyboard(page, pageCount) {
+  if (pageCount <= 1) return Markup.inlineKeyboard([]);
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("⬅️ Oldingi", `admin:pg:${page - 1}`),
+      Markup.button.callback(`${page + 1}/${pageCount}`, "admin:pg:noop"),
+      Markup.button.callback("Keyingisi ➡️", `admin:pg:${page + 1}`),
+    ],
+  ]);
+}
+
+function renderSearchPage(state) {
+  const pageCount = Math.max(1, Math.ceil(state.hits.length / SEARCH_PAGE_SIZE));
+  const page = Math.min(Math.max(state.page, 0), pageCount - 1);
+  const start = page * SEARCH_PAGE_SIZE;
+  const slice = state.hits.slice(start, start + SEARCH_PAGE_SIZE);
+
+  const header =
+    `🔍 «${escapeHtml(state.query)}» — ${state.hits.length} ta topildi` +
+    (pageCount > 1 ? `  (${page + 1}/${pageCount}-sahifa)` : "");
+  const body = slice.map(([id, profile], i) => searchResultLine(start + i + 1, id, profile)).join("\n\n");
+
+  return {
+    page,
+    pageCount,
+    text: `${header}\n\n${body}\n\n👆 Id ustiga bosing — anketa pastda ochiladi.`,
+    keyboard: searchPageKeyboard(page, pageCount),
+  };
 }
 
 // Name, Telegram id, phone number or @username -- an admin searching for
@@ -413,43 +441,88 @@ function matchesQuery(id, profile, query) {
 
 async function sendSearchResults(ctx, query) {
   const all = await getAllProfiles();
-  const hits = Object.entries(all).filter(([id, p]) => matchesQuery(id, p, query));
+  const hits = Object.entries(all)
+    .filter(([id, p]) => matchesQuery(id, p, query))
+    .slice(0, SEARCH_RESULT_LIMIT);
 
   if (hits.length === 0) {
     await ctx.reply("Hech kim topilmadi.");
     return;
   }
 
-  const matches = hits.slice(0, SEARCH_RESULT_LIMIT);
-  const header =
-    hits.length > matches.length
-      ? `🔍 «${escapeHtml(query)}» — ${hits.length} ta topildi, birinchi ${matches.length} tasi:`
-      : `🔍 «${escapeHtml(query)}» — ${matches.length} ta topildi:`;
-  const body = matches.map(([id, profile], i) => searchResultLine(i + 1, id, profile)).join("\n\n");
-
-  await ctx.reply(`${header}\n\n${body}\n\n👆 Id ustiga bosing — anketa pastda ochiladi.`, {
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...searchResultKeyboard(matches),
-  });
+  const state = { query, hits, page: 0 };
+  searchState.set(ctx.from.id, state);
+  const view = renderSearchPage(state);
+  await ctx.reply(view.text, { parse_mode: "HTML", disable_web_page_preview: true, ...view.keyboard });
 }
 
-// Sends the search hit as the actual profile media with everything under it,
-// falling back to a plain text card if there's no photo/video on file (or if
-// the stored file id has since expired on Telegram's side).
-async function sendUserCard(ctx, id, profile) {
-  const caption = userCard(id, profile);
-  const extra = { caption, parse_mode: "HTML", ...userActionsKeyboard(id, profile) };
-  if (profile.mediaFileId) {
-    try {
-      if (profile.mediaType === "video") await ctx.replyWithVideo(profile.mediaFileId, extra);
-      else await ctx.replyWithPhoto(profile.mediaFileId, extra);
-      return;
-    } catch (err) {
-      console.error("admin user media send failed, falling back to text:", err.message);
-    }
+// Telegram file ids belong to the bot that received them. The anketa photo is
+// uploaded to the MAIN bot, so the admin bot -- a separate bot with its own
+// token -- gets "wrong file identifier" when it tries to resend that id, and
+// the card silently came out as text with no photo. Everything below exists
+// to get the actual bytes across that boundary.
+//
+// getFile caps downloads at 20 MB, which a long anketa video can exceed; that
+// case reports itself rather than disappearing.
+const MEDIA_FETCH_TIMEOUT_MS = 20000;
+
+async function fetchProfileMedia(mainBotTelegram, fileId) {
+  const link = await mainBotTelegram.getFileLink(fileId);
+  const res = await fetch(String(link), { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`fayl yuklab olinmadi (HTTP ${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// Returns null on success, or the reason it could not be shown.
+async function replyWithProfileMedia(ctx, profile, extra, mainBotTelegram) {
+  const method = profile.mediaType === "video" ? "replyWithVideo" : "replyWithPhoto";
+
+  // When one token runs both bots the id is valid here and this is a plain
+  // resend -- no download, no upload.
+  let directError;
+  try {
+    await ctx[method](profile.mediaFileId, extra);
+    return null;
+  } catch (err) {
+    directError = err.message;
   }
-  await ctx.reply(caption, { parse_mode: "HTML", ...userActionsKeyboard(id, profile) });
+
+  if (!mainBotTelegram) return directError;
+
+  try {
+    const buffer = await fetchProfileMedia(mainBotTelegram, profile.mediaFileId);
+    await ctx[method]({ source: buffer }, extra);
+    return null;
+  } catch (err) {
+    return `${directError} → ${err.message}`;
+  }
+}
+
+// Sends the search hit as the actual profile media with everything under it.
+// If the media genuinely cannot be shown, the text card SAYS so and why --
+// silently dropping it is what made "is it a photo or a video? nothing shows"
+// impossible to diagnose.
+async function sendUserCard(ctx, id, profile, mainBotTelegram) {
+  const caption = userCard(id, profile);
+  const keyboard = userActionsKeyboard(id, profile);
+
+  if (profile.mediaFileId) {
+    const failure = await replyWithProfileMedia(
+      ctx,
+      profile,
+      { caption, parse_mode: "HTML", ...keyboard },
+      mainBotTelegram
+    );
+    if (!failure) return;
+    console.error(`admin user media send failed for ${id}:`, failure);
+    await ctx.reply(
+      `${caption}\n\n⚠️ ${profile.mediaType === "video" ? "Video" : "Rasm"} ko'rsatib bo'lmadi.\n<code>${escapeHtml(failure)}</code>`,
+      { parse_mode: "HTML", ...keyboard }
+    );
+    return;
+  }
+
+  await ctx.reply(`${caption}\n\n📷 Rasm/video yuklanmagan.`, { parse_mode: "HTML", ...keyboard });
 }
 
 function userActionsKeyboard(id, profile) {
@@ -843,11 +916,12 @@ function createAdminBot(token, mainBotTelegram) {
         await ctx.reply(`🆔 ${targetId} — bunday foydalanuvchi topilmadi.`);
         return;
       }
-      await sendUserCard(ctx, targetId, profile);
+      await sendUserCard(ctx, targetId, profile, mainBotTelegram);
     })
   );
 
-  // The numbered buttons under a search list -- same result as tapping the id.
+  // Search lists sent before paging existed still carry numbered buttons.
+  // Kept so those older messages don't turn into dead taps.
   bot.action(
     /^admin:show:(.+)$/,
     requireAdmin(async (ctx) => {
@@ -858,7 +932,44 @@ function createAdminBot(token, mainBotTelegram) {
         await ctx.reply(`🆔 ${targetId} — bunday foydalanuvchi topilmadi.`);
         return;
       }
-      await sendUserCard(ctx, targetId, profile);
+      await sendUserCard(ctx, targetId, profile, mainBotTelegram);
+    })
+  );
+
+  // Back/forward through a search list. Edits the message already on screen
+  // instead of posting a new one.
+  bot.action(
+    /^admin:pg:(noop|\d+)$/,
+    requireAdmin(async (ctx) => {
+      if (ctx.match[1] === "noop") {
+        await safeAnswerCbQuery(ctx);
+        return;
+      }
+      const state = searchState.get(ctx.from.id);
+      if (!state) {
+        await safeAnswerCbQuery(ctx, "Ro'yxat eskirgan — qaytadan qidiring.");
+        return;
+      }
+
+      const requested = Number(ctx.match[1]);
+      const pageCount = Math.max(1, Math.ceil(state.hits.length / SEARCH_PAGE_SIZE));
+      if (requested < 0) {
+        await safeAnswerCbQuery(ctx, "Bu birinchi sahifa.");
+        return;
+      }
+      if (requested > pageCount - 1) {
+        await safeAnswerCbQuery(ctx, "Bu oxirgi sahifa.");
+        return;
+      }
+
+      state.page = requested;
+      const view = renderSearchPage(state);
+      await safeAnswerCbQuery(ctx);
+      await safeEditMessageText(ctx, view.text, {
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...view.keyboard,
+      });
     })
   );
 
