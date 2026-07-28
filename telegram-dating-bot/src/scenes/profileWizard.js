@@ -182,7 +182,7 @@ const HANDLERS = {
 
 async function finish(ctx, lang, profile) {
   profile.genderLabel = profile.gender === "male" ? t(lang, "genderMaleValue") : t(lang, "genderFemaleValue");
-  const saved = saveProfile(ctx.from.id, profile);
+  const saved = await saveProfile(ctx.from.id, profile);
   await ctx.reply(t(lang, "profileSaved")(saved), mainMenuKeyboard(lang));
 }
 
@@ -192,7 +192,7 @@ const profileWizard = new Scenes.WizardScene(
     // Editing seeds the draft from the existing record so fields the wizard
     // never touches (active, premiumUntil) survive the save -- a fresh
     // signup has no prior record, so it really does start blank.
-    const existing = ctx.wizard.state.isEditing ? getProfile(ctx.from.id) : null;
+    const existing = ctx.wizard.state.isEditing ? await getProfile(ctx.from.id) : null;
     ctx.wizard.state.profile = existing ? { ...existing } : {};
     ctx.wizard.state.lang = ctx.wizard.state.lang || DEFAULT_LANG;
     ctx.wizard.state.stepIndex = 0;
@@ -207,7 +207,7 @@ const profileWizard = new Scenes.WizardScene(
     if (isBackText(ctx, lang)) {
       if (idx === 0) {
         if (ctx.wizard.state.isEditing) {
-          const existing = getProfile(ctx.from.id);
+          const existing = await getProfile(ctx.from.id);
           if (existing) {
             await sendMainMenu(ctx, lang);
           }

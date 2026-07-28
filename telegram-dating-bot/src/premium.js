@@ -9,8 +9,8 @@ const { safeAnswerCbQuery } = require("./telegramSafety");
 // button shown on the pay-per-view paywall (discover.js) -- both should open
 // the exact same checkout, not two slightly different copies of it.
 async function sendPremiumOffer(ctx) {
-  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-  const orderId = createOrder(ctx.from.id, { type: "premium" });
+  const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+  const orderId = await createOrder(ctx.from.id, { type: "premium" });
   const clickUrl = buildCheckoutUrl(orderId, PREMIUM_PRICE_SOM);
 
   const button = clickUrl
@@ -36,7 +36,7 @@ function registerPremiumHandlers(bot) {
   });
 
   bot.action("premium:pay:click:noop", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "premiumPayClickNotConfigured"));
   });

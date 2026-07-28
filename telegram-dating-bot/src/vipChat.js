@@ -16,15 +16,15 @@ function registerVipChatHandlers(bot) {
   const vipLabels = Object.values(STRINGS).map((dict) => dict.menu.vip);
 
   bot.hears(vipLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     // Already paid before? Hand the link straight back instead of asking for
     // money a second time -- this is also the recovery path if the original
     // "here's your link" message failed to send right after payment.
-    if (hasVipChat(ctx.from.id)) {
+    if (await hasVipChat(ctx.from.id)) {
       await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
       return;
     }
-    const profile = getProfile(ctx.from.id);
+    const profile = await getProfile(ctx.from.id);
     const isFemale = profile?.gender === "female";
     const button = isFemale
       ? Markup.button.callback(t(lang, "vipJoinFreeButton"), "vip:join:free")
@@ -35,9 +35,9 @@ function registerVipChatHandlers(bot) {
   // Re-checks gender server-side rather than trusting that only women ever
   // see this button -- a forged callback shouldn't grant free access.
   bot.action("vip:join:free", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
-    const profile = getProfile(ctx.from.id);
+    const profile = await getProfile(ctx.from.id);
     if (profile?.gender !== "female") {
       await ctx.reply(t(lang, "vipIntro"), payButtonKeyboard(lang));
       return;
@@ -49,9 +49,9 @@ function registerVipChatHandlers(bot) {
   // second option to choose between, so this goes straight to the
   // checkout button instead of showing a payment-method picker.
   bot.action("vip:pay:choose", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
-    const orderId = createOrder(ctx.from.id, { type: "vipchat" });
+    const orderId = await createOrder(ctx.from.id, { type: "vipchat" });
     const clickUrl = buildCheckoutUrl(orderId, VIP_CHAT_PRICE_SOM);
 
     const clickButton = clickUrl
@@ -62,7 +62,7 @@ function registerVipChatHandlers(bot) {
   });
 
   bot.action("vip:pay:click:noop", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "vipClickNotConfigured"));
   });

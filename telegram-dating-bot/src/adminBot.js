@@ -67,7 +67,7 @@ function adminMenuKeyboard() {
 // no error, no hint that anything exists, just nothing happens.
 function requireAdmin(handler) {
   return async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return;
+    if (!(await isAdmin(ctx.from.id))) return;
     return handler(ctx);
   };
 }
@@ -131,7 +131,7 @@ function createAdminBot(token) {
   const bot = new Telegraf(token);
 
   bot.start(async (ctx) => {
-    if (isAdmin(ctx.from.id)) {
+    if (await isAdmin(ctx.from.id)) {
       await ctx.reply("✅ Xush kelibsiz, admin!", adminMenuKeyboard());
       return;
     }
@@ -140,7 +140,7 @@ function createAdminBot(token) {
   });
 
   bot.action(/^admin:pin:(\d)$/, async (ctx) => {
-    if (isAdmin(ctx.from.id)) {
+    if (await isAdmin(ctx.from.id)) {
       await safeAnswerCbQuery(ctx);
       return;
     }
@@ -166,7 +166,7 @@ function createAdminBot(token) {
     }
 
     if (crypto.timingSafeEqual(Buffer.from(entered), Buffer.from(ADMIN_CODE))) {
-      addAdmin(ctx.from.id);
+      await addAdmin(ctx.from.id);
       loginState.delete(ctx.from.id);
       await safeEditMessageText(ctx, "✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");
       await ctx.reply("Admin panel:", adminMenuKeyboard());
@@ -182,7 +182,7 @@ function createAdminBot(token) {
   });
 
   bot.action("admin:pin:back", async (ctx) => {
-    if (isAdmin(ctx.from.id)) {
+    if (await isAdmin(ctx.from.id)) {
       await safeAnswerCbQuery(ctx);
       return;
     }
@@ -195,7 +195,7 @@ function createAdminBot(token) {
   bot.hears(
     STATS_LABEL,
     requireAdmin(async (ctx) => {
-      const entries = Object.values(getAllProfiles());
+      const entries = Object.values(await getAllProfiles());
       // Anketa counts only cover real registered profiles -- a record holding
       // nothing but a paid entitlement isn't a user with an anketa and would
       // otherwise silently inflate "Jami" and "Faol". Premium is counted over
@@ -233,7 +233,7 @@ function createAdminBot(token) {
   bot.hears(
     SALES_LABEL,
     requireAdmin(async (ctx) => {
-      const sales = getSalesSummary();
+      const sales = await getSalesSummary();
       await ctx.reply(
         `💰 Sotuvlar hisoboti\n\n` +
           `💎 Premium obuna:\n` +
@@ -260,7 +260,7 @@ function createAdminBot(token) {
       const query = ctx.message.text.trim();
       if (!query) return;
 
-      const all = getAllProfiles();
+      const all = await getAllProfiles();
       const lowerQuery = query.toLowerCase();
       const matches = Object.entries(all)
         .filter(([id, p]) => id === query || (p.name && p.name.toLowerCase().includes(lowerQuery)))
@@ -281,13 +281,13 @@ function createAdminBot(token) {
     /^admin:toggle:(.+)$/,
     requireAdmin(async (ctx) => {
       const targetId = ctx.match[1];
-      const profile = getProfile(targetId);
+      const profile = await getProfile(targetId);
       if (!profile) {
         await safeAnswerCbQuery(ctx, "Topilmadi");
         return;
       }
       const newActive = profile.active === false;
-      const updated = setProfileActive(targetId, newActive);
+      const updated = await setProfileActive(targetId, newActive);
       await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
       await safeEditMessageText(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
     })
@@ -297,7 +297,7 @@ function createAdminBot(token) {
     /^admin:delete:(.+)$/,
     requireAdmin(async (ctx) => {
       const targetId = ctx.match[1];
-      deleteProfile(targetId);
+      await deleteProfile(targetId);
       await safeAnswerCbQuery(ctx, "O'chirildi");
       await safeEditMessageText(ctx, "🗑 Anketa o'chirildi.");
     })

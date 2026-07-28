@@ -43,10 +43,10 @@ function oppositeGender(gender) {
   return gender === "male" ? "female" : "male";
 }
 
-function pickCandidate(userId, myGender) {
-  const all = getAllProfiles();
+async function pickCandidate(userId, myGender) {
+  const all = await getAllProfiles();
   const wanted = oppositeGender(myGender);
-  const disliked = new Set(getDislikes(userId));
+  const disliked = new Set(await getDislikes(userId));
   const pool = Object.entries(all).filter(
     ([id, p]) =>
       id !== String(userId) &&
@@ -60,7 +60,7 @@ function pickCandidate(userId, myGender) {
 
   // Persisted (not just in-memory) so a Render restart mid-session can't
   // desync "what's on screen" from the next ❤️/👎 tap.
-  const persisted = getDiscoverState(userId) || { currentId: null, shown: [] };
+  const persisted = (await getDiscoverState(userId)) || { currentId: null, shown: [] };
   let shown = new Set(persisted.shown);
 
   let remaining = pool.filter(([id]) => !shown.has(id));
@@ -70,8 +70,7 @@ function pickCandidate(userId, myGender) {
   }
 
   // Uses the profile object already loaded in `all` rather than calling
-  // hasPremium(id) (which would re-read the entire profiles.json file once
-  // per candidate) -- same check, no redundant I/O.
+  // hasPremium(id) -- same check, one fewer query/read per candidate.
   const weighted = [];
   for (const entry of remaining) {
     const [, p] = entry;
@@ -81,7 +80,7 @@ function pickCandidate(userId, myGender) {
 
   const [id, profile] = weighted[Math.floor(Math.random() * weighted.length)];
   shown.add(id);
-  setDiscoverState(userId, { currentId: id, shown: [...shown] });
+  await setDiscoverState(userId, { currentId: id, shown: [...shown] });
   return { id, profile };
 }
 
@@ -138,11 +137,11 @@ async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, cap
 // True once the viewer can see this candidate's contact for free: they paid
 // for a one-time unlock, both sides have liked each other, or the viewer has
 // an active Premium subscription (its whole point is unlimited access).
-function canViewProfile(viewerId, candidateId) {
+async function canViewProfile(viewerId, candidateId) {
   return (
-    hasUnlocked(viewerId, candidateId) ||
-    hasPremium(viewerId) ||
-    (hasLiked(viewerId, candidateId) && hasLiked(candidateId, viewerId))
+    await hasUnlocked(viewerId, candidateId) ||
+    await hasPremium(viewerId) ||
+    (await hasLiked(viewerId, candidateId) && await hasLiked(candidateId, viewerId))
   );
 }
 
@@ -151,7 +150,7 @@ function canViewProfile(viewerId, candidateId) {
 // "View profile" button/tap in between. Used to show both sides of a match
 // their new profile immediately, right under the "matched!" text.
 async function sendProfileToChat(telegram, chatId, lang, candidateId) {
-  const candidate = getProfile(candidateId);
+  const candidate = await getProfile(candidateId);
   if (!candidate) return;
   const caption = buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false, contactPhone: candidate.phone });
   const extra = { caption, parse_mode: "HTML" };
@@ -163,7 +162,7 @@ async function sendProfileToChat(telegram, chatId, lang, candidateId) {
 }
 
 async function revealProfile(ctx, lang, candidateId) {
-  const candidate = getProfile(candidateId);
+  const candidate = await getProfile(candidateId);
   if (!candidate) {
     await ctx.reply(t(lang, "unlockSuccessNoContact"));
     return;
@@ -181,8 +180,12 @@ async function revealProfile(ctx, lang, candidateId) {
 // How many people have liked this user WITHOUT being liked back yet -- i.e.
 // how many are still waiting for a decision. That's the number worth showing,
 // since already-matched people need no further action.
-function pendingLikerCount(userId) {
-  return getLikers(userId).filter((likerId) => !hasLiked(userId, likerId)).length;
+async function pendingLikerCount(userId) {
+  const likers = await getLikers(userId);
+  // Checked in parallel rather than one await at a time -- with a database
+  // backend a sequential loop would be one round-trip per liker.
+  const likedBack = await Promise.all(likers.map((likerId) => hasLiked(userId, likerId)));
+  return likedBack.filter((liked) => !liked).length;
 }
 
 // EVERY like gets its own notification -- none are ever dropped. Telegram
@@ -220,12 +223,12 @@ function queueNotification(chatKey, task) {
   return chain;
 }
 
-function notifyNewLike(telegram, likedId) {
+async function notifyNewLike(telegram, likedId) {
   return queueNotification(String(likedId), async () => {
-    const lang = getLanguage(likedId) || DEFAULT_LANG;
+    const lang = await getLanguage(likedId) || DEFAULT_LANG;
     // Counted at send time, not queue time, so the number is current even if
     // several likes were waiting ahead of this one.
-    const count = pendingLikerCount(likedId);
+    const count = await pendingLikerCount(likedId);
     await telegram.sendMessage(
       likedId,
       t(lang, "newLikeNotification")(count),
@@ -235,27 +238,27 @@ function notifyNewLike(telegram, likedId) {
 }
 
 async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
-  const alreadyLikedByMe = hasLiked(likerId, likedId);
-  recordLike(likerId, likedId);
+  const alreadyLikedByMe = await hasLiked(likerId, likedId);
+  await recordLike(likerId, likedId);
   // A repeat tap on someone already liked is not news -- never re-notify.
   if (alreadyLikedByMe) return;
 
   // Not mutual (yet): tell the other person they've been liked, so they can
   // come back and decide instead of only finding out if they happen to open
   // the bot on their own.
-  if (!hasLiked(likedId, likerId)) {
+  if (!(await hasLiked(likedId, likerId))) {
     // Deliberately not awaited: the person doing the liking shouldn't sit
     // waiting on someone else's notification being paced out of a queue.
     notifyNewLike(ctx.telegram, likedId);
     return;
   }
 
-  const me = getProfile(likerId);
-  const them = getProfile(likedId);
+  const me = await getProfile(likerId);
+  const them = await getProfile(likedId);
   if (!me || !them) return;
 
-  const myLang = getLanguage(likerId) || DEFAULT_LANG;
-  const theirLang = getLanguage(likedId) || DEFAULT_LANG;
+  const myLang = await getLanguage(likerId) || DEFAULT_LANG;
+  const theirLang = await getLanguage(likedId) || DEFAULT_LANG;
 
   try {
     await ctx.telegram.sendMessage(
@@ -279,7 +282,7 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
 
 async function showNextCandidate(ctx, lang, myGender) {
   if (!myGender) return;
-  const candidate = pickCandidate(ctx.from.id, myGender);
+  const candidate = await pickCandidate(ctx.from.id, myGender);
   if (!candidate) {
     await ctx.reply(t(lang, "discoverNoCandidates"), discoverKeyboard(lang));
     return;
@@ -292,8 +295,8 @@ function registerDiscoverHandlers(bot) {
   const backLabels = Object.values(STRINGS).map((dict) => dict.backButton);
 
   bot.hears(discoverLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     // Says so out loud rather than silently doing nothing -- a tap that
     // produces no response at all just reads as "the bot is broken".
     if (!me?.gender) {
@@ -304,22 +307,22 @@ function registerDiscoverHandlers(bot) {
   });
 
   bot.hears(LIKE, async (ctx) => {
-    const state = getDiscoverState(ctx.from.id);
+    const state = await getDiscoverState(ctx.from.id);
     if (state?.currentId) {
       await recordLikeWithMatchNotification(ctx, ctx.from.id, state.currentId);
     }
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     await showNextCandidate(ctx, lang, me?.gender);
   });
 
   bot.hears(DISLIKE, async (ctx) => {
-    const state = getDiscoverState(ctx.from.id);
+    const state = await getDiscoverState(ctx.from.id);
     if (state?.currentId) {
-      recordDislike(ctx.from.id, state.currentId);
+      await recordDislike(ctx.from.id, state.currentId);
     }
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     await showNextCandidate(ctx, lang, me?.gender);
   });
 
@@ -331,9 +334,9 @@ function registerDiscoverHandlers(bot) {
   // pending anon search or active chat, since backing out of ANY screen
   // should end an in-progress anon session too).
   bot.hears(backLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
-    clearDiscoverState(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
+    await clearDiscoverState(ctx.from.id);
     await leaveAnonQueueOrChat(ctx.telegram, ctx.from.id);
     if (me) {
       await sendMainMenu(ctx, lang);
@@ -341,7 +344,7 @@ function registerDiscoverHandlers(bot) {
   });
 
   bot.action("unlock:noop", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "unlockNotConfigured"));
   });
@@ -351,9 +354,9 @@ function registerDiscoverHandlers(bot) {
   // button could otherwise leak it.
   bot.action(/^unlock:view:(.+)$/, async (ctx) => {
     const candidateId = ctx.match[1];
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
-    if (!canViewProfile(ctx.from.id, candidateId)) {
+    if (!(await canViewProfile(ctx.from.id, candidateId))) {
       await handleUnlockDeepLink(ctx, lang, candidateId);
       return;
     }
@@ -368,12 +371,12 @@ function registerDiscoverHandlers(bot) {
 async function handleUnlockDeepLink(ctx, lang, candidateId) {
   const buyerId = ctx.from.id;
 
-  if (candidateId && canViewProfile(buyerId, candidateId)) {
+  if (candidateId && (await canViewProfile(buyerId, candidateId))) {
     await revealProfile(ctx, lang, candidateId);
     return;
   }
 
-  const orderId = candidateId ? createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
+  const orderId = candidateId ? await createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
   const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
 
   const unlockButton = clickUrl

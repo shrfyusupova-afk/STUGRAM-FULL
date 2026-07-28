@@ -26,12 +26,13 @@ function respondKeyboard(candidateId) {
 // ko'rish" button attached to a new-like notification -- both must open the
 // exact same list, not two drifting copies of it.
 async function showLikers(ctx) {
-  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+  const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
   const myId = ctx.from.id;
-  const likerIds = getLikers(myId);
-  const likers = likerIds
-    .map((id) => ({ id, profile: getProfile(id) }))
-    .filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+  const likerIds = await getLikers(myId);
+  // Loaded in parallel -- one sequential await per liker would be a round-trip
+  // each against a database backend.
+  const loaded = await Promise.all(likerIds.map(async (id) => ({ id, profile: await getProfile(id) })));
+  const likers = loaded.filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
 
   if (likers.length === 0) {
     await ctx.reply(t(lang, "noLikesYet"));
@@ -49,7 +50,7 @@ async function showLikers(ctx) {
     // already offered right on this card via the ❤️ button, so there's
     // nothing to pitch a paywall for. A mutual match reveals the contact
     // directly on the card -- no separate "View profile" tap needed.
-    const mutualMatch = hasLiked(myId, id) && hasLiked(id, myId);
+    const mutualMatch = await hasLiked(myId, id) && await hasLiked(id, myId);
     const captionOptions = mutualMatch ? { includeUnlock: false, contactPhone: profile.phone } : { includeUnlock: false };
     const keyboard = mutualMatch ? undefined : respondKeyboard(id);
     await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
@@ -70,14 +71,14 @@ function registerLikesHandlers(bot) {
   bot.action(/^likeback:like:(.+)$/, async (ctx) => {
     const candidateId = ctx.match[1];
     const myId = ctx.from.id;
-    const lang = getLanguage(myId) || DEFAULT_LANG;
+    const lang = await getLanguage(myId) || DEFAULT_LANG;
     // Sends the "matched!" text + the other person's profile (contact
     // revealed) directly to both sides -- nothing further needed from this
     // card, so it's just cleaned up below (buttons removed).
     await recordLikeWithMatchNotification(ctx, myId, candidateId);
     await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
-    const candidate = getProfile(candidateId);
+    const candidate = await getProfile(candidateId);
     if (!candidate) return;
     try {
       await ctx.editMessageCaption(buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false }), {

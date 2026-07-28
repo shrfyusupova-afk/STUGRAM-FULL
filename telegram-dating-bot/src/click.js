@@ -1,6 +1,8 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+// Ledger backend: present only when Postgres is active (see db.js).
+const { txStore } = require("./db");
 
 const TX_PATH = path.join(__dirname, "..", "data", "clickTransactions.json");
 
@@ -94,21 +96,17 @@ function priceForType(type) {
   return PREMIUM_PRICE_SOM;
 }
 
-// type: "premium" (subscription), "unlock" (pay once to view a single
-// candidate's contact), "vipchat" (pay once to join the VIP chat group, men
-// only -- women join free), or "anongender" (weekly subscription to pick a
-// specific gender in anonymous chat instead of random). targetId is only
-// meaningful for "unlock" -- it's the candidate profile the payment grants
-// access to.
-function createOrder(userId, { type = "premium", targetId } = {}) {
-  const amount = priceForType(type);
-  const all = readTx();
+// --- Ledger access, routed to whichever storage backend is active ---------
+//
+// With Postgres the ledger lives in click_transactions; otherwise it stays in
+// the original JSON file. Both paths go through these six helpers so the
+// payment logic below is written once.
 
-  // Reopening the same paywall without paying (e.g. tapping the paywall link
-  // again) reuses the still-pending order instead of piling up an abandoned
-  // row every time -- clickTransactions.json would otherwise grow forever.
-  const existingId = Object.keys(all).find((id) => {
-    const tx = all[id];
+async function findPendingOrder(userId, type, targetId) {
+  if (txStore) return txStore.findPendingOrder(userId, type, targetId);
+  const all = readTx();
+  const id = Object.keys(all).find((key) => {
+    const tx = all[key];
     return (
       tx.status === "pending" &&
       tx.userId === String(userId) &&
@@ -116,30 +114,84 @@ function createOrder(userId, { type = "premium", targetId } = {}) {
       (type !== "unlock" || tx.targetId === String(targetId))
     );
   });
-  if (existingId) {
+  return id ? { merchantTransId: id, ...all[id] } : null;
+}
+
+async function getTransaction(merchantTransId) {
+  if (txStore) return txStore.getTransaction(merchantTransId);
+  return readTx()[merchantTransId] || null;
+}
+
+async function createTransaction(merchantTransId, tx) {
+  if (txStore) return txStore.createTransaction(merchantTransId, tx);
+  const all = readTx();
+  all[merchantTransId] = { ...tx, createdAt: new Date().toISOString() };
+  writeTx(all);
+}
+
+async function updateTransactionAmount(merchantTransId, amount) {
+  if (txStore) return txStore.updateTransactionAmount(merchantTransId, amount);
+  const all = readTx();
+  if (!all[merchantTransId]) return;
+  all[merchantTransId].amount = amount;
+  writeTx(all);
+}
+
+// Moves a transaction from one status to another, returning the updated row
+// ONLY if it was still in `fromStatus`. That makes the transition the single
+// point of truth for idempotency: Click retries Complete, and the retry finds
+// the row already 'paid', matches nothing, and so cannot deliver twice.
+async function markTransaction(merchantTransId, fromStatus, toStatus, extra = {}) {
+  if (txStore) return txStore.markTransaction(merchantTransId, fromStatus, toStatus, extra);
+  const all = readTx();
+  const order = all[merchantTransId];
+  if (!order || order.status !== fromStatus) return null;
+  order.status = toStatus;
+  if (extra.clickTransId) order.clickTransId = extra.clickTransId;
+  if (toStatus === "paid") order.paidAt = new Date().toISOString();
+  writeTx(all);
+  return { ...order };
+}
+
+async function getSalesRows() {
+  if (txStore) return txStore.getSalesRows();
+  return Object.values(readTx())
+    .filter((tx) => tx.status === "paid")
+    .map((tx) => ({ type: tx.type, amount: tx.amount }));
+}
+
+// type: "premium" (subscription), "unlock" (pay once to view a single
+// candidate's contact), "vipchat" (pay once to join the VIP chat group, men
+// only -- women join free), or "anongender" (weekly subscription to pick a
+// specific gender in anonymous chat instead of random). targetId is only
+// meaningful for "unlock" -- it's the candidate profile the payment grants
+// access to.
+async function createOrder(userId, { type = "premium", targetId } = {}) {
+  const amount = priceForType(type);
+
+  // Reopening the same paywall without paying (e.g. tapping the paywall link
+  // again) reuses the still-pending order instead of piling up an abandoned
+  // row every time -- the ledger would otherwise grow forever.
+  const existing = await findPendingOrder(userId, type, targetId);
+  if (existing) {
     // The checkout URL is always built from the CURRENT price constant, but a
     // reused pending order still carries whatever the price was when it was
     // first opened. If a price ever changes between those two moments, Click
     // sends the new amount while Prepare compares against the old stored one
     // and rejects the whole payment with AMOUNT_MISMATCH. Re-sync it here so
     // a price change can never strand someone mid-checkout.
-    if (all[existingId].amount !== amount) {
-      all[existingId].amount = amount;
-      writeTx(all);
-    }
-    return existingId;
+    if (existing.amount !== amount) await updateTransactionAmount(existing.merchantTransId, amount);
+    return existing.merchantTransId;
   }
 
   const merchantTransId = `${type}_${userId}_${Date.now()}`;
-  all[merchantTransId] = {
+  await createTransaction(merchantTransId, {
     userId: String(userId),
     type,
     ...(targetId ? { targetId: String(targetId) } : {}),
     amount,
     status: "pending",
-    createdAt: new Date().toISOString(),
-  };
-  writeTx(all);
+  });
   return merchantTransId;
 }
 
@@ -167,7 +219,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
   const middleware = bodyParser ? [bodyParser] : [];
 
-  app.post("/click/prepare", ...middleware, (req, res) => {
+  app.post("/click/prepare", ...middleware, async (req, res) => {
     const body = req.body || {};
     if (!secretKey || !verifyPrepareSign(body, secretKey)) {
       return res.json({
@@ -178,8 +230,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
 
-    const all = readTx();
-    const order = all[body.merchant_trans_id];
+    const order = await getTransaction(body.merchant_trans_id);
     if (!order) {
       return res.json({
         click_trans_id: body.click_trans_id,
@@ -205,9 +256,11 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
 
-    order.status = "prepared";
-    order.clickTransId = body.click_trans_id;
-    writeTx(all);
+    // 'prepared' can be re-sent by Click; only the pending -> prepared move
+    // needs to actually happen, and a repeat is still a success for Click.
+    await markTransaction(body.merchant_trans_id, "pending", "prepared", {
+      clickTransId: body.click_trans_id,
+    });
 
     return res.json({
       click_trans_id: body.click_trans_id,
@@ -229,8 +282,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
 
-    const all = readTx();
-    const order = all[body.merchant_trans_id];
+    const order = await getTransaction(body.merchant_trans_id);
     if (!order) {
       return res.json({
         click_trans_id: body.click_trans_id,
@@ -261,8 +313,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
     if (Number(body.error) < 0) {
-      order.status = "cancelled";
-      writeTx(all);
+      await markTransaction(body.merchant_trans_id, order.status, "cancelled");
       return res.json({
         click_trans_id: body.click_trans_id,
         merchant_trans_id: body.merchant_trans_id,
@@ -271,13 +322,25 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
 
-    order.status = "paid";
-    order.paidAt = new Date().toISOString();
-    writeTx(all);
+    // The status transition is what guards against double delivery: if two
+    // Completes arrive at once, only one of them moves the row off its
+    // current status, and only that one gets a row back to hand to onPaid.
+    const paidOrder = await markTransaction(body.merchant_trans_id, order.status, "paid", {
+      clickTransId: body.click_trans_id,
+    });
+    if (!paidOrder) {
+      return res.json({
+        click_trans_id: body.click_trans_id,
+        merchant_trans_id: body.merchant_trans_id,
+        merchant_confirm_id: body.merchant_trans_id,
+        error: ERROR.ALREADY_PAID,
+        error_note: "Already paid",
+      });
+    }
 
     if (onPaid) {
       try {
-        await onPaid(order);
+        await onPaid(paidOrder);
       } catch (err) {
         console.error("Click onPaid handler failed:", err);
       }
@@ -293,9 +356,8 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   });
 }
 
-function getSalesSummary() {
-  const all = Object.values(readTx());
-  const paid = all.filter((tx) => tx.status === "paid");
+async function getSalesSummary() {
+  const paid = await getSalesRows();
   const specialTypes = ["unlock", "vipchat", "anongender"];
   const premiumPaid = paid.filter((tx) => !specialTypes.includes(tx.type));
   const unlockPaid = paid.filter((tx) => tx.type === "unlock");

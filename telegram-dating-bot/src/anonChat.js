@@ -57,8 +57,8 @@ async function endChatByTimeout(telegram, userId) {
   activeChats.delete(userId);
   activeChats.delete(partnerId);
 
-  const lang1 = getLanguage(userId) || DEFAULT_LANG;
-  const lang2 = getLanguage(partnerId) || DEFAULT_LANG;
+  const lang1 = await getLanguage(userId) || DEFAULT_LANG;
+  const lang2 = await getLanguage(partnerId) || DEFAULT_LANG;
   try {
     await telegram.sendMessage(userId, t(lang1, "anonChatEnded"), mainMenuKeyboard(lang1));
   } catch (err) {
@@ -82,7 +82,7 @@ async function leaveAnonQueueOrChat(telegram, userId) {
   clearTimeout(chat.timer);
   activeChats.delete(userId);
   activeChats.delete(partnerId);
-  const lang = getLanguage(partnerId) || DEFAULT_LANG;
+  const lang = await getLanguage(partnerId) || DEFAULT_LANG;
   try {
     await telegram.sendMessage(partnerId, t(lang, "anonPartnerLeft"), mainMenuKeyboard(lang));
   } catch (err) {
@@ -91,8 +91,8 @@ async function leaveAnonQueueOrChat(telegram, userId) {
 }
 
 async function attemptJoin(ctx, wants) {
-  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-  const me = getProfile(ctx.from.id);
+  const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+  const me = await getProfile(ctx.from.id);
   if (!me?.gender) {
     await ctx.reply(t(lang, "noProfileYet"));
     return;
@@ -112,7 +112,7 @@ async function attemptJoin(ctx, wants) {
   if (partnerId) {
     waitingQueue.delete(partnerId);
     startChat(ctx.telegram, userId, partnerId);
-    const partnerLang = getLanguage(partnerId) || DEFAULT_LANG;
+    const partnerLang = await getLanguage(partnerId) || DEFAULT_LANG;
     await ctx.reply(t(lang, "anonMatched"), anonChatKeyboard(lang));
     try {
       await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonMatched"), anonChatKeyboard(partnerLang));
@@ -127,7 +127,7 @@ async function attemptJoin(ctx, wants) {
 }
 
 async function showGenderPaywall(ctx, lang) {
-  const orderId = createOrder(ctx.from.id, { type: "anongender" });
+  const orderId = await createOrder(ctx.from.id, { type: "anongender" });
   const clickUrl = buildCheckoutUrl(orderId, ANON_GENDER_PRICE_SOM);
   const button = clickUrl
     ? Markup.button.url(t(lang, "anonPayButton"), clickUrl)
@@ -159,8 +159,8 @@ function registerAnonChatHandlers(bot) {
       clearTimeout(chat.timer);
       activeChats.delete(userId);
       activeChats.delete(partnerId);
-      const lang = getLanguage(userId) || DEFAULT_LANG;
-      const partnerLang = getLanguage(partnerId) || DEFAULT_LANG;
+      const lang = await getLanguage(userId) || DEFAULT_LANG;
+      const partnerLang = await getLanguage(partnerId) || DEFAULT_LANG;
       await ctx.reply(t(lang, "anonChatEnded"), mainMenuKeyboard(lang));
       try {
         await ctx.telegram.sendMessage(partnerId, t(partnerLang, "anonPartnerLeft"), mainMenuKeyboard(partnerLang));
@@ -178,8 +178,8 @@ function registerAnonChatHandlers(bot) {
   });
 
   bot.hears(anonChatLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     if (!me?.gender) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
@@ -188,8 +188,8 @@ function registerAnonChatHandlers(bot) {
   });
 
   bot.hears(girlLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    if (!hasAnonGenderFilter(ctx.from.id)) {
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    if (!(await hasAnonGenderFilter(ctx.from.id))) {
       await showGenderPaywall(ctx, lang);
       return;
     }
@@ -197,8 +197,8 @@ function registerAnonChatHandlers(bot) {
   });
 
   bot.hears(boyLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    if (!hasAnonGenderFilter(ctx.from.id)) {
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    if (!(await hasAnonGenderFilter(ctx.from.id))) {
       await showGenderPaywall(ctx, lang);
       return;
     }
@@ -211,7 +211,7 @@ function registerAnonChatHandlers(bot) {
   });
 
   bot.action("anon:pay:click:noop", async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "anonNotConfigured"));
   });

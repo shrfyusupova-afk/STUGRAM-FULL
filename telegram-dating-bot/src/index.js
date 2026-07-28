@@ -12,7 +12,10 @@ const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
 const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
-const { getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil, grantUnlock, grantVipChat } = require("./db");
+const {
+  getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
+  grantUnlock, grantVipChat, initStorage, closeStorage, usePostgres,
+} = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
 const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
@@ -41,6 +44,26 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
   console.error("TELEGRAM_BOT_TOKEN is not set. Copy .env.example to .env and fill it in.");
   process.exit(1);
+}
+
+// Creates the schema (and, the first time only, imports whatever the old JSON
+// files still hold) before any update is served, so a message arriving during
+// startup can't hit a table that doesn't exist yet. A failure here is fatal on
+// purpose: running on a database that isn't ready would silently lose writes,
+// which is exactly what moving off the JSON files was meant to stop.
+async function prepareStorage() {
+  await initStorage();
+  if (!usePostgres) return;
+  try {
+    const { migrateJsonToPg } = require("./storage/migrateJsonToPg");
+    const result = await migrateJsonToPg(require("./storage/pgStore"));
+    if (result.skipped) console.log(`Migration: nothing to do (${result.reason}).`);
+    else console.log("Migration: imported from JSON ->", result.counts);
+  } catch (err) {
+    // The schema is up; only the one-time import failed. Worth shouting about
+    // but not worth refusing to start, since new users can already be served.
+    console.error("Migration from JSON failed (continuing):", err);
+  }
 }
 
 // Render (and most PaaS hosts) inject the public HTTPS URL for a web service
@@ -110,12 +133,12 @@ function languageKeyboard() {
 bot.start(async (ctx) => {
   const payload = ctx.startPayload;
   if (payload === "policy") {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await sendPolicyDocument(ctx, lang);
     return;
   }
   if (payload && payload.startsWith("unlock_")) {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     const candidateId = payload.slice("unlock_".length);
     await handleUnlockDeepLink(ctx, lang, candidateId);
     return;
@@ -125,10 +148,10 @@ bot.start(async (ctx) => {
 
 bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
   const lang = ctx.match[1];
-  setLanguage(ctx.from.id, lang);
+  await setLanguage(ctx.from.id, lang);
   await ctx.answerCbQuery();
 
-  const existing = getProfile(ctx.from.id);
+  const existing = await getProfile(ctx.from.id);
   if (existing) {
     await ctx.reply(t(lang, "welcomeBack")(existing.name));
     await sendMainMenu(ctx, lang);
@@ -139,8 +162,8 @@ bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
 });
 
 bot.command("anketa", async (ctx) => {
-  const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-  await ctx.scene.enter("profile-wizard", { lang, isEditing: !!getProfile(ctx.from.id) });
+  const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+  await ctx.scene.enter("profile-wizard", { lang, isEditing: !!(await getProfile(ctx.from.id)) });
 });
 
 // registerAnonChatHandlers is first: its bot.on("text", ...) relay check
@@ -191,11 +214,11 @@ if (webhookDomain) {
   registerClickRoutes(app, {
     bodyParser: clickBodyParser,
     onPaid: async (order) => {
-      const lang = getLanguage(order.userId) || DEFAULT_LANG;
+      const lang = await getLanguage(order.userId) || DEFAULT_LANG;
 
       if (order.type === "unlock" && order.targetId) {
-        grantUnlock(order.userId, order.targetId);
-        const candidate = getProfile(order.targetId);
+        await grantUnlock(order.userId, order.targetId);
+        const candidate = await getProfile(order.targetId);
         if (candidate) {
           await bot.telegram.sendMessage(
             order.userId,
@@ -214,22 +237,22 @@ if (webhookDomain) {
         // fails (user temporarily unreachable, network blip), the paid access
         // still exists and pressing the VIP button again hands the link back,
         // instead of the payment simply vanishing.
-        grantVipChat(order.userId);
+        await grantVipChat(order.userId);
         await bot.telegram.sendMessage(order.userId, t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 
       if (order.type === "anongender") {
-        const anonGenderUntil = extendFrom(getProfile(order.userId)?.anonGenderUntil, ANON_GENDER_DAYS);
-        setAnonGenderFilterUntil(order.userId, anonGenderUntil);
+        const anonGenderUntil = extendFrom((await getProfile(order.userId))?.anonGenderUntil, ANON_GENDER_DAYS);
+        await setAnonGenderFilterUntil(order.userId, anonGenderUntil);
         await bot.telegram.sendMessage(order.userId, t(lang, "anonSubscriptionActivated")(ANON_GENDER_DAYS));
         console.log(`Anon gender filter granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
 
-      const premiumUntil = extendFrom(getProfile(order.userId)?.premiumUntil, PREMIUM_DAYS);
-      setPremiumUntil(order.userId, premiumUntil);
+      const premiumUntil = extendFrom((await getProfile(order.userId))?.premiumUntil, PREMIUM_DAYS);
+      await setPremiumUntil(order.userId, premiumUntil);
       await bot.telegram.sendMessage(order.userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
       console.log(`Premium activated for user ${order.userId} (${order.amount} so'm via Click)`);
     },
@@ -240,10 +263,6 @@ if (webhookDomain) {
   if (adminBot) {
     app.use(adminBot.webhookCallback(adminWebhookPath, adminWebhookSecret ? { secretToken: adminWebhookSecret } : undefined));
   }
-
-  app.listen(port, () => {
-    console.log(`HTTP server listening on port ${port}`);
-  });
 
   // A transient hiccup right at container boot (DNS/networking not fully up
   // yet) can make the very first setWebhook call fail, silently leaving the
@@ -262,30 +281,49 @@ if (webhookDomain) {
     }
   }
 
-  setWebhookWithRetry(
-    bot.telegram,
-    `${webhookDomain}${webhookPath}`,
-    webhookSecret ? { secret_token: webhookSecret } : undefined,
-    "ForOneForever_bot"
-  );
+  // Nothing starts listening until the schema exists and the one-time import
+  // has run -- an update arriving mid-startup would otherwise hit tables that
+  // aren't there yet.
+  prepareStorage()
+    .then(() => {
+      app.listen(port, () => {
+        console.log(`HTTP server listening on port ${port}`);
+      });
 
-  if (adminBot) {
-    setWebhookWithRetry(
-      adminBot.telegram,
-      `${webhookDomain}${adminWebhookPath}`,
-      adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined,
-      "ForOneAdmin_bot"
-    );
-  }
-} else {
-  bot.launch().then(() => {
-    console.log("ForOneForever_bot ishga tushdi (long polling, domen sozlanmagan).");
-  });
-  if (adminBot) {
-    adminBot.launch().then(() => {
-      console.log("ForOneAdmin_bot ishga tushdi (long polling, domen sozlanmagan).");
+      setWebhookWithRetry(
+        bot.telegram,
+        `${webhookDomain}${webhookPath}`,
+        webhookSecret ? { secret_token: webhookSecret } : undefined,
+        "ForOneForever_bot"
+      );
+
+      if (adminBot) {
+        setWebhookWithRetry(
+          adminBot.telegram,
+          `${webhookDomain}${adminWebhookPath}`,
+          adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined,
+          "ForOneAdmin_bot"
+        );
+      }
+    })
+    .catch((err) => {
+      console.error("Storage initialisation failed -- refusing to start:", err);
+      process.exit(1);
     });
-  }
+} else {
+  prepareStorage()
+    .then(async () => {
+      await bot.launch();
+      console.log("ForOneForever_bot ishga tushdi (long polling, domen sozlanmagan).");
+      if (adminBot) {
+        await adminBot.launch();
+        console.log("ForOneAdmin_bot ishga tushdi (long polling, domen sozlanmagan).");
+      }
+    })
+    .catch((err) => {
+      console.error("Storage initialisation failed -- refusing to start:", err);
+      process.exit(1);
+    });
 }
 
 // Telegraf's own .stop() throws "Bot is not running!" unless launch() or
@@ -307,13 +345,18 @@ function safeStop(botInstance, reason) {
 // previously the crash from bot.stop() accidentally caused that exit; now
 // that it's caught cleanly, without this call the process would just hang
 // past the signal forever instead of shutting down.
-process.once("SIGINT", () => {
-  safeStop(bot, "SIGINT");
-  if (adminBot) safeStop(adminBot, "SIGINT");
+async function shutdown(reason) {
+  safeStop(bot, reason);
+  if (adminBot) safeStop(adminBot, reason);
+  // Lets Postgres release the connections instead of leaving them to time out
+  // server-side; bounded so a hung pool can't stop the process from exiting.
+  try {
+    await Promise.race([closeStorage(), new Promise((resolve) => setTimeout(resolve, 3000))]);
+  } catch (err) {
+    console.error("Closing storage failed (exiting anyway):", err.message);
+  }
   process.exit(0);
-});
-process.once("SIGTERM", () => {
-  safeStop(bot, "SIGTERM");
-  if (adminBot) safeStop(adminBot, "SIGTERM");
-  process.exit(0);
-});
+}
+
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));

@@ -24,8 +24,8 @@ function registerProfileSettingsHandlers(bot) {
   const activateLabels = Object.values(STRINGS).map((dict) => dict.profileSettingsActivate);
 
   bot.hears(settingsLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     if (!me) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
@@ -34,13 +34,13 @@ function registerProfileSettingsHandlers(bot) {
   });
 
   bot.hears(editLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await ctx.scene.enter("profile-wizard", { lang, isEditing: true });
   });
 
   bot.hears(viewLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = getProfile(ctx.from.id);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const me = await getProfile(ctx.from.id);
     if (!me) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
@@ -56,15 +56,15 @@ function registerProfileSettingsHandlers(bot) {
   });
 
   bot.hears(deactivateLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const updated = setProfileActive(ctx.from.id, false);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const updated = await setProfileActive(ctx.from.id, false);
     if (!updated) return;
     await ctx.reply(t(lang, "profileDeactivated"), settingsKeyboard(lang, false));
   });
 
   bot.hears(activateLabels, async (ctx) => {
-    const lang = getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const updated = setProfileActive(ctx.from.id, true);
+    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+    const updated = await setProfileActive(ctx.from.id, true);
     if (!updated) return;
     await ctx.reply(t(lang, "profileActivated"), settingsKeyboard(lang, true));
   });
