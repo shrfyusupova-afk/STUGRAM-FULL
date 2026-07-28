@@ -17,6 +17,26 @@ const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
 const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
 
+// Registered before anything else so it also covers startup.
+//
+// On Node 15+ a single unhandled promise rejection terminates the process by
+// default -- one failed sendMessage inside a timer or a fire-and-forget
+// notification would take the whole bot down until the host restarted it.
+// For a bot whose entire job is to stay reachable that trade is backwards,
+// especially where a restart means a cold start and minutes of downtime.
+//
+// Continuing is safe here specifically because this app keeps no long-lived
+// in-memory state that could be left half-updated: everything persistent is
+// read from disk per operation and written atomically, and the only in-memory
+// state (anon-chat queues) is deliberately disposable. So there is nothing to
+// protect by exiting -- only uptime to lose.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection (bot kept running):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (bot kept running):", err);
+});
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
   console.error("TELEGRAM_BOT_TOKEN is not set. Copy .env.example to .env and fill it in.");

@@ -19,18 +19,80 @@ const VIP_CHAT_PATH = path.join(__dirname, "..", "data", "vipChatAccess.json");
 // real "not found"; on write, changes this object's actual [[Prototype]]).
 // A null-prototype object has no such accessor at all, so those keys just
 // behave like any other unknown key.
+// readFileSync + JSON.parse BLOCKS the event loop -- nothing else in the bot
+// runs while it happens. Callers like the likes list touch these files once
+// per entry, so with a few thousand profiles that added up to seconds of the
+// whole bot being frozen for one person's screen.
+//
+// This process is the only writer, and writeJson refreshes the entry right
+// after it renames, so a cache keyed on the file's mtime+size stays correct.
+// Every caller here follows the same read -> mutate -> writeJson sequence
+// synchronously, so handing back the cached object is safe: any mutation is
+// always persisted immediately after. A caller that mutates WITHOUT writing
+// would desync the cache from disk -- don't add one.
+const parsedCache = new Map();
+
+function cacheKeyFor(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return null;
+  }
+}
+
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) return Object.create(null);
+
+  const key = cacheKeyFor(filePath);
+  const cached = parsedCache.get(filePath);
+  if (key && cached && cached.key === key) return cached.data;
+
+  let raw;
   try {
-    return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(filePath, "utf8")));
-  } catch {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (err) {
+    console.error(`Could not read ${filePath}:`, err.message);
+    return Object.create(null);
+  }
+
+  try {
+    const data = Object.assign(Object.create(null), JSON.parse(raw));
+    if (key) parsedCache.set(filePath, { key, data });
+    return data;
+  } catch (err) {
+    // Silently returning {} here would be the worst possible outcome: the very
+    // next write would persist that emptiness and permanently erase everyone.
+    // Keep one copy of the damaged file so it can still be recovered by hand,
+    // and make the problem loud instead of invisible.
+    const backup = `${filePath}.corrupt`;
+    try {
+      if (!fs.existsSync(backup)) fs.copyFileSync(filePath, backup);
+    } catch (copyErr) {
+      console.error(`Could not preserve corrupt file ${filePath}:`, copyErr.message);
+    }
+    console.error(`CORRUPT DATA FILE: ${filePath} (copy kept at ${backup}):`, err.message);
     return Object.create(null);
   }
 }
 
+// writeFileSync truncates the target first and only then writes, so a crash
+// (or a host killing the container) partway through leaves a half-written,
+// unparseable file -- which readJson would then treat as "no data at all".
+// Writing to a temporary file and renaming avoids that entirely: rename is
+// atomic, so the real file is always either the complete old version or the
+// complete new one, never something in between.
 function writeJson(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  const tmpPath = `${filePath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+  fs.renameSync(tmpPath, filePath);
+
+  // Re-key the cache to the file we just wrote, so the very next read is a
+  // hit rather than re-parsing what we already hold in memory.
+  const key = cacheKeyFor(filePath);
+  if (key) parsedCache.set(filePath, { key, data });
+  else parsedCache.delete(filePath);
 }
 
 function getProfile(userId) {

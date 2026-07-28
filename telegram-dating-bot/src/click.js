@@ -13,14 +13,27 @@ function readTx() {
   if (!fs.existsSync(TX_PATH)) return Object.create(null);
   try {
     return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(TX_PATH, "utf8")));
-  } catch {
+  } catch (err) {
+    // Keep the damaged ledger so paid orders can still be reconciled by hand,
+    // rather than letting the next write silently overwrite it with nothing.
+    const backup = `${TX_PATH}.corrupt`;
+    try {
+      if (!fs.existsSync(backup)) fs.copyFileSync(TX_PATH, backup);
+    } catch (copyErr) {
+      console.error("Could not preserve corrupt transaction file:", copyErr.message);
+    }
+    console.error(`CORRUPT TRANSACTION FILE (copy kept at ${backup}):`, err.message);
     return Object.create(null);
   }
 }
 
+// Temp-file + rename, same as db.js's writeJson -- a torn write here would
+// corrupt the payment ledger, losing the record of who paid for what.
 function writeTx(all) {
   fs.mkdirSync(path.dirname(TX_PATH), { recursive: true });
-  fs.writeFileSync(TX_PATH, JSON.stringify(all, null, 2));
+  const tmpPath = `${TX_PATH}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(all, null, 2));
+  fs.renameSync(tmpPath, TX_PATH);
 }
 
 // https://docs.click.uz/en/click-api-request/ -- Merchant API error codes.
