@@ -43,6 +43,8 @@ module.exports = {
   deleteProfile: store.deleteProfile,
   getAllProfiles: store.getAllProfiles,
   setProfileActive: store.setProfileActive,
+  // Postgres-only fast path; discover.js falls back when absent.
+  pickCandidateRow: store.pickCandidateRow || null,
   // Entitlements
   setPremiumUntil: store.setPremiumUntil,
   hasPremium: store.hasPremium,
@@ -82,6 +84,9 @@ module.exports = {
         updateTransactionAmount: store.updateTransactionAmount,
         markTransaction: store.markTransaction,
         getSalesRows: store.getSalesRows,
+        listUndeliveredOrders: store.listUndeliveredOrders,
+        markDelivered: store.markDelivered,
+        bumpDeliveryAttempts: store.bumpDeliveryAttempts,
       }
     : null,
 };

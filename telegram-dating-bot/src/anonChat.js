@@ -42,7 +42,23 @@ function anonReportKeyboard(lang, partnerId) {
 // Real, unweighted matching -- "wants" must be mutually satisfied both ways.
 // No gender is ever favored over another here; "Random" (wants: "any") gets
 // an honestly random pick among everyone currently compatible.
+// Nobody waits usefully for longer than this. Someone who tapped "search" and
+// then closed Telegram used to sit in the queue indefinitely and would later
+// be matched with a real person who then talked to a ghost -- the worst
+// possible first impression of the feature.
+const QUEUE_TTL_MS = 10 * 60 * 1000;
+
+function dropExpiredWaiters() {
+  const now = Date.now();
+  for (const [userId, entry] of waitingQueue) {
+    if (now - entry.joinedAt > QUEUE_TTL_MS) waitingQueue.delete(userId);
+  }
+}
+
 function findMatch(userId, gender, wants) {
+  // Swept on every attempt rather than on a timer: matching is the only
+  // moment a stale entry can actually do harm.
+  dropExpiredWaiters();
   const candidates = [];
   for (const [otherId, entry] of waitingQueue) {
     if (otherId === userId) continue;
@@ -131,7 +147,7 @@ async function attemptJoin(ctx, wants) {
     return;
   }
 
-  waitingQueue.set(userId, { gender: me.gender, wants, lang });
+  waitingQueue.set(userId, { gender: me.gender, wants, lang, joinedAt: Date.now() });
   await ctx.reply(t(lang, "anonSearching"));
 }
 

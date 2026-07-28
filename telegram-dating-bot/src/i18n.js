@@ -106,6 +106,7 @@ const STRINGS = {
     vipClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     vipJoinMessage: (link) => `🎉 Xush kelibsiz! Guruhga qo'shilish uchun havola:\n${link}`,
     discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
+    discoverTemporaryProblem: "Vaqtinchalik nosozlik yuz berdi. Iltimos, biroz keyin qayta urinib ko'ring 🙏",
     unlockLinkText: (price) => `🔐 Profilni to'liq ko'rish (${price} so'm)`,
     unlockPaywallIntro:
       "🔐 Bu profilni ko'rish huquqini olishni xohlaysizmi?\n\n" +
@@ -272,6 +273,7 @@ const STRINGS = {
     vipClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена. Скоро заработает! 🚧",
     vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
     discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
+    discoverTemporaryProblem: "Произошёл временный сбой. Пожалуйста, попробуйте чуть позже 🙏",
     unlockLinkText: (price) => `🔐 Посмотреть анкету полностью (${price} сум)`,
     unlockPaywallIntro:
       "🔐 Хотите получить доступ к просмотру этой анкеты?\n\n" +
@@ -438,6 +440,7 @@ const STRINGS = {
     vipClickNotConfigured: "💳 Click payments aren't fully set up yet. Coming soon! 🚧",
     vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
     discoverNoCandidates: "No matching candidates found yet. Try again later.",
+    discoverTemporaryProblem: "Something went wrong for a moment. Please try again shortly 🙏",
     unlockLinkText: (price) => `🔐 View full profile (${price} UZS)`,
     unlockPaywallIntro:
       "🔐 Want to get access to view this profile?\n\n" +

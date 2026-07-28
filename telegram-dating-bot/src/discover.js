@@ -2,6 +2,7 @@ const { Markup } = require("telegraf");
 const {
   getProfile,
   getAllProfiles,
+  pickCandidateRow,
   getLanguage,
   recordLike,
   getLikers,
@@ -44,9 +45,48 @@ function oppositeGender(gender) {
   return gender === "male" ? "female" : "male";
 }
 
-async function pickCandidate(userId, myGender) {
+// How many "already seen" ids are remembered per person. Without a cap this
+// list grew by one on EVERY swipe and was rewritten to storage each time, so
+// an active user's row kept getting heavier forever -- at a few thousand
+// profiles it was tens of kilobytes per user, read and written on every tap.
+// Once the cap is reached the oldest ids drop off, which only means someone
+// seen 500 swipes ago may come round again -- exactly what the recycling
+// branch does anyway.
+const MAX_SHOWN_MEMORY = 500;
+
+// Newest last, no duplicates, oldest trimmed off the front.
+function rememberShown(shown, id) {
+  const next = shown.filter((seen) => seen !== id);
+  next.push(id);
+  if (next.length > MAX_SHOWN_MEMORY) next.splice(0, next.length - MAX_SHOWN_MEMORY);
+  return next;
+}
+
+async function readShown(userId) {
+  const persisted = (await getDiscoverState(userId)) || {};
+  return Array.isArray(persisted.shown) ? persisted.shown.map(String) : [];
+}
+
+// Postgres path: all the filtering and the weighted random pick happen in one
+// query, so a swipe costs the same whether there are 300 profiles or 300 000.
+async function pickCandidateFromDb(userId, wanted) {
+  const shown = await readShown(userId);
+  const picked = await pickCandidateRow(userId, wanted, shown, PREMIUM_VISIBILITY_WEIGHT);
+  if (!picked) return null;
+
+  const id = String(picked.id);
+  // `recycled` means the query had to ignore the shown list to find anybody --
+  // everyone available has been seen, so the cycle starts over from this one.
+  const nextShown = picked.recycled ? [id] : rememberShown(shown, id);
+  await setDiscoverState(userId, { currentId: id, shown: nextShown });
+  return { id, profile: picked.profile };
+}
+
+// JSON path: no query engine to push the work into, so the whole file is read
+// and filtered here. Kept for local development and for any deploy still
+// running without DATABASE_URL.
+async function pickCandidateFromMemory(userId, wanted) {
   const all = await getAllProfiles();
-  const wanted = oppositeGender(myGender);
   const disliked = new Set(await getDislikes(userId));
   const pool = Object.entries(all).filter(
     ([id, p]) =>
@@ -61,12 +101,12 @@ async function pickCandidate(userId, myGender) {
 
   // Persisted (not just in-memory) so a Render restart mid-session can't
   // desync "what's on screen" from the next ❤️/👎 tap.
-  const persisted = (await getDiscoverState(userId)) || { currentId: null, shown: [] };
-  let shown = new Set(persisted.shown);
+  let shown = await readShown(userId);
+  let seen = new Set(shown);
 
-  let remaining = pool.filter(([id]) => !shown.has(id));
+  let remaining = pool.filter(([id]) => !seen.has(id));
   if (remaining.length === 0) {
-    shown = new Set();
+    shown = [];
     remaining = pool;
   }
 
@@ -80,9 +120,14 @@ async function pickCandidate(userId, myGender) {
   }
 
   const [id, profile] = weighted[Math.floor(Math.random() * weighted.length)];
-  shown.add(id);
-  await setDiscoverState(userId, { currentId: id, shown: [...shown] });
+  await setDiscoverState(userId, { currentId: id, shown: rememberShown(shown, id) });
   return { id, profile };
+}
+
+async function pickCandidate(userId, myGender) {
+  const wanted = oppositeGender(myGender);
+  if (pickCandidateRow) return pickCandidateFromDb(userId, wanted);
+  return pickCandidateFromMemory(userId, wanted);
 }
 
 // The report button sits directly above Back, as a normal keyboard button.
@@ -295,14 +340,34 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipProf
   }
 }
 
+// Telegram file ids can stop working (re-uploaded, expired, the account that
+// owned them deleted), and an unhandled failure here left the person tapping a
+// button with NOTHING coming back -- which reads as a dead bot. Skips past a
+// candidate whose media won't send and tries the next one instead; the few
+// attempts are bounded so a systemic outage doesn't loop.
+const MAX_CANDIDATE_ATTEMPTS = 5;
+
 async function showNextCandidate(ctx, lang, myGender) {
   if (!myGender) return;
-  const candidate = await pickCandidate(ctx.from.id, myGender);
-  if (!candidate) {
-    await ctx.reply(t(lang, "discoverNoCandidates"), discoverKeyboard(lang));
-    return;
+
+  for (let attempt = 0; attempt < MAX_CANDIDATE_ATTEMPTS; attempt++) {
+    const candidate = await pickCandidate(ctx.from.id, myGender);
+    if (!candidate) {
+      await ctx.reply(t(lang, "discoverNoCandidates"), discoverKeyboard(lang));
+      return;
+    }
+    try {
+      await sendCandidate(ctx, lang, candidate.id, candidate.profile, discoverKeyboard(lang));
+      return;
+    } catch (err) {
+      console.error(`Candidate ${candidate.id} could not be shown (skipping):`, err.message);
+      // pickCandidate has already marked it as shown, so the next pass moves
+      // on rather than picking the same broken profile again.
+    }
   }
-  await sendCandidate(ctx, lang, candidate.id, candidate.profile, discoverKeyboard(lang));
+
+  // Several in a row failed -- say so instead of leaving a silent screen.
+  await ctx.reply(t(lang, "discoverTemporaryProblem"), discoverKeyboard(lang));
 }
 
 function registerDiscoverHandlers(bot) {
@@ -425,4 +490,7 @@ module.exports = {
   buildProfileCaption,
   canViewProfile,
   recordLikeWithMatchNotification,
+  // Not part of the bot's own surface -- exposed so the candidate picker can
+  // be exercised directly against both storage backends.
+  __test: { pickCandidate, MAX_SHOWN_MEMORY },
 };

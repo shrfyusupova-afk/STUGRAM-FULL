@@ -46,15 +46,55 @@ const SOURCE_LABEL = {
 // cache, not anything that needs to survive a deploy.
 const loginState = new Map();
 
-// Global (not per-user) throttle on wrong-code attempts: the PIN is a single
-// shared secret, not tied to any one identity, so a per-user lockout would be
-// trivially bypassed by an attacker who forges a different from.id on every
-// guess (possible if they're POSTing straight to the webhook rather than
-// tapping real buttons). One wrong 8-digit code blocks ALL further attempts
-// -- from anyone -- for LOCKOUT_MS, which turns a 10^8-combination brute
-// force into a decades-long affair regardless of who's asking.
-const LOCKOUT_MS = 30000;
-let lockedOutUntil = 0;
+// Wrong-code throttling.
+//
+// This was global, which made it a denial-of-service: one stranger entering a
+// wrong code locked every real admin out, and repeating it locked them out
+// permanently. It is now per-user, with the delay growing on each successive
+// wrong attempt by that same user, so an attacker can only ever lock out
+// themselves.
+//
+// Forging a different from.id per guess to dodge the per-user limit would
+// mean POSTing straight at the webhook, which requires the secret token that
+// index.js now always enforces. The global ceiling below is a second line of
+// defence against that, set high enough that ordinary admins never meet it.
+const LOCKOUT_BASE_MS = 5000;
+const LOCKOUT_MAX_MS = 5 * 60 * 1000;
+const failedAttempts = new Map(); // userId -> { count, until }
+
+// A global brute-force ceiling that does NOT deny service: it only starts
+// biting after far more wrong codes than a person would ever type, and it
+// slows rather than blocks.
+const GLOBAL_WINDOW_MS = 60 * 1000;
+const GLOBAL_MAX_PER_WINDOW = 100;
+let globalWindowStart = Date.now();
+let globalAttempts = 0;
+
+function lockoutRemainingMs(userId) {
+  const entry = failedAttempts.get(userId);
+  if (!entry) return 0;
+  return Math.max(0, entry.until - Date.now());
+}
+
+function recordFailedAttempt(userId) {
+  const entry = failedAttempts.get(userId) || { count: 0, until: 0 };
+  entry.count++;
+  // 5s, 10s, 20s, 40s ... capped at five minutes.
+  const delay = Math.min(LOCKOUT_BASE_MS * 2 ** (entry.count - 1), LOCKOUT_MAX_MS);
+  entry.until = Date.now() + delay;
+  failedAttempts.set(userId, entry);
+  return delay;
+}
+
+function globalRateLimited() {
+  const now = Date.now();
+  if (now - globalWindowStart > GLOBAL_WINDOW_MS) {
+    globalWindowStart = now;
+    globalAttempts = 0;
+  }
+  globalAttempts++;
+  return globalAttempts > GLOBAL_MAX_PER_WINDOW;
+}
 
 // Shows entered digits as-is (not masked) with underscores for the
 // remaining slots, e.g. "1 9 7 5 _ _ _ _".
@@ -312,6 +352,88 @@ function userCard(id, profile) {
   );
 }
 
+// A search used to fire off one full photo card per hit, so typing a common
+// name like "Jahongir" buried the admin under a dozen photos before they
+// could tell which one they wanted. Now a search answers with a compact list
+// and the cards are opened one at a time, on request.
+const SEARCH_RESULT_LIMIT = 20;
+
+// The anketa asks for an age, not a date of birth -- nothing on file can
+// produce a day and month. The birth YEAR is the closest honest answer, and
+// it is derived, so it is shown as such rather than as a stored fact.
+function birthYearLabel(profile) {
+  const age = Number(profile?.age);
+  if (!Number.isFinite(age) || age <= 0) return "—";
+  return `${new Date().getFullYear() - age}-yil (${age} yosh)`;
+}
+
+// "/u_<id>" is a real bot command, so Telegram turns it into a tappable link
+// inside the list itself -- which is exactly "the id is the link". Tapping it
+// sends the command back and the profile is posted underneath.
+function searchResultLine(position, id, profile) {
+  const link = profile?.username
+    ? `<a href="https://t.me/${encodeURIComponent(profile.username)}">@${escapeHtml(profile.username)}</a>`
+    : `<a href="tg://user?id=${encodeURIComponent(id)}">profilga o'tish</a>`;
+  const name = isRegistered(profile) ? escapeHtml(profile.name) : "(anketa to'ldirilmagan)";
+  return (
+    `${position}. /u_${escapeHtml(id)}\n` +
+    `    👤 ${name}\n` +
+    `    📞 ${escapeHtml(profile?.phone || "—")}\n` +
+    `    🎂 ${birthYearLabel(profile)}\n` +
+    `    🔗 ${link}`
+  );
+}
+
+// Numbered buttons alongside the /u_ commands: same destination, but they
+// work even where the command text isn't convenient to tap (narrow screens,
+// long lists). Five per row keeps twenty results to four short rows.
+function searchResultKeyboard(matches) {
+  const rows = [];
+  for (let i = 0; i < matches.length; i += 5) {
+    rows.push(
+      matches.slice(i, i + 5).map(([id], j) => Markup.button.callback(String(i + j + 1), `admin:show:${id}`))
+    );
+  }
+  return Markup.inlineKeyboard(rows);
+}
+
+// Name, Telegram id, phone number or @username -- an admin searching for
+// someone rarely knows which of those they have.
+function matchesQuery(id, profile, query) {
+  const needle = query.toLowerCase().replace(/^@/, "");
+  if (String(id) === query) return true;
+  if (profile.name && profile.name.toLowerCase().includes(needle)) return true;
+  if (profile.username && profile.username.toLowerCase().includes(needle)) return true;
+  // Phones are stored with a "+" and typed without one about half the time.
+  if (profile.phone && profile.phone.replace(/\D/g, "").includes(needle.replace(/\D/g, "")) && /\d{4}/.test(needle)) {
+    return true;
+  }
+  return false;
+}
+
+async function sendSearchResults(ctx, query) {
+  const all = await getAllProfiles();
+  const hits = Object.entries(all).filter(([id, p]) => matchesQuery(id, p, query));
+
+  if (hits.length === 0) {
+    await ctx.reply("Hech kim topilmadi.");
+    return;
+  }
+
+  const matches = hits.slice(0, SEARCH_RESULT_LIMIT);
+  const header =
+    hits.length > matches.length
+      ? `🔍 «${escapeHtml(query)}» — ${hits.length} ta topildi, birinchi ${matches.length} tasi:`
+      : `🔍 «${escapeHtml(query)}» — ${matches.length} ta topildi:`;
+  const body = matches.map(([id, profile], i) => searchResultLine(i + 1, id, profile)).join("\n\n");
+
+  await ctx.reply(`${header}\n\n${body}\n\n👆 Id ustiga bosing — anketa pastda ochiladi.`, {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    ...searchResultKeyboard(matches),
+  });
+}
+
 // Sends the search hit as the actual profile media with everything under it,
 // falling back to a plain text card if there's no photo/video on file (or if
 // the stored file id has since expired on Telegram's side).
@@ -399,9 +521,13 @@ function createAdminBot(token, mainBotTelegram) {
       return;
     }
 
-    if (Date.now() < lockedOutUntil) {
-      const secondsLeft = Math.ceil((lockedOutUntil - Date.now()) / 1000);
-      await safeAnswerCbQuery(ctx, `⏳ ${secondsLeft}s kuting`);
+    const remaining = lockoutRemainingMs(ctx.from.id);
+    if (remaining > 0) {
+      await safeAnswerCbQuery(ctx, `⏳ ${Math.ceil(remaining / 1000)}s kuting`);
+      return;
+    }
+    if (globalRateLimited()) {
+      await safeAnswerCbQuery(ctx, "⏳ Juda ko'p urinish, biroz kuting");
       return;
     }
 
@@ -422,14 +548,15 @@ function createAdminBot(token, mainBotTelegram) {
     if (crypto.timingSafeEqual(Buffer.from(entered), Buffer.from(ADMIN_CODE))) {
       await addAdmin(ctx.from.id);
       loginState.delete(ctx.from.id);
+      failedAttempts.delete(ctx.from.id);
       await safeEditMessageText(ctx, "✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");
       await ctx.reply("Admin panel:", adminMenuKeyboard());
     } else {
       loginState.set(ctx.from.id, "");
-      lockedOutUntil = Date.now() + LOCKOUT_MS;
+      const waitMs = recordFailedAttempt(ctx.from.id);
       await safeEditMessageText(
         ctx,
-        `❌ Noto'g'ri kod. ${LOCKOUT_MS / 1000} soniyadan keyin qayta urinib ko'ring:\n${maskCode("")}`,
+        `❌ Noto'g'ri kod. ${Math.ceil(waitMs / 1000)} soniyadan keyin qayta urinib ko'ring:\n${maskCode("")}`,
         pinKeyboard()
       );
     }
@@ -480,7 +607,11 @@ function createAdminBot(token, mainBotTelegram) {
     USERS_LABEL,
     requireAdmin(async (ctx) => {
       leaveComposers(ctx.from.id);
-      await ctx.reply("🔍 Ism yoki Telegram ID bo'yicha qidiring:", adminMenuKeyboard());
+      await ctx.reply(
+        "🔍 Qidiruv\n\nIsm, Telegram ID, telefon raqam yoki @username yozing.\n" +
+          "Ro'yxat chiqadi — kerakli id ustiga bossangiz, anketa pastda ochiladi.",
+        adminMenuKeyboard()
+      );
     })
   );
 
@@ -700,6 +831,37 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
+  // Tapping an id in a search list sends this back. Registered before the
+  // catch-all text handler below so it is never mistaken for a search term or
+  // for the answer to an open complaint.
+  bot.hears(
+    /^\/u_(\d+)(?:@\w+)?$/,
+    requireAdmin(async (ctx) => {
+      const targetId = ctx.match[1];
+      const profile = await getProfile(targetId);
+      if (!profile) {
+        await ctx.reply(`🆔 ${targetId} — bunday foydalanuvchi topilmadi.`);
+        return;
+      }
+      await sendUserCard(ctx, targetId, profile);
+    })
+  );
+
+  // The numbered buttons under a search list -- same result as tapping the id.
+  bot.action(
+    /^admin:show:(.+)$/,
+    requireAdmin(async (ctx) => {
+      const targetId = ctx.match[1];
+      const profile = await getProfile(targetId);
+      await safeAnswerCbQuery(ctx);
+      if (!profile) {
+        await ctx.reply(`🆔 ${targetId} — bunday foydalanuvchi topilmadi.`);
+        return;
+      }
+      await sendUserCard(ctx, targetId, profile);
+    })
+  );
+
   // Registered after the hears() calls above, so it only catches text that
   // didn't match a menu button -- i.e. a complaint id, a reply, or a search.
   bot.on(
@@ -778,20 +940,7 @@ function createAdminBot(token, mainBotTelegram) {
         return;
       }
 
-      const all = await getAllProfiles();
-      const lowerQuery = query.toLowerCase();
-      const matches = Object.entries(all)
-        .filter(([id, p]) => id === query || (p.name && p.name.toLowerCase().includes(lowerQuery)))
-        .slice(0, 15);
-
-      if (matches.length === 0) {
-        await ctx.reply("Hech kim topilmadi.");
-        return;
-      }
-
-      for (const [id, profile] of matches) {
-        await sendUserCard(ctx, id, profile);
-      }
+      await sendSearchResults(ctx, query);
     })
   );
 

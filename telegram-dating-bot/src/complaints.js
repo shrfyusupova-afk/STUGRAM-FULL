@@ -39,8 +39,18 @@ function randomComplaintId() {
   return String(Math.floor(10000 + Math.random() * 90000));
 }
 
+// A prompt the person walked away from must not still be waiting hours later:
+// without this, tapping "report" and then getting distracted meant their next
+// ordinary message -- possibly the following day -- was silently filed as a
+// complaint.
+const REPORT_PROMPT_TTL_MS = 15 * 60 * 1000;
+
 function beginReport(userId, { targetId = null, source }) {
-  pendingReports.set(String(userId), { targetId: targetId ? String(targetId) : null, source });
+  pendingReports.set(String(userId), {
+    targetId: targetId ? String(targetId) : null,
+    source,
+    expiresAt: Date.now() + REPORT_PROMPT_TTL_MS,
+  });
 }
 
 function cancelReport(userId) {
@@ -48,7 +58,14 @@ function cancelReport(userId) {
 }
 
 function pendingReportFor(userId) {
-  return pendingReports.get(String(userId)) || null;
+  const key = String(userId);
+  const pending = pendingReports.get(key);
+  if (!pending) return null;
+  if (Date.now() > pending.expiresAt) {
+    pendingReports.delete(key);
+    return null;
+  }
+  return pending;
 }
 
 // A single cancel button, so anything else the person types is unambiguously

@@ -11,7 +11,7 @@ const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
-const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
+const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
@@ -236,6 +236,13 @@ if (webhookDomain) {
       // point is being able to confirm the insecure default is no longer in
       // use without needing shell or log access.
       adminPin: process.env.ADMIN_PIN_CODE ? "configured" : "DEFAULT (insecure)",
+      // Without these no checkout link can be built at all, so every paid
+      // feature silently degrades to "coming soon" -- worth being able to see
+      // at a glance rather than discovering it from a user complaint.
+      clickPayments:
+        process.env.CLICK_MERCHANT_ID && process.env.CLICK_SERVICE_ID && process.env.CLICK_SECRET_KEY
+          ? "configured"
+          : "NOT CONFIGURED (no payments possible)",
     })
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
@@ -259,9 +266,11 @@ if (webhookDomain) {
   }
 
   const clickBodyParser = express.urlencoded({ extended: true });
-  registerClickRoutes(app, {
-    bodyParser: clickBodyParser,
-    onPaid: async (order) => {
+
+  // Named rather than inline so the retry sweep can run the exact same
+  // delivery logic -- a recovered order must end up in precisely the state a
+  // first-time success would have produced.
+  const deliverPaidOrder = async (order) => {
       const lang = await getLanguage(order.userId) || DEFAULT_LANG;
 
       if (order.type === "unlock" && order.targetId) {
@@ -303,8 +312,9 @@ if (webhookDomain) {
       await setPremiumUntil(order.userId, premiumUntil);
       await bot.telegram.sendMessage(order.userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
       console.log(`Premium activated for user ${order.userId} (${order.amount} so'm via Click)`);
-    },
-  });
+  };
+
+  registerClickRoutes(app, { bodyParser: clickBodyParser, onPaid: deliverPaidOrder });
 
   app.use(bot.webhookCallback(webhookPath, webhookSecret ? { secretToken: webhookSecret } : undefined));
 
@@ -337,6 +347,19 @@ if (webhookDomain) {
       app.listen(port, () => {
         console.log(`HTTP server listening on port ${port}`);
       });
+
+      // Any purchase that was paid for but never handed over (an outage while
+      // Click's callback was being processed) is completed as soon as the bot
+      // is healthy again, and then swept periodically.
+      const DELIVERY_SWEEP_MS = 5 * 60 * 1000;
+      retryUndeliveredOrders(deliverPaidOrder).catch((err) =>
+        console.error("initial delivery sweep failed:", err.message)
+      );
+      setInterval(() => {
+        retryUndeliveredOrders(deliverPaidOrder).catch((err) =>
+          console.error("delivery sweep failed:", err.message)
+        );
+      }, DELIVERY_SWEEP_MS).unref();
 
       setWebhookWithRetry(
         bot.telegram,

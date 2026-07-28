@@ -96,6 +96,13 @@ async function init() {
       PRIMARY KEY (liker_id, liked_id)
     )`);
   await query(`CREATE INDEX IF NOT EXISTS likes_liked_idx ON likes (liked_id)`);
+  // Every swipe runs pickCandidateRow, which is by far the hottest query in
+  // the app. The partial index keeps it to the showable profiles of one
+  // gender instead of a scan over the whole table.
+  await query(
+    `CREATE INDEX IF NOT EXISTS profiles_discover_idx ON profiles (gender)
+       WHERE active = TRUE AND media_file_id IS NOT NULL AND phone IS NOT NULL`
+  );
   await query(`
     CREATE TABLE IF NOT EXISTS dislikes (
       user_id TEXT NOT NULL,
@@ -161,6 +168,16 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       paid_at    TIMESTAMPTZ
     )`);
+  // Payment and delivery are separate facts. Money can be taken (status
+  // 'paid') while granting the feature fails -- a database blip, Telegram
+  // being down -- and without recording that difference the purchase is
+  // silently lost, because Click never asks again.
+  await query(`ALTER TABLE click_transactions ADD COLUMN IF NOT EXISTS delivered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await query(`ALTER TABLE click_transactions ADD COLUMN IF NOT EXISTS delivery_attempts INTEGER NOT NULL DEFAULT 0`);
+  await query(
+    `CREATE INDEX IF NOT EXISTS click_undelivered_idx
+       ON click_transactions (status, delivered) WHERE status = 'paid' AND delivered = FALSE`
+  );
 }
 
 // Rows come back with snake_case columns and Date objects; the rest of the
@@ -226,6 +243,56 @@ async function saveProfile(userId, profile) {
     ]
   );
   return rowToProfile(rows[0]);
+}
+
+// Picks one showable candidate without reading the whole table.
+//
+// The previous approach loaded EVERY profile into memory on every single
+// swipe, which is fine at a few hundred users and unusable at scale. This
+// does the filtering (right gender, has a photo and phone, active, not
+// already disliked, not already shown) in SQL and returns a single row.
+//
+// The premium weighting is deliberately the SAME distribution the in-memory
+// version produces (a premium profile gets `premiumWeight` tickets in the
+// draw instead of one), not merely "premium first":
+//   power(random(), 1/w) DESC
+// is weighted random sampling -- the chance of being picked is exactly
+// proportional to w. The obvious `random() * w DESC` is NOT: with a handful
+// of premium profiles it makes a non-premium pick almost impossible, so the
+// same few people would be shown to everyone forever.
+const CANDIDATE_FILTER = `
+        p.gender = $2
+    AND p.user_id <> $1
+    AND p.media_file_id IS NOT NULL AND p.media_file_id <> ''
+    AND p.phone IS NOT NULL AND p.phone <> ''
+    AND p.active = TRUE
+    AND NOT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = $1 AND d.candidate_id = p.user_id)`;
+
+const PREMIUM_ORDER = (weightParam) =>
+  `ORDER BY power(random(), 1.0 / (CASE WHEN p.premium_until > NOW() THEN ${weightParam}::float ELSE 1 END)) DESC`;
+
+async function pickCandidateRow(userId, wantedGender, shownIds, premiumWeight) {
+  const { rows } = await query(
+    `SELECT p.* FROM profiles p
+      WHERE ${CANDIDATE_FILTER}
+        AND NOT (p.user_id = ANY($3::text[]))
+      ${PREMIUM_ORDER("$4")}
+      LIMIT 1`,
+    [String(userId), wantedGender, shownIds, premiumWeight]
+  );
+  if (rows[0]) return { id: rows[0].user_id, profile: rowToProfile(rows[0]) };
+
+  // Everyone available has been seen this cycle -- start over, ignoring the
+  // shown list but still respecting dislikes.
+  const { rows: recycled } = await query(
+    `SELECT p.* FROM profiles p
+      WHERE ${CANDIDATE_FILTER}
+      ${PREMIUM_ORDER("$3")}
+      LIMIT 1`,
+    [String(userId), wantedGender, premiumWeight]
+  );
+  if (!recycled[0]) return null;
+  return { id: recycled[0].user_id, profile: rowToProfile(recycled[0]), recycled: true };
 }
 
 // Upserts, because it's called on plain interactions -- someone can have a
@@ -511,6 +578,33 @@ async function markTransaction(merchantTransId, fromStatus, toStatus, extra = {}
   return rowToTx(rows[0]);
 }
 
+// Paid purchases whose feature never actually reached the buyer. Ordered
+// oldest-first so the longest-suffering customer is served first, and capped
+// so one bad run can't monopolise a retry sweep.
+async function listUndeliveredOrders(limit = 50) {
+  const { rows } = await query(
+    `SELECT * FROM click_transactions
+      WHERE status = 'paid' AND delivered = FALSE
+      ORDER BY paid_at NULLS FIRST, created_at
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map((r) => ({ merchantTransId: r.merchant_trans_id, ...rowToTx(r), deliveryAttempts: r.delivery_attempts }));
+}
+
+async function markDelivered(merchantTransId) {
+  await query(`UPDATE click_transactions SET delivered = TRUE WHERE merchant_trans_id = $1`, [merchantTransId]);
+}
+
+async function bumpDeliveryAttempts(merchantTransId) {
+  const { rows } = await query(
+    `UPDATE click_transactions SET delivery_attempts = delivery_attempts + 1
+      WHERE merchant_trans_id = $1 RETURNING delivery_attempts`,
+    [merchantTransId]
+  );
+  return rows[0] ? rows[0].delivery_attempts : 0;
+}
+
 async function getSalesRows() {
   const { rows } = await query(`SELECT type, amount FROM click_transactions WHERE status = 'paid'`);
   return rows.map((r) => ({ type: r.type, amount: Number(r.amount) }));
@@ -526,6 +620,7 @@ async function close() {
 module.exports = {
   init, close,
   getProfile, saveProfile, deleteProfile, getAllProfiles, setProfileActive, setTelegramUsername,
+  pickCandidateRow,
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
@@ -533,4 +628,5 @@ module.exports = {
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
   markTransaction, getSalesRows,
+  listUndeliveredOrders, markDelivered, bumpDeliveryAttempts,
 };

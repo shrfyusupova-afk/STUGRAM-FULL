@@ -160,6 +160,79 @@ async function getSalesRows() {
     .map((tx) => ({ type: tx.type, amount: tx.amount }));
 }
 
+// --- Delivery tracking -----------------------------------------------------
+//
+// "Paid" and "the buyer actually got what they paid for" are different facts.
+// Click is told success as soon as the money is confirmed (it must be, or it
+// keeps retrying and eventually reverses), but granting the feature can still
+// fail afterwards. Recording delivery separately is what makes that failure
+// recoverable instead of a silent loss -- Click never asks again.
+
+async function listUndeliveredOrders(limit = 50) {
+  if (txStore) return txStore.listUndeliveredOrders(limit);
+  return Object.entries(readTx())
+    .filter(([, tx]) => tx.status === "paid" && !tx.delivered)
+    .slice(0, limit)
+    .map(([merchantTransId, tx]) => ({ merchantTransId, ...tx, deliveryAttempts: tx.deliveryAttempts || 0 }));
+}
+
+async function markDelivered(merchantTransId) {
+  if (txStore) return txStore.markDelivered(merchantTransId);
+  const all = readTx();
+  if (!all[merchantTransId]) return;
+  all[merchantTransId].delivered = true;
+  writeTx(all);
+}
+
+async function bumpDeliveryAttempts(merchantTransId) {
+  if (txStore) return txStore.bumpDeliveryAttempts(merchantTransId);
+  const all = readTx();
+  if (!all[merchantTransId]) return 0;
+  all[merchantTransId].deliveryAttempts = (all[merchantTransId].deliveryAttempts || 0) + 1;
+  writeTx(all);
+  return all[merchantTransId].deliveryAttempts;
+}
+
+// Give up eventually rather than retrying a permanently broken order forever
+// (a deleted account, say). The order stays flagged undelivered so it can
+// still be found and settled by hand.
+const MAX_DELIVERY_ATTEMPTS = 10;
+
+// Runs the pending deliveries. Called right after startup and then on a timer,
+// so a purchase that failed to land during an outage is completed as soon as
+// the bot is healthy again.
+async function retryUndeliveredOrders(onPaid) {
+  if (!onPaid) return { retried: 0, delivered: 0 };
+  let delivered = 0;
+  let retried = 0;
+  let orders;
+  try {
+    orders = await listUndeliveredOrders();
+  } catch (err) {
+    console.error("Could not list undelivered orders:", err.message);
+    return { retried: 0, delivered: 0 };
+  }
+
+  for (const order of orders) {
+    if ((order.deliveryAttempts || 0) >= MAX_DELIVERY_ATTEMPTS) continue;
+    retried++;
+    try {
+      await onPaid(order);
+      await markDelivered(order.merchantTransId);
+      delivered++;
+      console.log(`Recovered undelivered order ${order.merchantTransId} (${order.type}, user ${order.userId})`);
+    } catch (err) {
+      const attempts = await bumpDeliveryAttempts(order.merchantTransId);
+      console.error(
+        `Delivery retry ${attempts}/${MAX_DELIVERY_ATTEMPTS} failed for ${order.merchantTransId}:`,
+        err.message
+      );
+    }
+  }
+  if (retried) console.log(`Delivery sweep: ${delivered}/${retried} recovered.`);
+  return { retried, delivered };
+}
+
 // type: "premium" (subscription), "unlock" (pay once to view a single
 // candidate's contact), "vipchat" (pay once to join the VIP chat group, men
 // only -- women join free), or "anongender" (weekly subscription to pick a
@@ -338,12 +411,25 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
 
+    // Click still gets a success response either way -- the money genuinely
+    // was taken, and telling it otherwise would make it reverse the payment.
+    // A failure here only means the feature hasn't been handed over YET: the
+    // order stays flagged undelivered and the retry sweep finishes the job.
     if (onPaid) {
       try {
-        await onPaid(paidOrder);
+        await onPaid({ merchantTransId: body.merchant_trans_id, ...paidOrder });
+        await markDelivered(body.merchant_trans_id);
       } catch (err) {
-        console.error("Click onPaid handler failed:", err);
+        await bumpDeliveryAttempts(body.merchant_trans_id).catch(() => {});
+        console.error(
+          `Click onPaid failed for ${body.merchant_trans_id} -- order kept for retry:`,
+          err.message
+        );
       }
+    } else {
+      // No handler configured at all; nothing to deliver, so don't leave the
+      // order looking like it's owed something.
+      await markDelivered(body.merchant_trans_id);
     }
 
     return res.json({
@@ -376,6 +462,7 @@ module.exports = {
   buildCheckoutUrl,
   registerClickRoutes,
   getSalesSummary,
+  retryUndeliveredOrders,
   verifyPrepareSign,
   verifyCompleteSign,
   PREMIUM_PRICE_SOM,
