@@ -174,6 +174,21 @@ const STRINGS = {
       "Uni adminga yuboramiz va uni tekshirgan holda sizga javobini aytamiz. 🙏",
     complaintAnswered: (id, reply) =>
       `📬 <b>${id}</b> raqamli shikoyatingizga javob keldi:\n\n${reply}`,
+    accountDeleted:
+      "❌ <b>Sizning akkauntingiz o'chirildi.</b>\n\n" +
+      "Sizning profilingizda yolg'on aralashgani sezildi.\n\n" +
+      "Agar bu xato deb hisoblasangiz, murojaat qilishingiz mumkin — pastdagi " +
+      "«Shikoyat qilish» tugmasini bosing.\n\n" +
+      "Yangi anketa to'ldirmoqchi bo'lsangiz, «Yangi profil ochish» tugmasini bosing.",
+    accountDeactivated:
+      "⏸ <b>Anketangiz vaqtincha yopildi.</b>\n\n" +
+      "Hozircha sizning anketangiz boshqalarga ko'rinmaydi.\n\n" +
+      "Sabab bilan qiziqsangiz yoki bu xato deb hisoblasangiz, pastdagi " +
+      "«Shikoyat qilish» tugmasi orqali murojaat qiling.",
+    accountReactivated:
+      "✅ <b>Anketangiz qayta ochildi.</b>\n\nEndi u boshqalarga yana ko'rinadi.",
+    newProfileButton: "🆕 Yangi profil ochish",
+    complainButton: "🚨 Shikoyat qilish",
     noProfileYet: "Sizda hali anketa yo'q. Avval /start orqali anketa to'ldiring.",
   },
   ru: {
@@ -341,6 +356,21 @@ const STRINGS = {
       "Мы передадим её администратору, он всё проверит и мы сообщим вам ответ. 🙏",
     complaintAnswered: (id, reply) =>
       `📬 Пришёл ответ на вашу жалобу <b>${id}</b>:\n\n${reply}`,
+    accountDeleted:
+      "❌ <b>Ваш аккаунт удалён.</b>\n\n" +
+      "В вашей анкете были замечены недостоверные данные.\n\n" +
+      "Если вы считаете это ошибкой, вы можете обратиться к нам — нажмите кнопку " +
+      "«Пожаловаться» ниже.\n\n" +
+      "Если хотите заполнить новую анкету, нажмите «Создать новую анкету».",
+    accountDeactivated:
+      "⏸ <b>Ваша анкета временно скрыта.</b>\n\n" +
+      "Пока что другие пользователи её не видят.\n\n" +
+      "Если хотите узнать причину или считаете это ошибкой, обратитесь к нам " +
+      "через кнопку «Пожаловаться» ниже.",
+    accountReactivated:
+      "✅ <b>Ваша анкета снова открыта.</b>\n\nТеперь её опять видят другие.",
+    newProfileButton: "🆕 Создать новую анкету",
+    complainButton: "🚨 Пожаловаться",
     noProfileYet: "У вас пока нет анкеты. Сначала заполните её через /start.",
   },
   en: {
@@ -508,6 +538,21 @@ const STRINGS = {
       "We'll pass it to an admin, they'll review it and we'll get back to you with an answer. 🙏",
     complaintAnswered: (id, reply) =>
       `📬 There's a reply to your report <b>${id}</b>:\n\n${reply}`,
+    accountDeleted:
+      "❌ <b>Your account has been deleted.</b>\n\n" +
+      "Your profile was found to contain false information.\n\n" +
+      "If you believe this is a mistake, you can get in touch -- tap " +
+      "\"Report a problem\" below.\n\n" +
+      "If you'd like to fill out a new profile, tap \"Create a new profile\".",
+    accountDeactivated:
+      "⏸ <b>Your profile has been hidden for now.</b>\n\n" +
+      "Other people cannot see it at the moment.\n\n" +
+      "If you want to know why, or think this is a mistake, get in touch using " +
+      "the \"Report a problem\" button below.",
+    accountReactivated:
+      "✅ <b>Your profile is visible again.</b>\n\nOther people can see it once more.",
+    newProfileButton: "🆕 Create a new profile",
+    complainButton: "🚨 Report a problem",
     noProfileYet: "You don't have a profile yet. Fill one out first via /start.",
   },
 };

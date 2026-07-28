@@ -239,8 +239,18 @@ async function pendingLikerCount(userId) {
   const likers = await getLikers(userId);
   // Checked in parallel rather than one await at a time -- with a database
   // backend a sequential loop would be one round-trip per liker.
-  const likedBack = await Promise.all(likers.map((likerId) => hasLiked(userId, likerId)));
-  return likedBack.filter((liked) => !liked).length;
+  //
+  // Counts only likers the list will actually show. Without the profile
+  // check, someone whose anketa was deleted or hidden still added to "5
+  // people liked you" while the list underneath had four -- the same
+  // filtering likes.js applies, so the number and the list agree.
+  const states = await Promise.all(
+    likers.map(async (likerId) => ({
+      likedBack: await hasLiked(userId, likerId),
+      profile: await getProfile(likerId),
+    }))
+  );
+  return states.filter((s) => !s.likedBack && s.profile?.mediaFileId && s.profile.active !== false).length;
 }
 
 // EVERY like gets its own notification -- none are ever dropped. Telegram

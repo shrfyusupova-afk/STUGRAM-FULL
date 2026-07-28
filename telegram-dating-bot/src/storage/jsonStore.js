@@ -126,9 +126,44 @@ async function setTelegramUsername(userId, username) {
   writeJson(DB_PATH, all);
 }
 
+// Removing the profile alone left the person half-present: the likes they had
+// given still sat in other people's "who liked me" counts, their dislikes
+// still filtered candidates, and their discover cursor still pointed at
+// someone. To an admin who had just deleted them, they were still there.
+//
+// Deliberately kept: complaints (the record of why they were removed, and the
+// reporter is still owed a reply) and languages (so the "your account was
+// deleted" message reaches them in their own language). Paid entitlements
+// live on the profile itself and go with it.
+function dropFromListMap(filePath, key, alsoDropFromValues) {
+  const all = readJson(filePath);
+  let changed = delete all[key];
+  if (alsoDropFromValues) {
+    for (const [owner, list] of Object.entries(all)) {
+      if (!Array.isArray(list) || !list.includes(key)) continue;
+      all[owner] = list.filter((entry) => entry !== key);
+      changed = true;
+    }
+  }
+  if (changed) writeJson(filePath, all);
+}
+
 async function deleteProfile(userId) {
+  const key = String(userId);
+
+  // likes.json is keyed by the person who was liked, so this person appears
+  // both as a key (who liked them) and inside other people's lists.
+  dropFromListMap(LIKES_DB_PATH, key, true);
+  dropFromListMap(DISLIKES_DB_PATH, key, true);
+  dropFromListMap(UNLOCKS_DB_PATH, key, true);
+
+  for (const filePath of [DISCOVER_STATE_PATH, VIP_CHAT_PATH]) {
+    const all = readJson(filePath);
+    if (delete all[key]) writeJson(filePath, all);
+  }
+
   const all = readJson(DB_PATH);
-  delete all[String(userId)];
+  delete all[key];
   writeJson(DB_PATH, all);
 }
 

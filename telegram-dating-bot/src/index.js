@@ -11,6 +11,8 @@ const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
+const { registerAccountNoticeHandlers } = require("./accountNotices");
+const { safeAnswerCbQuery } = require("./telegramSafety");
 const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const {
@@ -160,6 +162,13 @@ function languageKeyboard() {
 // candidate card's unlock link) and "start=policy" (tapped from the
 // registration confirmation step's agreement link), both of which skip
 // straight to their own flow instead of showing the language picker.
+// What a plain /start does, on its own so the "Yangi profil ochish" button
+// under a deletion notice can be exactly the same thing rather than a second
+// path that drifts away from it.
+async function startNewProfile(ctx) {
+  await ctx.reply("Choose your language", languageKeyboard());
+}
+
 bot.start(async (ctx) => {
   const payload = ctx.startPayload;
   if (payload === "policy") {
@@ -173,7 +182,7 @@ bot.start(async (ctx) => {
     await handleUnlockDeepLink(ctx, lang, candidateId);
     return;
   }
-  await ctx.reply("Choose your language", languageKeyboard());
+  await startNewProfile(ctx);
 });
 
 bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
@@ -205,6 +214,10 @@ registerAnonChatHandlers(bot);
 // their complaint must have that message taken as the complaint, not matched
 // against a menu label that happens to appear in what they wrote.
 registerComplaintHandlers(bot);
+// The buttons under an "your account was deleted / hidden" notice. That
+// message is sent by the admin bot but delivered through THIS bot, so this is
+// where the taps arrive.
+registerAccountNoticeHandlers(bot, { startNewProfile, safeAnswerCbQuery });
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);

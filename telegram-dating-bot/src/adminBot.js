@@ -7,6 +7,11 @@ const {
 const { getSalesSummary } = require("./click");
 const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
+const {
+  notifyAccountDeleted,
+  notifyAccountDeactivated,
+  notifyAccountReactivated,
+} = require("./accountNotices");
 
 // This file is committed to git -- a PIN hardcoded here would be readable
 // by anyone with repo access, making the brute-force lockout below pointless
@@ -169,17 +174,58 @@ const BROADCAST_GAP_MS = 50;
 // awaited by the handler: a broadcast to thousands of people takes minutes,
 // and the admin's chat (and the rest of the bot) must stay responsive
 // throughout.
+// The advert's photo/video was uploaded to the ADMIN bot, but the broadcast
+// goes out through the MAIN bot -- which cannot use that file id, exactly the
+// same rule that was hiding profile photos from the admin panel, in the
+// opposite direction. Every media broadcast would have failed for every
+// recipient.
+//
+// So the bytes are pulled down once through the bot that owns them, uploaded
+// with the FIRST message, and the file id the main bot hands back is reused
+// for everyone after that: one upload for the whole run, not one per person.
+function fileIdFromSentMessage(message) {
+  if (message?.video?.file_id) return message.video.file_id;
+  if (Array.isArray(message?.photo) && message.photo.length) {
+    return message.photo[message.photo.length - 1].file_id;
+  }
+  return null;
+}
+
 async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, recipients) {
   let sent = 0;
   let failed = 0;
   let lastProgressAt = Date.now();
 
+  // Starts as the bytes; becomes a main-bot file id after the first success.
+  let media = null;
+  if (draft.fileId) {
+    try {
+      media = { source: await fetchProfileMedia(adminTelegram, draft.fileId) };
+    } catch (err) {
+      try {
+        await adminTelegram.sendMessage(
+          adminChatId,
+          `❌ Reklama yuborilmadi — rasm/videoni o'qib bo'lmadi.\n<code>${escapeHtml(err.message)}</code>`,
+          { parse_mode: "HTML" }
+        );
+      } catch {
+        /* nothing further to do */
+      }
+      return;
+    }
+  }
+
   for (const userId of recipients) {
     try {
-      if (draft.fileId && draft.mediaType === "video") {
-        await mainBotTelegram.sendVideo(userId, draft.fileId, { caption: draft.text, parse_mode: "HTML" });
-      } else if (draft.fileId) {
-        await mainBotTelegram.sendPhoto(userId, draft.fileId, { caption: draft.text, parse_mode: "HTML" });
+      if (draft.fileId) {
+        const method = draft.mediaType === "video" ? "sendVideo" : "sendPhoto";
+        const message = await mainBotTelegram[method](userId, media, {
+          caption: draft.text,
+          parse_mode: "HTML",
+        });
+        // Swap the upload for the id it produced, so the remaining recipients
+        // cost one API call each instead of a re-upload.
+        if (typeof media !== "string") media = fileIdFromSentMessage(message) || media;
       } else {
         await mainBotTelegram.sendMessage(userId, draft.text, { parse_mode: "HTML" });
       }
@@ -1071,6 +1117,20 @@ function createAdminBot(token, mainBotTelegram) {
       const updated = await setProfileActive(targetId, newActive);
       await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
       await safeUpdateCard(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
+
+      // Someone whose anketa was hidden could otherwise keep swiping for days
+      // without ever learning that nobody can see them any more.
+      const notice = newActive ? notifyAccountReactivated : notifyAccountDeactivated;
+      const delivered = await notice(mainBotTelegram, targetId).then(
+        () => true,
+        (err) => {
+          console.error(`could not tell ${targetId} their anketa was toggled:`, err.message);
+          return false;
+        }
+      );
+      if (!delivered) {
+        await ctx.reply(`⚠️ ${targetId} ga xabar yetkazilmadi (botni bloklagan bo'lishi mumkin).`);
+      }
     })
   );
 
@@ -1078,9 +1138,25 @@ function createAdminBot(token, mainBotTelegram) {
     /^admin:delete:(.+)$/,
     requireAdmin(async (ctx) => {
       const targetId = ctx.match[1];
+
+      // Told BEFORE the delete: getLanguage survives it, but reading their
+      // language while the row still exists keeps the two independent.
+      const delivered = await notifyAccountDeleted(mainBotTelegram, targetId).then(
+        () => true,
+        (err) => {
+          console.error(`could not tell ${targetId} their account was deleted:`, err.message);
+          return false;
+        }
+      );
+
       await deleteProfile(targetId);
       await safeAnswerCbQuery(ctx, "O'chirildi");
-      await safeUpdateCard(ctx, "🗑 Anketa o'chirildi.");
+      await safeUpdateCard(
+        ctx,
+        delivered
+          ? "🗑 Anketa o'chirildi.\n✅ Foydalanuvchiga xabar berildi."
+          : "🗑 Anketa o'chirildi.\n⚠️ Foydalanuvchiga xabar yetkazilmadi (botni bloklagan bo'lishi mumkin)."
+      );
     })
   );
 

@@ -306,8 +306,23 @@ async function setTelegramUsername(userId, username) {
   );
 }
 
+// Removing the profiles row alone left the person half-present: the likes
+// they had given still sat in other people's "who liked me" counts, their
+// dislikes still filtered candidates, and their discover cursor still pointed
+// at someone. To an admin who had just deleted them, they were still there.
+//
+// Deliberately kept: complaints (the record of why they were removed, and the
+// reporter is still owed a reply) and languages (so the "your account was
+// deleted" message reaches them in their own language). Paid entitlements
+// live on the profiles row and go with it.
 async function deleteProfile(userId) {
-  await query(`DELETE FROM profiles WHERE user_id = $1`, [String(userId)]);
+  const id = String(userId);
+  await query(`DELETE FROM likes WHERE liker_id = $1 OR liked_id = $1`, [id]);
+  await query(`DELETE FROM dislikes WHERE user_id = $1 OR candidate_id = $1`, [id]);
+  await query(`DELETE FROM unlocks WHERE buyer_id = $1 OR candidate_id = $1`, [id]);
+  await query(`DELETE FROM vip_chat_access WHERE user_id = $1`, [id]);
+  await query(`DELETE FROM discover_state WHERE user_id = $1`, [id]);
+  await query(`DELETE FROM profiles WHERE user_id = $1`, [id]);
 }
 
 async function setProfileActive(userId, active) {
