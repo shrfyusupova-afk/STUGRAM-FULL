@@ -25,9 +25,13 @@ const STATS_LABEL = "📊 Statistika";
 const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
 const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
+const BROADCAST_LABEL = "📢 Reklama berish";
 const NEXT_LABEL = "➡️ Keyingisi";
 const RESTART_LABEL = "🔄 Boshidan ko'rish";
 const BACK_LABEL = "⬅️ Orqaga";
+const CONFIRM_YES_LABEL = "✅ Ha, yuborilsin";
+const CONFIRM_NO_LABEL = "❌ Yo'q, bekor qilish";
+const SKIP_MEDIA_LABEL = "⏭ Rasmsiz davom etish";
 
 // What the reporter was looking at when they filed, used for the one-line
 // label in the list so an admin can triage without opening each one.
@@ -76,12 +80,11 @@ function pinKeyboard() {
 }
 
 function adminMenuKeyboard() {
-  return Markup.keyboard([[STATS_LABEL, USERS_LABEL], [SALES_LABEL, COMPLAINTS_LABEL]]).resize();
-}
-
-// Shown while stepping through complaints one at a time.
-function complaintNavKeyboard() {
-  return Markup.keyboard([[NEXT_LABEL, BACK_LABEL], [RESTART_LABEL]]).resize();
+  return Markup.keyboard([
+    [STATS_LABEL, USERS_LABEL],
+    [SALES_LABEL, COMPLAINTS_LABEL],
+    [BROADCAST_LABEL],
+  ]).resize();
 }
 
 // Where each admin currently is in the complaint list, and which complaint
@@ -91,6 +94,94 @@ function complaintNavKeyboard() {
 // admin taps Shikoyatlar again and starts from the top -- nothing is lost,
 // since replies are written straight to storage.
 const complaintCursor = new Map();
+
+// --- Broadcast -------------------------------------------------------------
+//
+// Composing an advert, one step at a time: media -> caption -> preview ->
+// confirm. Held in memory because it's a half-finished draft, not data; the
+// worst a restart costs is retyping it.
+// adminId -> { step: "media"|"text"|"confirm", fileId, mediaType, text }
+const broadcastDraft = new Map();
+
+// Leaving any sub-screen: a half-composed advert and a complaint cursor must
+// not survive a jump to another part of the panel, or the next thing typed
+// would be swallowed by whichever flow was left dangling.
+function leaveComposers(adminId) {
+  broadcastDraft.delete(adminId);
+  complaintCursor.delete(adminId);
+}
+
+function cancelKeyboard() {
+  return Markup.keyboard([[BACK_LABEL]]).resize();
+}
+
+function confirmKeyboard() {
+  return Markup.keyboard([[CONFIRM_YES_LABEL, CONFIRM_NO_LABEL]]).resize();
+}
+
+// Telegram allows roughly 30 messages per second across different chats, and
+// punishes sustained bursts above it. Pacing at ~20/sec leaves headroom for
+// everything else the bot is doing at the same time.
+const BROADCAST_GAP_MS = 50;
+
+// Runs in the background and reports back when finished. Deliberately NOT
+// awaited by the handler: a broadcast to thousands of people takes minutes,
+// and the admin's chat (and the rest of the bot) must stay responsive
+// throughout.
+async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, recipients) {
+  let sent = 0;
+  let failed = 0;
+  let lastProgressAt = Date.now();
+
+  for (const userId of recipients) {
+    try {
+      if (draft.fileId && draft.mediaType === "video") {
+        await mainBotTelegram.sendVideo(userId, draft.fileId, { caption: draft.text, parse_mode: "HTML" });
+      } else if (draft.fileId) {
+        await mainBotTelegram.sendPhoto(userId, draft.fileId, { caption: draft.text, parse_mode: "HTML" });
+      } else {
+        await mainBotTelegram.sendMessage(userId, draft.text, { parse_mode: "HTML" });
+      }
+      sent++;
+    } catch (err) {
+      // Blocked the bot, deleted their account, never started it -- entirely
+      // expected across a large audience, and no reason to stop the run.
+      failed++;
+    }
+
+    // A long broadcast is otherwise silent for minutes; a line every 30s
+    // shows it is still moving.
+    if (Date.now() - lastProgressAt > 30000) {
+      lastProgressAt = Date.now();
+      try {
+        await adminTelegram.sendMessage(adminChatId, `📤 Yuborilmoqda... ${sent + failed}/${recipients.length}`);
+      } catch {
+        /* progress is a nicety; never let it break the run */
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, BROADCAST_GAP_MS));
+  }
+
+  try {
+    await adminTelegram.sendMessage(
+      adminChatId,
+      `✅ Reklama yuborildi!\n\n` +
+        `📬 Yetkazildi: ${sent} ta\n` +
+        `❌ Yetkazilmadi: ${failed} ta (botni bloklagan yoki o'chirgan)\n` +
+        `👥 Jami urinildi: ${recipients.length} ta`,
+      adminMenuKeyboard()
+    );
+  } catch (err) {
+    console.error("broadcast summary failed:", err.message);
+  }
+  console.log(`Broadcast finished: ${sent} delivered, ${failed} failed, ${recipients.length} total`);
+}
+
+// Shown while stepping through complaints one at a time.
+function complaintNavKeyboard() {
+  return Markup.keyboard([[NEXT_LABEL, BACK_LABEL], [RESTART_LABEL]]).resize();
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -113,14 +204,30 @@ function complaintListText(complaints) {
   );
 }
 
-// A person's details as the admin needs to see them: who they are, plus a tap
-// target to message them directly. tg://user works for anyone who has talked
-// to a bot, which both the reporter and the reported person have.
+// How to reach this person in one tap.
+//
+// t.me/<handle> is used whenever a @username is known, because it opens for
+// anyone. tg://user?id= is only a fallback: Telegram resolves those mention
+// links only for people the VIEWING client already knows, which is why it
+// worked for one person in a complaint and rendered as dead text for the
+// other. When neither is possible, the phone number is offered instead so
+// there is always some way through.
+function contactLine(id, profile) {
+  if (profile?.username) {
+    return `✍️ <a href="https://t.me/${encodeURIComponent(profile.username)}">@${escapeHtml(profile.username)} — yozish</a>`;
+  }
+  const fallback = `✍️ <a href="tg://user?id=${encodeURIComponent(id)}">To'g'ridan-to'g'ri yozish</a>`;
+  if (profile?.phone) {
+    return `${fallback}\n📱 Ochilmasa, raqam orqali: <code>${escapeHtml(profile.phone)}</code>`;
+  }
+  return `${fallback}\n<i>(username yo'q — havola ochilmasligi mumkin)</i>`;
+}
+
+// A person's details as the admin needs to see them.
 function personBlock(title, id, profile) {
   if (!id) return `${title}: —`;
-  const link = `<a href="tg://user?id=${encodeURIComponent(id)}">✍️ To'g'ridan-to'g'ri yozish</a>`;
   if (!profile || !isRegistered(profile)) {
-    return `${title}:\n🆔 <code>${escapeHtml(id)}</code> (anketa yo'q)\n${link}`;
+    return `${title}:\n🆔 <code>${escapeHtml(id)}</code> (anketa yo'q)\n${contactLine(id, profile)}`;
   }
   return (
     `${title}:\n` +
@@ -128,7 +235,7 @@ function personBlock(title, id, profile) {
     `🆔 <code>${escapeHtml(id)}</code>\n` +
     `📍 ${escapeHtml(profile.location)}\n` +
     (profile.phone ? `📞 ${escapeHtml(profile.phone)}\n` : "") +
-    `${link}`
+    `${contactLine(id, profile)}`
   );
 }
 
@@ -168,23 +275,59 @@ function isRegistered(profile) {
   return !!profile?.name;
 }
 
+function dateOnly(iso) {
+  return iso ? new Date(iso).toISOString().slice(0, 10) : null;
+}
+
+// Everything stored about this person, so a search result answers whatever
+// the admin was actually looking for without further digging.
 function userCard(id, profile) {
-  const status = profile.active === false ? "🔴 Faolsiz" : "🟢 Faol";
-  const premium =
-    profile.premiumUntil && new Date(profile.premiumUntil) > new Date()
-      ? `\n💎 Premium: ${new Date(profile.premiumUntil).toISOString().slice(0, 10)} gacha`
-      : "";
+  const premiumUntil = dateOnly(profile.premiumUntil);
+  const premiumActive = profile.premiumUntil && new Date(profile.premiumUntil) > new Date();
+  const anonUntil = dateOnly(profile.anonGenderUntil);
+  const anonActive = profile.anonGenderUntil && new Date(profile.anonGenderUntil) > new Date();
 
   if (!isRegistered(profile)) {
-    return `👤 (anketa to'ldirilmagan — faqat to'lov yozuvi)\n🆔 ${id}${premium}`;
+    return (
+      `👤 <b>(anketa to'ldirilmagan — faqat to'lov yozuvi)</b>\n` +
+      `🆔 <code>${escapeHtml(id)}</code>\n` +
+      (premiumUntil ? `💎 Premium: ${premiumActive ? "faol" : "tugagan"} (${premiumUntil})\n` : "") +
+      (anonUntil ? `🕵️ Anonim jins filtri: ${anonActive ? "faol" : "tugagan"} (${anonUntil})\n` : "") +
+      contactLine(id, profile)
+    );
   }
 
   return (
-    `👤 ${profile.name}, ${profile.age}\n` +
-    `🆔 ${id}\n` +
-    `📍 ${profile.location}\n` +
-    `Holat: ${status}${premium}`
+    `👤 <b>${escapeHtml(profile.name)}</b>, ${escapeHtml(profile.age)}\n` +
+    `🆔 <code>${escapeHtml(id)}</code>\n` +
+    `⚧ ${escapeHtml(profile.genderLabel || profile.gender || "—")}\n` +
+    `📍 ${escapeHtml(profile.location || "—")}\n` +
+    `📞 ${escapeHtml(profile.phone || "—")}\n` +
+    `📝 ${escapeHtml(profile.bio || "—")}\n\n` +
+    `Holat: ${profile.active === false ? "🔴 Faolsiz" : "🟢 Faol"}\n` +
+    `💎 Premium: ${premiumActive ? `faol (${premiumUntil} gacha)` : premiumUntil ? `tugagan (${premiumUntil})` : "yo'q"}\n` +
+    `🕵️ Anonim jins filtri: ${anonActive ? `faol (${anonUntil} gacha)` : anonUntil ? `tugagan (${anonUntil})` : "yo'q"}\n` +
+    (profile.updatedAt ? `🕒 Oxirgi yangilanish: ${escapeHtml(dateOnly(profile.updatedAt))}\n` : "") +
+    `\n${contactLine(id, profile)}`
   );
+}
+
+// Sends the search hit as the actual profile media with everything under it,
+// falling back to a plain text card if there's no photo/video on file (or if
+// the stored file id has since expired on Telegram's side).
+async function sendUserCard(ctx, id, profile) {
+  const caption = userCard(id, profile);
+  const extra = { caption, parse_mode: "HTML", ...userActionsKeyboard(id, profile) };
+  if (profile.mediaFileId) {
+    try {
+      if (profile.mediaType === "video") await ctx.replyWithVideo(profile.mediaFileId, extra);
+      else await ctx.replyWithPhoto(profile.mediaFileId, extra);
+      return;
+    } catch (err) {
+      console.error("admin user media send failed, falling back to text:", err.message);
+    }
+  }
+  await ctx.reply(caption, { parse_mode: "HTML", ...userActionsKeyboard(id, profile) });
 }
 
 function userActionsKeyboard(id, profile) {
@@ -213,6 +356,25 @@ async function safeEditMessageText(ctx, text, extra) {
     await ctx.editMessageText(text, extra);
   } catch (err) {
     console.error("admin bot editMessageText failed (ignored):", err.message);
+  }
+}
+
+// A user card is a photo/video with a caption when media exists and a plain
+// text message otherwise, and Telegram needs a different edit call for each.
+// Tries the caption edit first and falls back to the text edit, so toggling
+// someone active/inactive updates the card either way.
+async function safeUpdateCard(ctx, text, keyboard) {
+  const extra = { parse_mode: "HTML", ...(keyboard ? { reply_markup: keyboard.reply_markup } : {}) };
+  try {
+    await ctx.editMessageCaption(text, extra);
+    return;
+  } catch {
+    /* not a media message -- fall through to editing it as text */
+  }
+  try {
+    await ctx.editMessageText(text, extra);
+  } catch (err) {
+    console.error("admin bot card update failed (ignored):", err.message);
   }
 }
 
@@ -287,6 +449,7 @@ function createAdminBot(token, mainBotTelegram) {
   bot.hears(
     STATS_LABEL,
     requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
       const entries = Object.values(await getAllProfiles());
       // Anketa counts only cover real registered profiles -- a record holding
       // nothing but a paid entitlement isn't a user with an anketa and would
@@ -316,7 +479,8 @@ function createAdminBot(token, mainBotTelegram) {
   bot.hears(
     USERS_LABEL,
     requireAdmin(async (ctx) => {
-      await ctx.reply("🔍 Ism yoki Telegram ID bo'yicha qidiring:");
+      leaveComposers(ctx.from.id);
+      await ctx.reply("🔍 Ism yoki Telegram ID bo'yicha qidiring:", adminMenuKeyboard());
     })
   );
 
@@ -325,6 +489,7 @@ function createAdminBot(token, mainBotTelegram) {
   bot.hears(
     SALES_LABEL,
     requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
       const sales = await getSalesSummary();
       await ctx.reply(
         `💰 Sotuvlar hisoboti\n\n` +
@@ -344,19 +509,133 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
+  // --- Broadcast flow ---
+  bot.hears(
+    BROADCAST_LABEL,
+    requireAdmin(async (ctx) => {
+      complaintCursor.delete(ctx.from.id);
+      // A fresh draft each time, so an abandoned half-composed advert can
+      // never be resumed by accident.
+      broadcastDraft.set(ctx.from.id, { step: "media" });
+      await ctx.reply(
+        "📢 Nima reklama bermoqchisiz?\n\n" +
+          "1️⃣ Avval rasm yoki video yuboring.\n" +
+          `Rasmsiz, faqat matn yubormoqchi bo'lsangiz — "${SKIP_MEDIA_LABEL}".`,
+        Markup.keyboard([[SKIP_MEDIA_LABEL], [BACK_LABEL]]).resize()
+      );
+    })
+  );
+
+  // Shows what the advert will actually look like, then asks to confirm --
+  // the preview is sent exactly the way recipients will receive it, so there
+  // are no surprises after the point of no return.
+  async function showBroadcastPreview(ctx, draft) {
+    draft.step = "confirm";
+    await ctx.reply("👀 Namuna — foydalanuvchilar aynan shuni ko'radi:");
+    try {
+      if (draft.fileId && draft.mediaType === "video") {
+        await ctx.replyWithVideo(draft.fileId, { caption: draft.text, parse_mode: "HTML" });
+      } else if (draft.fileId) {
+        await ctx.replyWithPhoto(draft.fileId, { caption: draft.text, parse_mode: "HTML" });
+      } else {
+        await ctx.reply(draft.text, { parse_mode: "HTML" });
+      }
+    } catch (err) {
+      // Almost always a broken HTML tag in the admin's own text. Better to
+      // say so now than to fail once per recipient mid-broadcast.
+      await ctx.reply(
+        `⚠️ Namunani ko'rsatib bo'lmadi: ${err.message}\n\nMatnni o'zgartirib qaytadan urinib ko'ring.`,
+        adminMenuKeyboard()
+      );
+      broadcastDraft.delete(ctx.from.id);
+      return;
+    }
+    const total = Object.keys(await getAllProfiles()).length;
+    await ctx.reply(
+      `Tasdiqlaysizmi?\n\n👥 Taxminan ${total} ta foydalanuvchiga yuboriladi.`,
+      confirmKeyboard()
+    );
+  }
+
+  bot.hears(
+    SKIP_MEDIA_LABEL,
+    requireAdmin(async (ctx) => {
+      const draft = broadcastDraft.get(ctx.from.id);
+      if (draft?.step !== "media") return;
+      draft.step = "text";
+      await ctx.reply("2️⃣ Endi nima yozmoqchisiz? Reklama matnini yuboring:", cancelKeyboard());
+    })
+  );
+
+  // Photo/video arriving while composing an advert.
+  bot.on(
+    ["photo", "video"],
+    requireAdmin(async (ctx) => {
+      const draft = broadcastDraft.get(ctx.from.id);
+      if (draft?.step !== "media") return;
+      if (ctx.message.photo) {
+        draft.fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+        draft.mediaType = "photo";
+      } else {
+        draft.fileId = ctx.message.video.file_id;
+        draft.mediaType = "video";
+      }
+      draft.step = "text";
+      await ctx.reply("✅ Qabul qilindi.\n\n2️⃣ Endi nima yozmoqchisiz? Reklama matnini yuboring:", cancelKeyboard());
+    })
+  );
+
+  bot.hears(
+    CONFIRM_NO_LABEL,
+    requireAdmin(async (ctx) => {
+      if (!broadcastDraft.has(ctx.from.id)) return;
+      broadcastDraft.delete(ctx.from.id);
+      await ctx.reply("❌ Reklama bekor qilindi, hech kimga yuborilmadi.", adminMenuKeyboard());
+    })
+  );
+
+  bot.hears(
+    CONFIRM_YES_LABEL,
+    requireAdmin(async (ctx) => {
+      const draft = broadcastDraft.get(ctx.from.id);
+      if (draft?.step !== "confirm") return;
+      broadcastDraft.delete(ctx.from.id);
+
+      const recipients = Object.keys(await getAllProfiles());
+      if (recipients.length === 0) {
+        await ctx.reply("Yuboradigan foydalanuvchi yo'q.", adminMenuKeyboard());
+        return;
+      }
+
+      await ctx.reply(
+        `🚀 Yuborish boshlandi — ${recipients.length} ta foydalanuvchi.\n` +
+          `Tugagach xabar beraman, kutib turishingiz shart emas.`,
+        adminMenuKeyboard()
+      );
+      // Not awaited: this takes minutes for a large audience and must not
+      // block the admin's chat or anything else the bot is handling.
+      runBroadcast(mainBotTelegram, ctx.chat.id, ctx.telegram, draft, recipients).catch((err) =>
+        console.error("broadcast crashed:", err)
+      );
+    })
+  );
+
   // Opens the list and puts the admin at the top of it.
   bot.hears(
     COMPLAINTS_LABEL,
     requireAdmin(async (ctx) => {
+      broadcastDraft.delete(ctx.from.id);
       const complaints = await listComplaints();
       if (complaints.length === 0) {
         complaintCursor.delete(ctx.from.id);
         await ctx.reply("🚨 Hozircha shikoyatlar yo'q.", adminMenuKeyboard());
         return;
       }
-      complaintCursor.set(ctx.from.id, { ids: complaints.map((c) => c.id), index: 0, viewing: null });
+      // index: -1 means "list shown, nothing opened yet" -- the first
+      // Keyingisi lands on complaint 0. Opening one here would defeat the
+      // point of the list, which is to choose rather than be shown.
+      complaintCursor.set(ctx.from.id, { ids: complaints.map((c) => c.id), index: -1, viewing: null });
       await ctx.reply(complaintListText(complaints), { parse_mode: "HTML", ...complaintNavKeyboard() });
-      await showComplaintAt(ctx, 0);
     })
   );
 
@@ -408,11 +687,16 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
+  // The single way out of any sub-screen. It clears BOTH the complaint cursor
+  // and any half-composed advert: this hears() runs before the text handler,
+  // so leaving a draft behind here would mean the next thing typed silently
+  // became advert copy.
   bot.hears(
     BACK_LABEL,
     requireAdmin(async (ctx) => {
+      const hadDraft = broadcastDraft.delete(ctx.from.id);
       complaintCursor.delete(ctx.from.id);
-      await ctx.reply("Admin panel:", adminMenuKeyboard());
+      await ctx.reply(hadDraft ? "❌ Reklama bekor qilindi." : "Admin panel:", adminMenuKeyboard());
     })
   );
 
@@ -423,6 +707,36 @@ function createAdminBot(token, mainBotTelegram) {
     requireAdmin(async (ctx) => {
       const query = ctx.message.text.trim();
       if (!query) return;
+
+      // Composing an advert takes priority: while a draft is waiting for its
+      // text, that is what this message is -- not a search and not a reply.
+      const draft = broadcastDraft.get(ctx.from.id);
+      if (draft) {
+        if (query === BACK_LABEL) {
+          broadcastDraft.delete(ctx.from.id);
+          await ctx.reply("❌ Reklama bekor qilindi.", adminMenuKeyboard());
+          return;
+        }
+        if (draft.step === "media") {
+          await ctx.reply(
+            `Avval rasm yoki video yuboring, yoki "${SKIP_MEDIA_LABEL}" tugmasini bosing.`,
+            Markup.keyboard([[SKIP_MEDIA_LABEL], [BACK_LABEL]]).resize()
+          );
+          return;
+        }
+        if (draft.step === "text") {
+          draft.text = ctx.message.text;
+          await showBroadcastPreview(ctx, draft);
+          return;
+        }
+        if (draft.step === "confirm") {
+          await ctx.reply(
+            `Iltimos, "${CONFIRM_YES_LABEL}" yoki "${CONFIRM_NO_LABEL}" tugmasini bosing.`,
+            confirmKeyboard()
+          );
+          return;
+        }
+      }
 
       // Jumping straight to a complaint by the code the reporter was given.
       if (/^\d{5}$/.test(query)) {
@@ -476,7 +790,7 @@ function createAdminBot(token, mainBotTelegram) {
       }
 
       for (const [id, profile] of matches) {
-        await ctx.reply(userCard(id, profile), userActionsKeyboard(id, profile));
+        await sendUserCard(ctx, id, profile);
       }
     })
   );
@@ -493,7 +807,7 @@ function createAdminBot(token, mainBotTelegram) {
       const newActive = profile.active === false;
       const updated = await setProfileActive(targetId, newActive);
       await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
-      await safeEditMessageText(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
+      await safeUpdateCard(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
     })
   );
 
@@ -503,7 +817,7 @@ function createAdminBot(token, mainBotTelegram) {
       const targetId = ctx.match[1];
       await deleteProfile(targetId);
       await safeAnswerCbQuery(ctx, "O'chirildi");
-      await safeEditMessageText(ctx, "🗑 Anketa o'chirildi.");
+      await safeUpdateCard(ctx, "🗑 Anketa o'chirildi.");
     })
   );
 

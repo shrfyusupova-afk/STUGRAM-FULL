@@ -15,7 +15,7 @@ const { registerClickRoutes, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click
 const { createAdminBot } = require("./adminBot");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
-  grantUnlock, grantVipChat, initStorage, closeStorage, usePostgres,
+  grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
 } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
@@ -118,6 +118,32 @@ if (adminBot && !adminWebhookSecret && webhookDomain) {
 const stage = new Scenes.Stage([profileWizard]);
 
 bot.use(session());
+
+// Records the person's Telegram @username as they use the bot. It is what
+// makes a working "open this profile" link possible: tg://user only resolves
+// for people the viewing client already knows, whereas t.me/<username> always
+// opens. Handles change, so this refreshes rather than writing once.
+//
+// Deliberately fire-and-forget and never awaited: this is a side note, and an
+// update must not be delayed (or dropped) because a bookkeeping write was
+// slow or failed.
+const lastSeenUsername = new Map();
+bot.use((ctx, next) => {
+  const from = ctx.from;
+  if (from?.id) {
+    const handle = from.username || null;
+    // Only write when it actually changed -- otherwise every single message
+    // would cost a database round-trip for nothing.
+    if (lastSeenUsername.get(from.id) !== handle) {
+      lastSeenUsername.set(from.id, handle);
+      Promise.resolve(setTelegramUsername(from.id, handle)).catch((err) =>
+        console.error("username capture failed (ignored):", err.message)
+      );
+    }
+  }
+  return next();
+});
+
 bot.use(stage.middleware());
 
 function languageKeyboard() {
@@ -203,7 +229,14 @@ if (webhookDomain) {
   // it's too late. Deliberately only the backend name: no connection string,
   // no credentials.
   app.get("/health", (req, res) =>
-    res.status(200).json({ status: "ok", storage: usePostgres ? "postgres" : "json-files" })
+    res.status(200).json({
+      status: "ok",
+      storage: usePostgres ? "postgres" : "json-files",
+      // Whether a private PIN is configured, never the PIN itself -- the
+      // point is being able to confirm the insecure default is no longer in
+      // use without needing shell or log access.
+      adminPin: process.env.ADMIN_PIN_CODE ? "configured" : "DEFAULT (insecure)",
+    })
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
 

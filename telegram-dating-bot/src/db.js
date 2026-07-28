@@ -39,6 +39,7 @@ module.exports = {
   // Profiles
   getProfile: store.getProfile,
   saveProfile: store.saveProfile,
+  setTelegramUsername: store.setTelegramUsername,
   deleteProfile: store.deleteProfile,
   getAllProfiles: store.getAllProfiles,
   setProfileActive: store.setProfileActive,

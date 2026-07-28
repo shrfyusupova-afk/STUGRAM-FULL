@@ -72,18 +72,29 @@ function registerLikesHandlers(bot) {
     const candidateId = ctx.match[1];
     const myId = ctx.from.id;
     const lang = await getLanguage(myId) || DEFAULT_LANG;
-    // Sends the "matched!" text + the other person's profile (contact
-    // revealed) directly to both sides -- nothing further needed from this
-    // card, so it's just cleaned up below (buttons removed).
-    await recordLikeWithMatchNotification(ctx, myId, candidateId);
+    // skipProfileFor: this person is already looking at the card, which is
+    // rewritten in place just below. Without this they'd get a second,
+    // identical photo pushed underneath the one they just tapped.
+    await recordLikeWithMatchNotification(ctx, myId, candidateId, { skipProfileFor: myId });
     await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
     const candidate = await getProfile(candidateId);
     if (!candidate) return;
+
+    // Only a genuine mutual like reveals the contact. Liking someone who
+    // hasn't liked back yet must not expose their number just because they
+    // now appear in this list.
+    const mutual = await hasLiked(candidateId, myId);
+    const caption = buildProfileCaption(lang, candidateId, candidate, {
+      includeUnlock: false,
+      ...(mutual ? { contactPhone: candidate.phone } : {}),
+    });
+
     try {
-      await ctx.editMessageCaption(buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false }), {
-        parse_mode: "HTML",
-      });
+      // Rewrites the existing card: the photo and details stay where they
+      // are, the contact and profile link simply appear underneath them, and
+      // the ❤️/👎 buttons go away since there is nothing left to decide.
+      await ctx.editMessageCaption(caption, { parse_mode: "HTML" });
     } catch (err) {
       console.error("likeback:like editMessageCaption failed (ignored):", err.message);
     }

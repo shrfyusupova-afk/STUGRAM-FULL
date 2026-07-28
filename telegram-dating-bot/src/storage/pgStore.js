@@ -146,6 +146,9 @@ async function init() {
       answered_at  TIMESTAMPTZ
     )`);
   await query(`CREATE INDEX IF NOT EXISTS complaints_created_idx ON complaints (created_at)`);
+  // Added after the table already existed in production, so it goes on as its
+  // own statement rather than into CREATE TABLE above.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username TEXT`);
   await query(`
     CREATE TABLE IF NOT EXISTS click_transactions (
       merchant_trans_id TEXT PRIMARY KEY,
@@ -167,6 +170,7 @@ function rowToProfile(row) {
   if (!row) return null;
   const p = {};
   if (row.name !== null) p.name = row.name;
+  if (row.username) p.username = row.username;
   if (row.age !== null) p.age = row.age;
   if (row.gender !== null) p.gender = row.gender;
   if (row.gender_label !== null) p.genderLabel = row.gender_label;
@@ -222,6 +226,17 @@ async function saveProfile(userId, profile) {
     ]
   );
   return rowToProfile(rows[0]);
+}
+
+// Upserts, because it's called on plain interactions -- someone can have a
+// @username long before (or without ever) finishing an anketa, and that
+// handle is what makes a working profile link possible.
+async function setTelegramUsername(userId, username) {
+  await query(
+    `INSERT INTO profiles (user_id, username, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username`,
+    [String(userId), username || null]
+  );
 }
 
 async function deleteProfile(userId) {
@@ -510,7 +525,7 @@ async function close() {
 
 module.exports = {
   init, close,
-  getProfile, saveProfile, deleteProfile, getAllProfiles, setProfileActive,
+  getProfile, saveProfile, deleteProfile, getAllProfiles, setProfileActive, setTelegramUsername,
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,

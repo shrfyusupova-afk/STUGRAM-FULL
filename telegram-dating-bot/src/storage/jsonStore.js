@@ -102,9 +102,28 @@ async function getProfile(userId) {
 
 async function saveProfile(userId, profile) {
   const all = readJson(DB_PATH);
-  all[String(userId)] = { ...profile, updatedAt: new Date().toISOString() };
+  const key = String(userId);
+  // The wizard hands over a complete draft and replaces the record, but it
+  // never carries the Telegram @username (that's captured separately on any
+  // interaction), so it has to be preserved explicitly or a fresh signup
+  // would erase the handle recorded moments earlier.
+  const keepUsername = all[key]?.username;
+  all[key] = { ...profile, updatedAt: new Date().toISOString() };
+  if (keepUsername && !all[key].username) all[key].username = keepUsername;
   writeJson(DB_PATH, all);
-  return all[String(userId)];
+  return all[key];
+}
+
+// Upserts, because it's called on plain interactions -- someone can have a
+// @username long before (or without ever) finishing an anketa, and that
+// handle is what makes a working profile link possible.
+async function setTelegramUsername(userId, username) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  const current = all[key] || {};
+  if (current.username === (username || undefined)) return;
+  all[key] = { ...current, username: username || undefined, updatedAt: new Date().toISOString() };
+  writeJson(DB_PATH, all);
 }
 
 async function deleteProfile(userId) {
@@ -322,6 +341,7 @@ async function setLanguage(userId, lang) {
 module.exports = {
   getProfile,
   saveProfile,
+  setTelegramUsername,
   deleteProfile,
   getAllProfiles,
   setProfileActive,

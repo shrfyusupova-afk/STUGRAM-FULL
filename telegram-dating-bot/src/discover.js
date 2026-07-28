@@ -245,7 +245,11 @@ async function notifyNewLike(telegram, likedId) {
   });
 }
 
-async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
+// skipProfileFor: the id of someone who is ALREADY looking at this person's
+// card (the likes list edits it in place). Sending them the profile again
+// would put a second, identical photo in the chat right under the one they
+// just tapped.
+async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipProfileFor } = {}) {
   const alreadyLikedByMe = await hasLiked(likerId, likedId);
   await recordLike(likerId, likedId);
   // A repeat tap on someone already liked is not news -- never re-notify.
@@ -268,12 +272,15 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const myLang = await getLanguage(likerId) || DEFAULT_LANG;
   const theirLang = await getLanguage(likedId) || DEFAULT_LANG;
 
+  const skipLiker = String(skipProfileFor) === String(likerId);
   try {
     await ctx.telegram.sendMessage(
       likerId,
-      `${t(myLang, "matchNotification")(them.name)}\n\n${t(myLang, "profileBelowIntro")}`
+      skipLiker
+        ? t(myLang, "matchNotification")(them.name)
+        : `${t(myLang, "matchNotification")(them.name)}\n\n${t(myLang, "profileBelowIntro")}`
     );
-    await sendProfileToChat(ctx.telegram, likerId, myLang, likedId);
+    if (!skipLiker) await sendProfileToChat(ctx.telegram, likerId, myLang, likedId);
   } catch (err) {
     console.error("match notification (liker) failed:", err.message);
   }
