@@ -6,24 +6,38 @@ const { Pool } = require("pg");
 // Every user id is stored as text: Telegram ids exceed 2^31 and, more
 // importantly, the rest of the codebase compares them as strings already.
 let pool = null;
+let sslDisabled = false;
+
+// Whether to attempt TLS for this connection string.
+//
+// The two URLs a managed host hands out differ here: the public/external one
+// goes over the internet and needs TLS, while the private/internal one stays
+// inside the provider's network and may not offer TLS at all. Guessing wrong
+// in either direction is a hard connection failure, so this only picks a
+// starting point -- init() falls back if the server disagrees.
+function sslOptionFor(connectionString) {
+  if (sslDisabled) return false;
+  if (/[?&]sslmode=disable/.test(connectionString)) return false;
+  // Local development runs plain TCP.
+  if (/@(localhost|127\.0\.0\.1)[:/]/.test(connectionString)) return false;
+  // Managed Postgres terminates TLS with a certificate the container's trust
+  // store doesn't recognise. The connection is still encrypted; verification
+  // is what's relaxed, not the encryption.
+  return { rejectUnauthorized: false };
+}
+
+function buildPool() {
+  const connectionString = process.env.DATABASE_URL;
+  const p = new Pool({ connectionString, ssl: sslOptionFor(connectionString), max: 5 });
+  // A pool-level error (server restart, idle connection dropped) is emitted on
+  // the pool itself; without a listener it would be an unhandled 'error' event
+  // and take the process down.
+  p.on("error", (err) => console.error("Postgres pool error:", err.message));
+  return p;
+}
 
 function getPool() {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    pool = new Pool({
-      connectionString,
-      // Managed Postgres (Render, Supabase, Neon...) terminates TLS with a
-      // certificate the container's trust store doesn't recognise. The
-      // connection is still encrypted; disabling verification only for a
-      // non-localhost host keeps local development on plain TCP.
-      ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: false },
-      max: 5,
-    });
-    // A pool-level error (server restart, idle connection dropped) is emitted
-    // on the pool itself; without a listener it would be an unhandled 'error'
-    // event and take the process down.
-    pool.on("error", (err) => console.error("Postgres pool error:", err.message));
-  }
+  if (!pool) pool = buildPool();
   return pool;
 }
 
@@ -31,9 +45,32 @@ async function query(text, params) {
   return getPool().query(text, params);
 }
 
+// Confirms the connection actually works before any schema work, and retries
+// once without TLS if the server turns out not to speak it. That's what makes
+// either URL a managed host offers usable without the operator having to know
+// which one needs SSL -- the common "internal vs external URL" trip-up.
+async function connectWithSslFallback() {
+  try {
+    await getPool().query("SELECT 1");
+  } catch (err) {
+    const noSsl = /does not support SSL|server does not support SSL connections/i.test(err.message || "");
+    if (!noSsl || sslDisabled) throw err;
+    console.warn("Postgres refused a TLS connection -- retrying without it (internal network URL).");
+    sslDisabled = true;
+    try {
+      await pool.end();
+    } catch {
+      /* the pool never connected; nothing to close */
+    }
+    pool = buildPool();
+    await getPool().query("SELECT 1");
+  }
+}
+
 // Called once at startup. CREATE TABLE IF NOT EXISTS makes this safe to run on
 // every boot, which doubles as the migration path for a fresh database.
 async function init() {
+  await connectWithSslFallback();
   await query(`
     CREATE TABLE IF NOT EXISTS profiles (
       user_id           TEXT PRIMARY KEY,
