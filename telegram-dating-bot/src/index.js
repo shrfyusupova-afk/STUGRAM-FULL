@@ -189,7 +189,14 @@ bot.catch((err, ctx) => {
 
 if (webhookDomain) {
   const app = express();
-  app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+  // Reports which storage backend is live so it can be confirmed from outside
+  // without shell or log access -- the difference between "data survives a
+  // deploy" and "data is wiped on every deploy" is otherwise invisible until
+  // it's too late. Deliberately only the backend name: no connection string,
+  // no credentials.
+  app.get("/health", (req, res) =>
+    res.status(200).json({ status: "ok", storage: usePostgres ? "postgres" : "json-files" })
+  );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
 
   // Click's Prepare/Complete callbacks are form-encoded POST requests, but
