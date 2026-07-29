@@ -77,8 +77,17 @@ const STRINGS = {
       "To'lov qilmoqchimisiz? 😊",
     anonPayButton: "💳 To'lov qilish",
     anonNotConfigured: "💳 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
-    anonSubscriptionActivated: (days) =>
-      `🎉 Tabriklaymiz! Endi ${days} kun davomida xohlagan jinsni tanlab, anonim suhbatlashishingiz mumkin.\n\n👧 yoki 👦 tugmasini qayta bosing!`,
+    anonSubscriptionActivated: (days, until) =>
+      "🎉 <b>Tabriklaymiz! Obunangiz faollashtirildi.</b>\n\n" +
+      `📅 Amal qilish muddati: <b>${until}</b> gacha (${days} kun)\n\n` +
+      "Shu muddat ichida cheklovsiz tanlashingiz mumkin:\n" +
+      "👧 <b>Qiz bola bilan</b> — xohlagancha\n" +
+      "👦 <b>O'g'il bola bilan</b> — xohlagancha\n\n" +
+      "Ikkalasi ham ishlaydi va xohlagan paytda almashtirsangiz bo'ladi.\n" +
+      "Pastdagi tugmalardan birini bosing 👇",
+    anonFilterActive: (until) =>
+      `✅ <b>Jins tanlash obunangiz faol</b> — ${until} gacha.\n` +
+      "👧 va 👦 — ikkalasi ham ishlaydi.",
     anonSearching: "🔍 Qidirilmoqda...\n\nBiroz kuting, tez orada suhbatdosh topiladi! 🤞✨",
     anonMatched:
       "🎉 Topildi! Suhbatlashishni boshlang! 💬\n\n" +
@@ -266,8 +275,17 @@ const STRINGS = {
       "Хотите оплатить? 😊",
     anonPayButton: "💳 Оплатить",
     anonNotConfigured: "💳 Оплата ещё не полностью настроена. Скоро заработает! 🚧",
-    anonSubscriptionActivated: (days) =>
-      `🎉 Поздравляем! Теперь в течение ${days} дней вы можете выбирать пол собеседника для анонимного чата.\n\nНажмите 👧 или 👦 ещё раз!`,
+    anonSubscriptionActivated: (days, until) =>
+      "🎉 <b>Поздравляем! Подписка активирована.</b>\n\n" +
+      `📅 Действует до: <b>${until}</b> (${days} дней)\n\n` +
+      "В течение этого срока вы можете без ограничений выбирать:\n" +
+      "👧 <b>С девушкой</b> — сколько угодно\n" +
+      "👦 <b>С парнем</b> — сколько угодно\n\n" +
+      "Работают оба варианта, переключаться можно в любой момент.\n" +
+      "Нажмите одну из кнопок ниже 👇",
+    anonFilterActive: (until) =>
+      `✅ <b>Подписка на выбор пола активна</b> — до ${until}.\n` +
+      "👧 и 👦 — работают обе кнопки.",
     anonSearching: "🔍 Идёт поиск...\n\nПодождите немного, скоро найдётся собеседник! 🤞✨",
     anonMatched:
       "🎉 Найден собеседник! Начинайте общаться! 💬\n\n" +
@@ -455,8 +473,17 @@ const STRINGS = {
       "Would you like to pay? 😊",
     anonPayButton: "💳 Pay",
     anonNotConfigured: "💳 Payments aren't fully set up yet. Coming soon! 🚧",
-    anonSubscriptionActivated: (days) =>
-      `🎉 Congrats! For the next ${days} days you can pick either gender for anonymous chat.\n\nTap 👧 or 👦 again!`,
+    anonSubscriptionActivated: (days, until) =>
+      "🎉 <b>Congrats! Your subscription is active.</b>\n\n" +
+      `📅 Valid until: <b>${until}</b> (${days} days)\n\n` +
+      "For that whole period you can pick, as often as you like:\n" +
+      "👧 <b>With a girl</b>\n" +
+      "👦 <b>With a boy</b>\n\n" +
+      "Both work, and you can switch between them any time.\n" +
+      "Tap one of the buttons below 👇",
+    anonFilterActive: (until) =>
+      `✅ <b>Your gender-choice subscription is active</b> — until ${until}.\n` +
+      "👧 and 👦 — both buttons work.",
     anonSearching: "🔍 Searching...\n\nHang tight, a chat partner will be found soon! 🤞✨",
     anonMatched:
       "🎉 Found someone! Start chatting! 💬\n\n" +

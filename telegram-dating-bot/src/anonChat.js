@@ -175,6 +175,25 @@ async function attemptJoin(ctx, wants) {
   await ctx.reply(t(lang, "anonSearching"));
 }
 
+// Whether this person can currently pick a gender, and until when -- shown on
+// the anon-chat screen so the answer to "am I subscribed, and do both buttons
+// work for me?" is visible without having to tap one and find out.
+//
+// Premium grants this filter too (that is what the paywall promises), and it
+// carries its own separate expiry, so whichever of the two actually runs
+// longer is the honest date to quote.
+async function genderFilterStatus(userId, lang) {
+  if (!(await hasAnonGenderFilter(userId))) return null;
+  const profile = await getProfile(userId);
+  const now = Date.now();
+  const dates = [profile?.anonGenderUntil, profile?.premiumUntil]
+    .map((iso) => (iso ? new Date(iso) : null))
+    .filter((d) => d && d.getTime() > now);
+  if (dates.length === 0) return null;
+  const until = new Date(Math.max(...dates.map((d) => d.getTime())));
+  return t(lang, "anonFilterActive")(until.toISOString().slice(0, 10));
+}
+
 async function showGenderPaywall(ctx, lang) {
   const orderId = await createOrder(ctx.from.id, { type: "anongender" });
   const clickUrl = buildCheckoutUrl(orderId, ANON_GENDER_PRICE_SOM);
@@ -243,7 +262,12 @@ function registerAnonChatHandlers(bot) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
     }
-    await ctx.reply(t(lang, "anonChatIntro"), anonSubmenuKeyboard(lang));
+    // The status line rides along with the intro rather than as its own
+    // message, so opening this screen answers "is my subscription live?" in
+    // one place instead of leaving it to be discovered by tapping.
+    const status = await genderFilterStatus(ctx.from.id, lang);
+    const intro = status ? `${t(lang, "anonChatIntro")}\n\n${status}` : t(lang, "anonChatIntro");
+    await ctx.reply(intro, { parse_mode: "HTML", ...anonSubmenuKeyboard(lang) });
   });
 
   bot.hears(girlLabels, async (ctx) => {
@@ -276,4 +300,4 @@ function registerAnonChatHandlers(bot) {
   });
 }
 
-module.exports = { registerAnonChatHandlers, leaveAnonQueueOrChat };
+module.exports = { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard };

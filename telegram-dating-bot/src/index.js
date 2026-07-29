@@ -9,7 +9,7 @@ const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
-const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat");
+const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { safeAnswerCbQuery } = require("./telegramSafety");
@@ -323,7 +323,15 @@ if (webhookDomain) {
       if (order.type === "anongender") {
         const anonGenderUntil = extendFrom((await getProfile(order.userId))?.anonGenderUntil, ANON_GENDER_DAYS);
         await setAnonGenderFilterUntil(order.userId, anonGenderUntil);
-        await bot.telegram.sendMessage(order.userId, t(lang, "anonSubscriptionActivated")(ANON_GENDER_DAYS));
+        // The 👧/👦 keyboard rides along with the message that tells them to
+        // press it. Payment happens in a browser, so by the time this arrives
+        // they may be anywhere in the bot -- without this, "press 👧 or 👦"
+        // could land on a screen where neither button is on show.
+        await bot.telegram.sendMessage(
+          order.userId,
+          t(lang, "anonSubscriptionActivated")(ANON_GENDER_DAYS, anonGenderUntil.slice(0, 10)),
+          { parse_mode: "HTML", ...anonSubmenuKeyboard(lang) }
+        );
         console.log(`Anon gender filter granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
