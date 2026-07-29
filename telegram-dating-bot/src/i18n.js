@@ -189,6 +189,13 @@ const STRINGS = {
       "✅ <b>Anketangiz qayta ochildi.</b>\n\nEndi u boshqalarga yana ko'rinadi.",
     newProfileButton: "🆕 Yangi profil ochish",
     complainButton: "🚨 Shikoyat qilish",
+    mediaProtectedNotice:
+      "🔒 <b>Rasmlar himoyalangan.</b>\n\n" +
+      "Bu yerdagi anketa rasmlarini <b>boshqa chatga uzatib bo'lmaydi</b> va " +
+      "<b>telefoningizga saqlab bo'lmaydi</b>. Android'da skrinshot ham olinmaydi.\n\n" +
+      "⚠️ Baribir kimningdir rasmini boshqa joyga tarqatish — <b>qat'iyan taqiqlanadi</b> " +
+      "va akkaunt o'chirilishiga olib keladi. Bunday holatni ko'rsangiz, " +
+      "«Shikoyat qilish» orqali bizga xabar bering.",
     noProfileYet: "Sizda hali anketa yo'q. Avval /start orqali anketa to'ldiring.",
   },
   ru: {
@@ -371,6 +378,13 @@ const STRINGS = {
       "✅ <b>Ваша анкета снова открыта.</b>\n\nТеперь её опять видят другие.",
     newProfileButton: "🆕 Создать новую анкету",
     complainButton: "🚨 Пожаловаться",
+    mediaProtectedNotice:
+      "🔒 <b>Фотографии защищены.</b>\n\n" +
+      "Анкетные фото отсюда <b>нельзя переслать</b> в другой чат и " +
+      "<b>нельзя сохранить</b> на телефон. На Android скриншот тоже не получится.\n\n" +
+      "⚠️ Распространять чужие фото где-либо ещё <b>строго запрещено</b> " +
+      "и ведёт к удалению аккаунта. Если заметили такое — сообщите нам " +
+      "через «Пожаловаться».",
     noProfileYet: "У вас пока нет анкеты. Сначала заполните её через /start.",
   },
   en: {
@@ -553,6 +567,13 @@ const STRINGS = {
       "✅ <b>Your profile is visible again.</b>\n\nOther people can see it once more.",
     newProfileButton: "🆕 Create a new profile",
     complainButton: "🚨 Report a problem",
+    mediaProtectedNotice:
+      "🔒 <b>Photos are protected.</b>\n\n" +
+      "Profile photos here <b>cannot be forwarded</b> to another chat and " +
+      "<b>cannot be saved</b> to your phone. On Android, screenshots are blocked too.\n\n" +
+      "⚠️ Passing someone's photo around anywhere else is <b>strictly forbidden</b> " +
+      "and leads to the account being deleted. If you see it happen, tell us " +
+      "using \"Report a problem\".",
     noProfileYet: "You don't have a profile yet. Fill one out first via /start.",
   },
 };

@@ -550,10 +550,12 @@ async function sendUserCard(ctx, id, profile, mainBotTelegram) {
   const keyboard = userActionsKeyboard(id, profile);
 
   if (profile.mediaFileId) {
+    // Protected here too: an admin has no business forwarding somebody's
+    // anketa photo out of the panel either.
     const failure = await replyWithProfileMedia(
       ctx,
       profile,
-      { caption, parse_mode: "HTML", ...keyboard },
+      { caption, parse_mode: "HTML", protect_content: true, ...keyboard },
       mainBotTelegram
     );
     if (!failure) return;

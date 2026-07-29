@@ -43,6 +43,20 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;");
 }
 
+// Applied to every message carrying somebody else's photo or video.
+//
+// What it actually does, so nobody is promised more than it delivers:
+//   * forwarding the card to another chat -- blocked, on every platform;
+//   * saving/downloading the photo to the phone -- blocked, every platform;
+//   * screenshots -- blocked on Android, where Telegram marks the window
+//     secure. Apple does not let ANY app block screenshots, so on iPhone the
+//     screen can still be captured, and any phone can photograph any screen.
+//
+// So this raises the effort a lot without being a guarantee; the honest half
+// of the answer is the warning shown alongside it and the reporting route
+// for someone who does pass a photo around.
+const PROTECTED = { protect_content: true };
+
 function oppositeGender(gender) {
   return gender === "male" ? "female" : "male";
 }
@@ -181,7 +195,7 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
 // profile, where "buy access to this chat" makes no sense).
 async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, captionOptions) {
   const caption = buildProfileCaption(lang, candidateId, profile, captionOptions);
-  const extra = { caption, parse_mode: "HTML", ...(keyboardExtra || {}) };
+  const extra = { caption, parse_mode: "HTML", ...PROTECTED, ...(keyboardExtra || {}) };
 
   if (profile.mediaType === "video") {
     await ctx.replyWithVideo(profile.mediaFileId, extra);
@@ -209,7 +223,7 @@ async function sendProfileToChat(telegram, chatId, lang, candidateId) {
   const candidate = await getProfile(candidateId);
   if (!candidate) return;
   const caption = buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false, contactPhone: candidate.phone });
-  const extra = { caption, parse_mode: "HTML" };
+  const extra = { caption, parse_mode: "HTML", ...PROTECTED };
   if (candidate.mediaType === "video") {
     await telegram.sendVideo(chatId, candidate.mediaFileId, extra);
   } else {
@@ -397,6 +411,10 @@ function registerDiscoverHandlers(bot) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
     }
+    // Shown when a browsing session starts, not on every swipe: it is a rule
+    // people need to know once, and repeating it under every card would be
+    // noise they stop reading.
+    await ctx.reply(t(lang, "mediaProtectedNotice"), { parse_mode: "HTML" });
     await showNextCandidate(ctx, lang, me.gender);
   });
 
