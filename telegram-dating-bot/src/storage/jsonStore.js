@@ -373,6 +373,24 @@ async function addAdmin(userId) {
   writeJson(ADMINS_DB_PATH, all);
 }
 
+// The PIN grants admin access permanently with no way to undo it -- if it is
+// ever typed by the wrong person (shown over someone's shoulder, guessed,
+// leaked with a screenshot), that person stayed an admin forever. These two
+// are what make revocation possible from inside the panel itself, without
+// needing shell access to the host.
+async function listAdmins() {
+  return Object.keys(readJson(ADMINS_DB_PATH));
+}
+
+async function removeAdmin(userId) {
+  const all = readJson(ADMINS_DB_PATH);
+  const key = String(userId);
+  if (!(key in all)) return false;
+  delete all[key];
+  writeJson(ADMINS_DB_PATH, all);
+  return true;
+}
+
 async function getLanguage(userId) {
   return readJson(LANG_DB_PATH)[String(userId)] || null;
 }
@@ -398,6 +416,8 @@ module.exports = {
   hasVipChat,
   isAdmin,
   addAdmin,
+  listAdmins,
+  removeAdmin,
   getLanguage,
   setLanguage,
   recordLike,

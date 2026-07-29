@@ -72,6 +72,8 @@ module.exports = {
   // Admin + language
   isAdmin: store.isAdmin,
   addAdmin: store.addAdmin,
+  listAdmins: store.listAdmins,
+  removeAdmin: store.removeAdmin,
   getLanguage: store.getLanguage,
   setLanguage: store.setLanguage,
   // Payment ledger -- Postgres only; click.js falls back to its own JSON file

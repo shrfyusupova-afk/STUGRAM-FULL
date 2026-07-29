@@ -70,6 +70,28 @@ function findMatch(userId, gender, wants) {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
+// Minimum gap between one person's messages actually reaching their partner
+// -- see the relay handler below for why this exists alongside the bot-wide
+// flood guard. Real typed conversation is nowhere near this fast; it only
+// bites a script.
+const MIN_RELAY_GAP_MS = 400;
+const lastRelayAt = new Map();
+
+function canRelay(userId) {
+  const now = Date.now();
+  const last = lastRelayAt.get(userId) || 0;
+  if (now - last < MIN_RELAY_GAP_MS) return false;
+  lastRelayAt.set(userId, now);
+  return true;
+}
+
+// Otherwise this map only ever grows -- every chat adds two entries that
+// nothing removes, for the lifetime of the process.
+function clearRelayPacing(userId, partnerId) {
+  lastRelayAt.delete(userId);
+  lastRelayAt.delete(partnerId);
+}
+
 function startChat(telegram, userAId, userBId) {
   const timer = setTimeout(() => endChatByTimeout(telegram, userAId), CHAT_DURATION_MS);
   activeChats.set(userAId, { partnerId: userBId, timer });
@@ -96,6 +118,7 @@ async function endChatByTimeout(telegram, userId) {
   const partnerId = chat.partnerId;
   activeChats.delete(userId);
   activeChats.delete(partnerId);
+  clearRelayPacing(userId, partnerId);
 
   await sendChatEnded(telegram, userId, partnerId, "anonChatEnded");
   await sendChatEnded(telegram, partnerId, userId, "anonChatEnded");
@@ -112,6 +135,7 @@ async function leaveAnonQueueOrChat(telegram, userId) {
   clearTimeout(chat.timer);
   activeChats.delete(userId);
   activeChats.delete(partnerId);
+  clearRelayPacing(userId, partnerId);
   await sendChatEnded(telegram, partnerId, userId, "anonPartnerLeft");
 }
 
@@ -184,12 +208,26 @@ function registerAnonChatHandlers(bot) {
       clearTimeout(chat.timer);
       activeChats.delete(userId);
       activeChats.delete(partnerId);
+      clearRelayPacing(userId, partnerId);
       // Both sides get the same treatment: their keyboard back, plus the
       // option to report the person they were just talking to.
       await sendChatEnded(ctx.telegram, userId, partnerId, "anonChatEnded");
       await sendChatEnded(ctx.telegram, partnerId, userId, "anonPartnerLeft");
       return;
     }
+
+    // A live, anonymous partner is the one place in this bot where flooding
+    // means actually bombing a specific, real, non-consenting person with
+    // messages -- everywhere else a flood only wastes our own resources. The
+    // global flood guard in index.js catches scripted abuse eventually, but
+    // its window is generous (tuned for the whole bot); this is a tighter,
+    // relay-specific pace on top of it, so even a burst within that ceiling
+    // can't hit the partner faster than someone genuinely typing would.
+    // Dropped silently and without telling the sender -- replying "you're
+    // going too fast" would itself be one more outgoing message per flood
+    // attempt, and the sender finding out changes nothing they can act on
+    // usefully mid-chat.
+    if (!canRelay(userId)) return;
 
     try {
       await ctx.telegram.sendMessage(chat.partnerId, ctx.message.text);

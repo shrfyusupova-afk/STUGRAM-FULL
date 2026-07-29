@@ -475,6 +475,21 @@ async function addAdmin(userId) {
   await query(`INSERT INTO admins (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [String(userId)]);
 }
 
+// The PIN grants admin access permanently with no way to undo it -- if it is
+// ever typed by the wrong person (shown over someone's shoulder, guessed,
+// leaked with a screenshot), that person stayed an admin forever. These two
+// are what make revocation possible from inside the panel itself, without
+// needing shell access to the host.
+async function listAdmins() {
+  const { rows } = await query(`SELECT user_id FROM admins`);
+  return rows.map((r) => r.user_id);
+}
+
+async function removeAdmin(userId) {
+  const { rowCount } = await query(`DELETE FROM admins WHERE user_id = $1`, [String(userId)]);
+  return rowCount > 0;
+}
+
 async function getLanguage(userId) {
   const { rows } = await query(`SELECT lang FROM languages WHERE user_id = $1`, [String(userId)]);
   return rows[0] ? rows[0].lang : null;
@@ -650,7 +665,7 @@ module.exports = {
   getProfile, saveProfile, deleteProfile, getAllProfiles, setProfileActive, setTelegramUsername,
   pickCandidateRow,
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
-  grantVipChat, hasVipChat, isAdmin, addAdmin, getLanguage, setLanguage,
+  grantVipChat, hasVipChat, isAdmin, addAdmin, listAdmins, removeAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,

@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const { Telegraf, Markup } = require("telegraf");
 const {
-  getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin,
+  getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin, listAdmins, removeAdmin,
   listComplaints, getComplaint, setComplaintReply,
 } = require("./db");
 const { getSalesSummary } = require("./click");
@@ -547,7 +547,7 @@ async function replyWithProfileMedia(ctx, profile, extra, mainBotTelegram) {
 // impossible to diagnose.
 async function sendUserCard(ctx, id, profile, mainBotTelegram) {
   const caption = userCard(id, profile);
-  const keyboard = userActionsKeyboard(id, profile);
+  const keyboard = await userActionsKeyboard(id, profile, ctx.from.id);
 
   if (profile.mediaFileId) {
     // Protected here too: an admin has no business forwarding somebody's
@@ -570,11 +570,20 @@ async function sendUserCard(ctx, id, profile, mainBotTelegram) {
   await ctx.reply(`${caption}\n\n📷 Rasm/video yuklanmagan.`, { parse_mode: "HTML", ...keyboard });
 }
 
-function userActionsKeyboard(id, profile) {
+// viewerId is who is LOOKING at this card, not who it belongs to -- it exists
+// only to hide the demote button from an admin's own card. Deliberately not a
+// real safeguard against locking the panel out (the handler below is): it
+// just stops the far more likely accident of a tired admin tapping the wrong
+// button on their own profile.
+async function userActionsKeyboard(id, profile, viewerId) {
   const toggleLabel = profile.active === false ? "🟢 Faollantirish" : "🔴 Faolsizlantirish";
-  return Markup.inlineKeyboard([
+  const rows = [
     [Markup.button.callback(toggleLabel, `admin:toggle:${id}`), Markup.button.callback("🗑 O'chirish", `admin:delete:${id}`)],
-  ]);
+  ];
+  if (String(id) !== String(viewerId) && (await isAdmin(id))) {
+    rows.push([Markup.button.callback("🚫 Admin huquqini bekor qilish", `admin:demote:${id}`)]);
+  }
+  return Markup.inlineKeyboard(rows);
 }
 
 // A failed answerCbQuery/editMessageText (stale query, "message is not
@@ -1073,6 +1082,14 @@ function createAdminBot(token, mainBotTelegram) {
       const cursor = complaintCursor.get(ctx.from.id);
       if (cursor?.viewing) {
         const updated = await setComplaintReply(cursor.viewing, query);
+        // Cleared the moment the reply is recorded, win or lose on delivery
+        // below -- otherwise "javobingizni yozing" stayed open forever, and
+        // literally everything the admin typed next (a search, a second
+        // complaint code, anything) was silently swallowed as ANOTHER reply
+        // to this same already-answered complaint instead of doing what it
+        // actually said. ids/index are left alone so Keyingisi/Orqaga still
+        // pick up from here.
+        cursor.viewing = null;
         if (!updated) {
           await ctx.reply("Bu shikoyat topilmadi (o'chirilgan bo'lishi mumkin).");
           return;
@@ -1112,7 +1129,7 @@ function createAdminBot(token, mainBotTelegram) {
       const newActive = profile.active === false;
       const updated = await setProfileActive(targetId, newActive);
       await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
-      await safeUpdateCard(ctx, userCard(targetId, updated), userActionsKeyboard(targetId, updated));
+      await safeUpdateCard(ctx, userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
 
       // Someone whose anketa was hidden could otherwise keep swiping for days
       // without ever learning that nobody can see them any more.
@@ -1153,6 +1170,43 @@ function createAdminBot(token, mainBotTelegram) {
           ? "🗑 Anketa o'chirildi.\n✅ Foydalanuvchiga xabar berildi."
           : "🗑 Anketa o'chirildi.\n⚠️ Foydalanuvchiga xabar yetkazilmadi (botni bloklagan bo'lishi mumkin)."
       );
+    })
+  );
+
+  // The PIN has no expiry and grants access permanently -- this is the only
+  // way to take it back without shell access to the host. Guarded against
+  // the one way it could backfire: refusing to strip the LAST admin, which
+  // would lock everyone out of the panel with no PIN-holder left to fix it.
+  bot.action(
+    /^admin:demote:(.+)$/,
+    requireAdmin(async (ctx) => {
+      const targetId = ctx.match[1];
+
+      if (String(targetId) === String(ctx.from.id)) {
+        await safeAnswerCbQuery(ctx, "O'zingizni olib tashlay olmaysiz");
+        return;
+      }
+      if (!(await isAdmin(targetId))) {
+        await safeAnswerCbQuery(ctx, "Bu odam admin emas");
+        return;
+      }
+      const admins = await listAdmins();
+      if (admins.length <= 1) {
+        await safeAnswerCbQuery(ctx, "Oxirgi adminni olib tashlab bo'lmaydi");
+        return;
+      }
+
+      await removeAdmin(targetId);
+      await safeAnswerCbQuery(ctx, "Admin huquqi bekor qilindi");
+      const profile = await getProfile(targetId);
+      if (profile) {
+        await safeUpdateCard(ctx, userCard(targetId, profile), await userActionsKeyboard(targetId, profile, ctx.from.id));
+      }
+      try {
+        await mainBotTelegram.sendMessage(targetId, "ℹ️ Sizning admin panelga kirish huquqingiz bekor qilindi.");
+      } catch (err) {
+        console.error(`could not notify ${targetId} of admin demotion:`, err.message);
+      }
     })
   );
 

@@ -14,6 +14,7 @@ const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
+const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const {
@@ -119,6 +120,10 @@ if (adminBot && !adminWebhookSecret && webhookDomain) {
 }
 
 const stage = new Scenes.Stage([profileWizard]);
+
+// First of all, before session/stage/anything else does any work: a flood
+// from one user is cheapest to stop before a single handler runs.
+bot.use(floodGuardMiddleware);
 
 bot.use(session());
 
