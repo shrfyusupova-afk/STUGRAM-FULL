@@ -1,7 +1,8 @@
 const crypto = require("crypto");
 const { Telegraf, Markup } = require("telegraf");
 const {
-  getAllProfiles, getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin, listAdmins, removeAdmin,
+  searchProfiles, getProfileStats, listAllProfileIds,
+  getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin, listAdmins, removeAdmin,
   listComplaints, getComplaint, setComplaintReply,
 } = require("./db");
 const { getSalesSummary } = require("./click");
@@ -33,6 +34,7 @@ const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
 const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
 const BROADCAST_LABEL = "📢 Reklama berish";
+const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
 const RESTART_LABEL = "🔄 Boshidan ko'rish";
 const BACK_LABEL = "⬅️ Orqaga";
@@ -52,6 +54,35 @@ const SOURCE_LABEL = {
 // Resets on restart -- acceptable, it's just a login-attempt-in-progress
 // cache, not anything that needs to survive a deploy.
 const loginState = new Map();
+
+// Being IN the admins table (isAdmin) and being LOGGED IN right now are two
+// different questions. The table answers "is this person allowed to be an
+// admin at all" and is permanent, changed only by entering the PIN once or by
+// another admin using "Admin huquqini bekor qilish". This map answers "have
+// they proven it recently" and expires on its own -- so the PIN having leaked
+// once, or a laptop left open, doesn't grant standing access forever. Reset
+// on restart is fine here too: a redeploy simply asks every admin to type the
+// PIN again, which is the safe direction to fail in.
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const adminSessions = new Map(); // userId -> last authenticated at (ms)
+
+// Keyed by String(userId) throughout -- ctx.from.id arrives as a number from
+// Telegraf, but a demoted admin's id arrives as a string (a regex capture
+// from callback_data), and Map.get() requires an exact key match. Without
+// coercion, ending a demoted admin's session here would silently miss the
+// entry stored under the numeric key.
+function sessionValid(userId) {
+  const at = adminSessions.get(String(userId));
+  return !!at && Date.now() - at < ADMIN_SESSION_TTL_MS;
+}
+
+function startSession(userId) {
+  adminSessions.set(String(userId), Date.now());
+}
+
+function endSession(userId) {
+  adminSessions.delete(String(userId));
+}
 
 // Wrong-code throttling.
 //
@@ -131,6 +162,7 @@ function adminMenuKeyboard() {
     [STATS_LABEL, USERS_LABEL],
     [SALES_LABEL, COMPLAINTS_LABEL],
     [BROADCAST_LABEL],
+    [LOGOUT_LABEL],
   ]).resize();
 }
 
@@ -354,6 +386,19 @@ async function complaintDetailText(complaint, position, total) {
 function requireAdmin(handler) {
   return async (ctx) => {
     if (!(await isAdmin(ctx.from.id))) return;
+    // A session that has expired is caught HERE, not only at /start -- so
+    // whatever the admin taps next (a search, a broadcast step, anything)
+    // is what re-prompts for the PIN, rather than quietly running on a
+    // session that has been stale for hours.
+    if (!sessionValid(ctx.from.id)) {
+      leaveComposers(ctx.from.id);
+      loginState.set(ctx.from.id, "");
+      await ctx.reply(
+        `⏳ Sessiya muddati tugadi (12 soatdan ko'p vaqt o'tdi). Davom etish uchun kodni qayta kiriting:\n${maskCode("")}`,
+        pinKeyboard()
+      );
+      return;
+    }
     return handler(ctx);
   };
 }
@@ -468,25 +513,13 @@ function renderSearchPage(state) {
   };
 }
 
-// Name, Telegram id, phone number or @username -- an admin searching for
-// someone rarely knows which of those they have.
-function matchesQuery(id, profile, query) {
-  const needle = query.toLowerCase().replace(/^@/, "");
-  if (String(id) === query) return true;
-  if (profile.name && profile.name.toLowerCase().includes(needle)) return true;
-  if (profile.username && profile.username.toLowerCase().includes(needle)) return true;
-  // Phones are stored with a "+" and typed without one about half the time.
-  if (profile.phone && profile.phone.replace(/\D/g, "").includes(needle.replace(/\D/g, "")) && /\d{4}/.test(needle)) {
-    return true;
-  }
-  return false;
-}
-
+// Matches by Telegram id, name, @username or phone digits -- an admin
+// searching for someone rarely knows which of those they have. Runs as one
+// LIMITed SQL query on Postgres (see searchProfiles in pgStore.js) rather
+// than loading every profile into memory and filtering here: that used to
+// cost the same whether the table held a thousand rows or a million.
 async function sendSearchResults(ctx, query) {
-  const all = await getAllProfiles();
-  const hits = Object.entries(all)
-    .filter(([id, p]) => matchesQuery(id, p, query))
-    .slice(0, SEARCH_RESULT_LIMIT);
+  const hits = await searchProfiles(query, SEARCH_RESULT_LIMIT);
 
   if (hits.length === 0) {
     await ctx.reply("Hech kim topilmadi.");
@@ -634,7 +667,10 @@ function createAdminBot(token, mainBotTelegram) {
   const bot = new Telegraf(token);
 
   bot.start(async (ctx) => {
-    if (await isAdmin(ctx.from.id)) {
+    // Being in the admins table is not enough on its own any more -- the
+    // session also has to still be within its 12-hour window, or this is
+    // exactly like never having logged in: back to the PIN.
+    if (await isAdmin(ctx.from.id) && sessionValid(ctx.from.id)) {
       await ctx.reply("✅ Xush kelibsiz, admin!", adminMenuKeyboard());
       return;
     }
@@ -643,7 +679,7 @@ function createAdminBot(token, mainBotTelegram) {
   });
 
   bot.action(/^admin:pin:(\d)$/, async (ctx) => {
-    if (await isAdmin(ctx.from.id)) {
+    if (await isAdmin(ctx.from.id) && sessionValid(ctx.from.id)) {
       await safeAnswerCbQuery(ctx);
       return;
     }
@@ -673,7 +709,12 @@ function createAdminBot(token, mainBotTelegram) {
     }
 
     if (crypto.timingSafeEqual(Buffer.from(entered), Buffer.from(ADMIN_CODE))) {
+      // addAdmin is a harmless no-op for someone already in the table (their
+      // very first login, versus a returning admin whose session just
+      // expired, take the exact same path here) -- only the session is what
+      // actually changes on a repeat login.
       await addAdmin(ctx.from.id);
+      startSession(ctx.from.id);
       loginState.delete(ctx.from.id);
       failedAttempts.delete(ctx.from.id);
       await safeEditMessageText(ctx, "✅ Kod to'g'ri! Admin sifatida tasdiqlandingiz.");
@@ -690,7 +731,7 @@ function createAdminBot(token, mainBotTelegram) {
   });
 
   bot.action("admin:pin:back", async (ctx) => {
-    if (await isAdmin(ctx.from.id)) {
+    if (await isAdmin(ctx.from.id) && sessionValid(ctx.from.id)) {
       await safeAnswerCbQuery(ctx);
       return;
     }
@@ -700,22 +741,34 @@ function createAdminBot(token, mainBotTelegram) {
     await safeEditMessageText(ctx, `🔐 Kodni kiriting:\n${maskCode(entered)}`, pinKeyboard());
   });
 
+  // Ends the CURRENT session only -- the admins-table entry is untouched, so
+  // the same PIN logs this person straight back in. That is deliberately
+  // different from "Admin huquqini bekor qilish" on someone else's card,
+  // which is permanent and needs a different admin to undo.
+  bot.hears(
+    LOGOUT_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      endSession(ctx.from.id);
+      loginState.set(ctx.from.id, "");
+      await ctx.reply(
+        `🚪 Admin sessiyasidan chiqdingiz.\n\n🔐 Qayta kirish uchun kodni kiriting:\n${maskCode("")}`,
+        pinKeyboard()
+      );
+    })
+  );
+
   bot.hears(
     STATS_LABEL,
     requireAdmin(async (ctx) => {
       leaveComposers(ctx.from.id);
-      const entries = Object.values(await getAllProfiles());
-      // Anketa counts only cover real registered profiles -- a record holding
-      // nothing but a paid entitlement isn't a user with an anketa and would
-      // otherwise silently inflate "Jami" and "Faol". Premium is counted over
-      // everyone, since such a person IS a paying customer either way.
-      const registered = entries.filter(isRegistered);
-      const total = registered.length;
-      const male = registered.filter((p) => p.gender === "male").length;
-      const female = registered.filter((p) => p.gender === "female").length;
-      const active = registered.filter((p) => p.active !== false).length;
-      const premiumNow = entries.filter((p) => p.premiumUntil && new Date(p.premiumUntil) > new Date()).length;
-      const pendingAnketa = entries.length - total;
+      // One aggregate query instead of loading every profile to count it here
+      // -- that used to cost the same whether there were a thousand rows or a
+      // million. Anketa counts only cover real registered profiles -- a
+      // record holding nothing but a paid entitlement isn't a user with an
+      // anketa. Premium is counted over everyone, since such a person IS a
+      // paying customer either way.
+      const { total, male, female, active, pendingAnketa, premiumNow } = await getProfileStats();
 
       await ctx.reply(
         `📊 Statistika\n\n` +
@@ -808,7 +861,7 @@ function createAdminBot(token, mainBotTelegram) {
       broadcastDraft.delete(ctx.from.id);
       return;
     }
-    const total = Object.keys(await getAllProfiles()).length;
+    const total = (await listAllProfileIds()).length;
     await ctx.reply(
       `Tasdiqlaysizmi?\n\n👥 Taxminan ${total} ta foydalanuvchiga yuboriladi.`,
       confirmKeyboard()
@@ -859,7 +912,7 @@ function createAdminBot(token, mainBotTelegram) {
       if (draft?.step !== "confirm") return;
       broadcastDraft.delete(ctx.from.id);
 
-      const recipients = Object.keys(await getAllProfiles());
+      const recipients = await listAllProfileIds();
       if (recipients.length === 0) {
         await ctx.reply("Yuboradigan foydalanuvchi yo'q.", adminMenuKeyboard());
         return;
@@ -1197,6 +1250,7 @@ function createAdminBot(token, mainBotTelegram) {
       }
 
       await removeAdmin(targetId);
+      endSession(targetId);
       await safeAnswerCbQuery(ctx, "Admin huquqi bekor qilindi");
       const profile = await getProfile(targetId);
       if (profile) {

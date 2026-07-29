@@ -181,6 +181,50 @@ async function getAllProfiles() {
   return readJson(DB_PATH);
 }
 
+// Same interface as pgStore's SQL-backed versions, so adminBot.js doesn't
+// need to know which backend it's talking to. The JSON backend has no query
+// engine to push this into, so it stays an in-memory scan -- documented
+// elsewhere as a JSON-only limitation; only Postgres is meant to carry real
+// scale.
+function isRegisteredEntry(p) { return !!p?.name; }
+
+async function searchProfiles(rawQuery, limit) {
+  const needle = rawQuery.toLowerCase().replace(/^@/, "");
+  const needleDigits = needle.replace(/\D/g, "");
+  const phoneEligible = /\d{4}/.test(needle);
+  const all = readJson(DB_PATH);
+  const hits = [];
+  for (const [id, p] of Object.entries(all)) {
+    const matches =
+      id === rawQuery ||
+      (p.name && p.name.toLowerCase().includes(needle)) ||
+      (p.username && p.username.toLowerCase().includes(needle)) ||
+      (phoneEligible && p.phone && p.phone.replace(/\D/g, "").includes(needleDigits));
+    if (matches) hits.push([id, p]);
+    if (hits.length >= limit) break;
+  }
+  return hits;
+}
+
+async function getProfileStats() {
+  const all = Object.values(readJson(DB_PATH));
+  const registered = all.filter(isRegisteredEntry);
+  return {
+    total: registered.length,
+    male: registered.filter((p) => p.gender === "male").length,
+    female: registered.filter((p) => p.gender === "female").length,
+    active: registered.filter((p) => p.active !== false).length,
+    pendingAnketa: all.length - registered.length,
+    premiumNow: all.filter((p) => p.premiumUntil && new Date(p.premiumUntil) > new Date()).length,
+  };
+}
+
+// Every id in the table -- same universe Object.keys(await getAllProfiles())
+// used to reach, including a payment record with no finished anketa.
+async function listAllProfileIds() {
+  return Object.keys(readJson(DB_PATH));
+}
+
 async function setProfileActive(userId, active) {
   const all = readJson(DB_PATH);
   const key = String(userId);
@@ -407,6 +451,9 @@ module.exports = {
   setTelegramUsername,
   deleteProfile,
   getAllProfiles,
+  searchProfiles,
+  getProfileStats,
+  listAllProfileIds,
   setProfileActive,
   setPremiumUntil,
   hasPremium,

@@ -215,6 +215,67 @@ async function getAllProfiles() {
   return out;
 }
 
+// The admin search used to run getAllProfiles() -- pulling every row for
+// every name/id/phone search -- and grew with the whole table, not with the
+// search: at 1,000,000 profiles that is ~1GB of parsed rows and tens of
+// seconds, for someone looking up ONE person. This does the same matching
+// (id / name / @username / phone digits) as a filtered, LIMITed query, so a
+// search costs roughly the same at 1,000,000 rows as it does at 1,000.
+//
+// phoneDigits mirrors what matchesQuery required client-side: the phone
+// branch only applies when the query itself looks like a phone number (at
+// least 4 digits), otherwise a short numeric query would match almost every
+// stored number by coincidence.
+async function searchProfiles(rawQuery, limit) {
+  const needle = rawQuery.toLowerCase().replace(/^@/, "");
+  const phoneDigits = needle.replace(/\D/g, "");
+  const phoneEligible = /\d{4}/.test(needle);
+
+  const { rows } = await query(
+    `SELECT * FROM profiles
+      WHERE user_id = $1
+         OR lower(name) LIKE '%' || $2 || '%'
+         OR lower(username) LIKE '%' || $2 || '%'
+         OR ($3 AND regexp_replace(coalesce(phone, ''), '\\D', '', 'g') LIKE '%' || $4 || '%')
+      LIMIT $5`,
+    [rawQuery, needle, phoneEligible, phoneDigits, limit]
+  );
+  return rows.map((row) => [row.user_id, rowToProfile(row)]);
+}
+
+// One aggregate query instead of pulling every row to count/filter/sum in
+// Node -- the admin stats screen used to be exactly the same "whole table
+// into memory" cost as the search above, just for a handful of numbers.
+async function getProfileStats() {
+  const { rows } = await query(`
+    SELECT
+      count(*) FILTER (WHERE name IS NOT NULL) AS total,
+      count(*) FILTER (WHERE name IS NOT NULL AND gender = 'male') AS male,
+      count(*) FILTER (WHERE name IS NOT NULL AND gender = 'female') AS female,
+      count(*) FILTER (WHERE name IS NOT NULL AND active) AS active,
+      count(*) FILTER (WHERE name IS NULL) AS pending_anketa,
+      count(*) FILTER (WHERE premium_until > NOW()) AS premium_now
+    FROM profiles
+  `);
+  const r = rows[0];
+  return {
+    total: Number(r.total), male: Number(r.male), female: Number(r.female),
+    active: Number(r.active), pendingAnketa: Number(r.pending_anketa), premiumNow: Number(r.premium_now),
+  };
+}
+
+// Broadcast targets: every id in the table, same universe
+// Object.keys(await getAllProfiles()) used to reach -- including a payment
+// record with no finished anketa, a real Telegram account that is still
+// reachable, just not "registered" yet. Only the ids, not the full rows: a
+// 1,000,000-row broadcast used to build its recipient list by loading every
+// profile; a plain array of ids is a few MB at that scale instead of the
+// ~1GB a full getAllProfiles() would be, for the one thing a broadcast needs.
+async function listAllProfileIds() {
+  const { rows } = await query(`SELECT user_id FROM profiles`);
+  return rows.map((row) => row.user_id);
+}
+
 // Mirrors jsonStore.saveProfile: the wizard hands over a complete draft and it
 // replaces the profile fields wholesale, while columns the wizard never sets
 // (premium_until, anon_gender_until) are preserved.
@@ -663,6 +724,7 @@ async function close() {
 module.exports = {
   init, close,
   getProfile, saveProfile, deleteProfile, getAllProfiles, setProfileActive, setTelegramUsername,
+  searchProfiles, getProfileStats, listAllProfileIds,
   pickCandidateRow,
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, listAdmins, removeAdmin, getLanguage, setLanguage,

@@ -42,6 +42,9 @@ module.exports = {
   setTelegramUsername: store.setTelegramUsername,
   deleteProfile: store.deleteProfile,
   getAllProfiles: store.getAllProfiles,
+  searchProfiles: store.searchProfiles,
+  getProfileStats: store.getProfileStats,
+  listAllProfileIds: store.listAllProfileIds,
   setProfileActive: store.setProfileActive,
   // Postgres-only fast path; discover.js falls back when absent.
   pickCandidateRow: store.pickCandidateRow || null,
