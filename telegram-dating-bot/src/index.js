@@ -13,6 +13,7 @@ const { registerAnonChatHandlers, leaveAnonQueueOrChat } = require("./anonChat")
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { safeAnswerCbQuery } = require("./telegramSafety");
+const { isRegistered } = require("./profileState");
 const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const {
@@ -191,7 +192,8 @@ bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
   await ctx.answerCbQuery();
 
   const existing = await getProfile(ctx.from.id);
-  if (existing) {
+  // isRegistered, not just "a record exists" -- see profileState.js.
+  if (isRegistered(existing)) {
     await ctx.reply(t(lang, "welcomeBack")(existing.name));
     await sendMainMenu(ctx, lang);
     return;
@@ -202,7 +204,7 @@ bot.action(/^lang:(uz|ru|en)$/, async (ctx) => {
 
 bot.command("anketa", async (ctx) => {
   const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-  await ctx.scene.enter("profile-wizard", { lang, isEditing: !!(await getProfile(ctx.from.id)) });
+  await ctx.scene.enter("profile-wizard", { lang, isEditing: isRegistered(await getProfile(ctx.from.id)) });
 });
 
 // registerAnonChatHandlers is first: its bot.on("text", ...) relay check

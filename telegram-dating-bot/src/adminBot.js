@@ -7,6 +7,7 @@ const {
 const { getSalesSummary } = require("./click");
 const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
+const { isRegistered } = require("./profileState");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -355,13 +356,6 @@ function requireAdmin(handler) {
     if (!(await isAdmin(ctx.from.id))) return;
     return handler(ctx);
   };
-}
-
-// A record can exist with only an entitlement on it (someone paid before
-// finishing -- or after deleting -- their anketa), so every displayed field
-// has to tolerate being absent instead of rendering "undefined".
-function isRegistered(profile) {
-  return !!profile?.name;
 }
 
 function dateOnly(iso) {

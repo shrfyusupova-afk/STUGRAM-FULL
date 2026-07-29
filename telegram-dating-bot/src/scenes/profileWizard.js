@@ -1,8 +1,9 @@
 const { Scenes, Markup } = require("telegraf");
-const { getProfile, saveProfile } = require("../db");
+const { getProfile, saveProfile, setTelegramUsername } = require("../db");
 const { sendMainMenu, mainMenuKeyboard } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
+const { isRegistered } = require("../profileState");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
@@ -183,6 +184,19 @@ const HANDLERS = {
 async function finish(ctx, lang, profile) {
   profile.genderLabel = profile.gender === "male" ? t(lang, "genderMaleValue") : t(lang, "genderFemaleValue");
   const saved = await saveProfile(ctx.from.id, profile);
+
+  // Captured here, at the one moment a record is guaranteed to exist. The
+  // per-message capture in index.js only UPDATES (it must never invent a
+  // record for someone with no anketa), and it remembers the handle it last
+  // saw -- so without this, someone who registers would never get their
+  // @username stored at all, and their profile link would fall back to the
+  // phone number for no reason.
+  try {
+    await setTelegramUsername(ctx.from.id, ctx.from.username || null);
+  } catch (err) {
+    console.error("username capture at registration failed (ignored):", err.message);
+  }
+
   await ctx.reply(t(lang, "profileSaved")(saved), mainMenuKeyboard(lang));
 }
 
@@ -208,7 +222,7 @@ const profileWizard = new Scenes.WizardScene(
       if (idx === 0) {
         if (ctx.wizard.state.isEditing) {
           const existing = await getProfile(ctx.from.id);
-          if (existing) {
+          if (isRegistered(existing)) {
             await sendMainMenu(ctx, lang);
           }
           return ctx.scene.leave();

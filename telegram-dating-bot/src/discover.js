@@ -23,6 +23,7 @@ const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
 const { promptForComplaint, SOURCE } = require("./complaints");
 const { profileLinkHref } = require("./profileLink");
+const { isRegistered } = require("./profileState");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -431,7 +432,7 @@ function registerDiscoverHandlers(bot) {
     const me = await getProfile(ctx.from.id);
     await clearDiscoverState(ctx.from.id);
     await leaveAnonQueueOrChat(ctx.telegram, ctx.from.id);
-    if (me) {
+    if (isRegistered(me)) {
       await sendMainMenu(ctx, lang);
     }
   });

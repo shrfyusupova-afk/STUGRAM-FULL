@@ -2,6 +2,7 @@ const { Markup } = require("telegraf");
 const { getProfile, setProfileActive, getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { sendCandidate } = require("./discover");
+const { isRegistered } = require("./profileState");
 
 // Returning to the main menu from this submenu is handled by discover.js's
 // existing global "Back" handler (same label, same action) -- registering a
@@ -26,7 +27,7 @@ function registerProfileSettingsHandlers(bot) {
   bot.hears(settingsLabels, async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = await getProfile(ctx.from.id);
-    if (!me) {
+    if (!isRegistered(me)) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
     }
@@ -41,7 +42,7 @@ function registerProfileSettingsHandlers(bot) {
   bot.hears(viewLabels, async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = await getProfile(ctx.from.id);
-    if (!me) {
+    if (!isRegistered(me)) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
     }

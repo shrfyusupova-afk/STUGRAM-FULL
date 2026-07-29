@@ -298,12 +298,25 @@ async function pickCandidateRow(userId, wantedGender, shownIds, premiumWeight) {
 // Upserts, because it's called on plain interactions -- someone can have a
 // @username long before (or without ever) finishing an anketa, and that
 // handle is what makes a working profile link possible.
+// Updates only -- never inserts. This runs on EVERY message from EVERY
+// person, so upserting here created a profiles row for anyone who so much as
+// tapped a button, with nothing in it but a @username. Those empty rows then
+// read as "this person has an anketa" everywhere else: right after an admin
+// deleted someone, their next tap recreated the row and the bot greeted them
+// with "Xush kelibsiz, undefined" instead of starting a new anketa.
+//
+// A username is worth recording about someone who has an anketa; it is not
+// worth inventing a record for someone who does not. saveProfile keeps any
+// username already captured, and the next message after registering fills it
+// in for everyone else.
+//
+// updated_at is deliberately NOT touched: this is bookkeeping, not an edit,
+// and bumping it on every message would make "last updated" meaningless.
 async function setTelegramUsername(userId, username) {
-  await query(
-    `INSERT INTO profiles (user_id, username, updated_at) VALUES ($1, $2, NOW())
-     ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username`,
-    [String(userId), username || null]
-  );
+  await query(`UPDATE profiles SET username = $2 WHERE user_id = $1`, [
+    String(userId),
+    username || null,
+  ]);
 }
 
 // Removing the profiles row alone left the person half-present: the likes

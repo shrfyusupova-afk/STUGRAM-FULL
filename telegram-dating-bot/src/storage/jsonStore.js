@@ -117,12 +117,22 @@ async function saveProfile(userId, profile) {
 // Upserts, because it's called on plain interactions -- someone can have a
 // @username long before (or without ever) finishing an anketa, and that
 // handle is what makes a working profile link possible.
+// Updates only -- never creates. This runs on EVERY message from EVERY
+// person, so writing a record here gave anyone who so much as tapped a button
+// a profile containing nothing but a @username. Those empty records then read
+// as "this person has an anketa" everywhere else: right after an admin
+// deleted someone, their next tap recreated it and the bot greeted them with
+// "Xush kelibsiz, undefined" instead of starting a new anketa.
+//
+// updatedAt is deliberately NOT touched: this is bookkeeping, not an edit,
+// and bumping it on every message would make "last updated" meaningless.
 async function setTelegramUsername(userId, username) {
   const all = readJson(DB_PATH);
   const key = String(userId);
-  const current = all[key] || {};
+  const current = all[key];
+  if (!current) return;
   if (current.username === (username || undefined)) return;
-  all[key] = { ...current, username: username || undefined, updatedAt: new Date().toISOString() };
+  all[key] = { ...current, username: username || undefined };
   writeJson(DB_PATH, all);
 }
 
