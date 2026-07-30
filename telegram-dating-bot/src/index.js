@@ -86,13 +86,38 @@ const webhookPath = "/telegram/webhook";
 // accidentally left wide open -- the app re-registers its own webhook with
 // whichever value it picks on every boot, so there's no need for this to
 // stay stable across restarts.
-let webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-if (!webhookSecret && webhookDomain) {
-  webhookSecret = crypto.randomBytes(32).toString("hex");
+//
+// Telegram accepts ONLY A-Z a-z 0-9 _ - in secret_token. Anything else and
+// setWebhook fails with "Bad Request: secret token contains unallowed
+// characters" -- forever, on every boot, with the bot silently receiving
+// nothing at all. This is not hypothetical: Render's `generateValue: true`
+// hands out base64, which contains + / and =, and that alone kept a live
+// deployment deaf until the API error was read directly. So never pass an
+// operator-supplied value through untouched: if it doesn't conform, hash it
+// into something that does. Hashing (rather than generating a fresh random)
+// keeps the value stable across restarts, so a webhook registered by an
+// older instance still validates against a newer one.
+const SECRET_TOKEN_OK = /^[A-Za-z0-9_-]{1,256}$/;
+function usableWebhookSecret(raw, envName) {
+  if (!raw) return crypto.randomBytes(32).toString("hex");
+  if (SECRET_TOKEN_OK.test(raw)) return raw;
   console.warn(
-    "TELEGRAM_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
-      "Set it explicitly in your environment to silence this warning."
+    `${envName} contains characters Telegram does not allow in secret_token ` +
+      "(only A-Z a-z 0-9 _ - are permitted) -- using a hash of it instead. " +
+      "The value still works; set a conforming one to silence this warning."
   );
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+let webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+if (webhookDomain) {
+  if (!webhookSecret) {
+    console.warn(
+      "TELEGRAM_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
+        "Set it explicitly in your environment to silence this warning."
+    );
+  }
+  webhookSecret = usableWebhookSecret(webhookSecret, "TELEGRAM_WEBHOOK_SECRET");
 }
 const port = process.env.PORT || 3000;
 
@@ -112,12 +137,14 @@ const bot = new Telegraf(token);
 const adminBot = adminToken ? createAdminBot(adminToken, bot.telegram) : null;
 const adminWebhookPath = "/telegram/admin-webhook";
 let adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET;
-if (adminBot && !adminWebhookSecret && webhookDomain) {
-  adminWebhookSecret = crypto.randomBytes(32).toString("hex");
-  console.warn(
-    "ADMIN_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
-      "Set it explicitly in your environment to silence this warning."
-  );
+if (adminBot && webhookDomain) {
+  if (!adminWebhookSecret) {
+    console.warn(
+      "ADMIN_WEBHOOK_SECRET was not set -- auto-generated a random one for this run. " +
+        "Set it explicitly in your environment to silence this warning."
+    );
+  }
+  adminWebhookSecret = usableWebhookSecret(adminWebhookSecret, "ADMIN_WEBHOOK_SECRET");
 }
 
 const stage = new Scenes.Stage([profileWizard]);
@@ -384,13 +411,20 @@ if (webhookDomain) {
   // as state to be kept true: check what Telegram actually has, fix it if it
   // is wrong, and keep checking. A boot-time failure heals itself a few
   // minutes later with nobody watching.
+  //
+  // Returns { ok, reason }. The reason matters: when this fails, the ONLY
+  // symptom a user reports is "the bot is silent", and Telegram's own error
+  // text ("secret token contains unallowed characters") names the cause
+  // exactly. Throwing it away and reporting a bare "not registered" turned a
+  // one-line fix into a long hunt once already, so it is carried through to
+  // /health where it can be read without shell access to the host.
   async function ensureWebhook(telegram, url, options, label) {
     let info;
     try {
       info = await telegram.getWebhookInfo();
     } catch (err) {
       console.error(`${label} getWebhookInfo failed:`, err.message);
-      return false;
+      return { ok: false, reason: `getWebhookInfo failed: ${err.message}` };
     }
 
     // Telegram reports why IT could not deliver -- far more useful than our
@@ -399,16 +433,16 @@ if (webhookDomain) {
       console.warn(`${label} webhook last error: ${info.last_error_message} (pending: ${info.pending_update_count || 0})`);
     }
 
-    if (info.url === url) return true;
+    if (info.url === url) return { ok: true, reason: null };
 
     console.warn(`${label} webhook is "${info.url || "(none)"}" -- setting it to ${url}`);
     try {
       await telegram.setWebhook(url, options);
       console.log(`${label} webhook rejimida: ${url}`);
-      return true;
+      return { ok: true, reason: null };
     } catch (err) {
       console.error(`${label} setWebhook failed:`, err.message);
-      return false;
+      return { ok: false, reason: `setWebhook failed: ${err.message}` };
     }
   }
 
@@ -422,15 +456,16 @@ if (webhookDomain) {
   // in would turn a green light amber for something users never notice.
   function keepWebhookRegistered(telegram, url, options, label, { reportsHealth = false } = {}) {
     const check = async () => {
-      let ok = false;
+      let result = { ok: false, reason: null };
       try {
-        ok = await ensureWebhook(telegram, url, options, label);
+        result = await ensureWebhook(telegram, url, options, label);
       } catch (err) {
         console.error(`${label} webhook check threw:`, err.message);
+        result = { ok: false, reason: `webhook check threw: ${err.message}` };
       }
       if (reportsHealth) {
-        webhookState.status = ok ? "registered" : "NOT REGISTERED (bot receives nothing)";
-        webhookState.detail = ok ? null : url;
+        webhookState.status = result.ok ? "registered" : "NOT REGISTERED (bot receives nothing)";
+        webhookState.detail = result.ok ? null : `${url} -- ${result.reason || "unknown reason"}`;
       }
     };
     check();
