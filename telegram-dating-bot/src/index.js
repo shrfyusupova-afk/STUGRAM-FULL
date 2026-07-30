@@ -244,6 +244,11 @@ bot.catch((err, ctx) => {
 
 if (webhookDomain) {
   const app = express();
+
+  // What the last webhook check found, so /health can report "the bot is
+  // running but Telegram is not sending it anything" -- the one outage that
+  // otherwise looks completely healthy from outside.
+  const webhookState = { status: "checking", detail: null };
   // Reports which storage backend is live so it can be confirmed from outside
   // without shell or log access -- the difference between "data survives a
   // deploy" and "data is wiped on every deploy" is otherwise invisible until
@@ -264,6 +269,12 @@ if (webhookDomain) {
         process.env.CLICK_MERCHANT_ID && process.env.CLICK_SERVICE_ID && process.env.CLICK_SECRET_KEY
           ? "configured"
           : "NOT CONFIGURED (no payments possible)",
+      // The failure this endpoint previously could NOT see: everything above
+      // can read "ok" while Telegram has no webhook for us, so the bot is
+      // running and silently receiving nothing. Updated by the periodic
+      // check below.
+      webhook: webhookState.status,
+      ...(webhookState.detail ? { webhookDetail: webhookState.detail } : {}),
     })
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
@@ -356,21 +367,74 @@ if (webhookDomain) {
     app.use(adminBot.webhookCallback(adminWebhookPath, adminWebhookSecret ? { secretToken: adminWebhookSecret } : undefined));
   }
 
-  // A transient hiccup right at container boot (DNS/networking not fully up
-  // yet) can make the very first setWebhook call fail, silently leaving the
-  // bot with NO webhook registered until someone notices and fixes it by
-  // hand. Retries with backoff so a boot-time blip self-heals instead of
-  // requiring manual intervention.
-  async function setWebhookWithRetry(telegram, url, options, label, attempt = 1, maxAttempts = 5) {
+  // Registering the webhook is the one startup step that can fail in a way
+  // that leaves the bot LOOKING healthy while receiving nothing: the HTTP
+  // server answers /health, the menu button gets set, and messages simply
+  // vanish into Telegram's queue.
+  //
+  // It is also the step most likely to fail, because setWebhook is not a
+  // simple write -- Telegram connects BACK to the URL to validate it. Right
+  // after a deploy the app is listening but the host's edge has not
+  // necessarily started routing the public domain to it yet, so Telegram's
+  // check fails. A fixed handful of retries over a minute is not enough for a
+  // cold start, and once they were exhausted the bot stayed dead until a
+  // person noticed. That has now happened twice.
+  //
+  // So instead of "try hard at boot and hope", the desired webhook is treated
+  // as state to be kept true: check what Telegram actually has, fix it if it
+  // is wrong, and keep checking. A boot-time failure heals itself a few
+  // minutes later with nobody watching.
+  async function ensureWebhook(telegram, url, options, label) {
+    let info;
+    try {
+      info = await telegram.getWebhookInfo();
+    } catch (err) {
+      console.error(`${label} getWebhookInfo failed:`, err.message);
+      return false;
+    }
+
+    // Telegram reports why IT could not deliver -- far more useful than our
+    // own logs when the bot goes quiet, so it is surfaced rather than hidden.
+    if (info.last_error_message) {
+      console.warn(`${label} webhook last error: ${info.last_error_message} (pending: ${info.pending_update_count || 0})`);
+    }
+
+    if (info.url === url) return true;
+
+    console.warn(`${label} webhook is "${info.url || "(none)"}" -- setting it to ${url}`);
     try {
       await telegram.setWebhook(url, options);
       console.log(`${label} webhook rejimida: ${url}`);
+      return true;
     } catch (err) {
-      console.error(`${label} setWebhook failed (attempt ${attempt}/${maxAttempts}):`, err.message);
-      if (attempt >= maxAttempts) return;
-      const delayMs = 2 ** attempt * 1000;
-      setTimeout(() => setWebhookWithRetry(telegram, url, options, label, attempt + 1, maxAttempts), delayMs);
+      console.error(`${label} setWebhook failed:`, err.message);
+      return false;
     }
+  }
+
+  // Frequent enough that a failed registration costs minutes rather than
+  // hours, cheap enough to ignore: one getWebhookInfo per bot, and a
+  // setWebhook only when something is actually wrong.
+  const WEBHOOK_CHECK_MS = 3 * 60 * 1000;
+
+  // reportsHealth: only the MAIN bot's webhook drives /health. The admin bot
+  // is optional and its outage does not stop users being served, so mixing it
+  // in would turn a green light amber for something users never notice.
+  function keepWebhookRegistered(telegram, url, options, label, { reportsHealth = false } = {}) {
+    const check = async () => {
+      let ok = false;
+      try {
+        ok = await ensureWebhook(telegram, url, options, label);
+      } catch (err) {
+        console.error(`${label} webhook check threw:`, err.message);
+      }
+      if (reportsHealth) {
+        webhookState.status = ok ? "registered" : "NOT REGISTERED (bot receives nothing)";
+        webhookState.detail = ok ? null : url;
+      }
+    };
+    check();
+    setInterval(check, WEBHOOK_CHECK_MS).unref();
   }
 
   // Nothing starts listening until the schema exists and the one-time import
@@ -395,15 +459,16 @@ if (webhookDomain) {
         );
       }, DELIVERY_SWEEP_MS).unref();
 
-      setWebhookWithRetry(
+      keepWebhookRegistered(
         bot.telegram,
         `${webhookDomain}${webhookPath}`,
         webhookSecret ? { secret_token: webhookSecret } : undefined,
-        "ForOneForever_bot"
+        "ForOneForever_bot",
+        { reportsHealth: true }
       );
 
       if (adminBot) {
-        setWebhookWithRetry(
+        keepWebhookRegistered(
           adminBot.telegram,
           `${webhookDomain}${adminWebhookPath}`,
           adminWebhookSecret ? { secret_token: adminWebhookSecret } : undefined,
