@@ -521,6 +521,10 @@ module.exports = {
   buildProfileCaption,
   canViewProfile,
   recordLikeWithMatchNotification,
+  // Shared with the mini app so the "how many people liked you" number it
+  // shows is the same one the bot's own notification counts, not a second
+  // implementation that could drift.
+  pendingLikerCount,
   // Not part of the bot's own surface -- exposed so the candidate picker can
   // be exercised directly against both storage backends.
   __test: { pickCandidate, MAX_SHOWN_MEMORY },

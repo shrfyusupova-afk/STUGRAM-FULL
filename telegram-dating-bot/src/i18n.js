@@ -61,6 +61,7 @@ const STRINGS = {
       premium: "💎 Premium",
       anonChat: "🕵️ Anonim chat",
       complaint: "🚨 Shikoyat qilmoqchiman",
+      cabinet: "👤 Mening kabinetim",
     },
     anonChatIntro:
       "🕵️ Anonim chat\n\n" +
@@ -259,6 +260,7 @@ const STRINGS = {
       premium: "💎 Премиум",
       anonChat: "🕵️ Анонимный чат",
       complaint: "🚨 Хочу пожаловаться",
+      cabinet: "👤 Мой кабинет",
     },
     anonChatIntro:
       "🕵️ Анонимный чат\n\n" +
@@ -457,6 +459,7 @@ const STRINGS = {
       premium: "💎 Premium",
       anonChat: "🕵️ Anonymous chat",
       complaint: "🚨 I want to report",
+      cabinet: "👤 My cabinet",
     },
     anonChatIntro:
       "🕵️ Anonymous chat\n\n" +

@@ -12,6 +12,7 @@ const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
+const { registerMiniApp } = require("./miniApp");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
@@ -267,6 +268,11 @@ if (webhookDomain) {
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
 
+  // The Mini App page and its API. Mounted here, on the same Express app that
+  // already serves /policy, so it inherits the public HTTPS domain Telegram
+  // requires for a web_app button -- no second service to deploy.
+  registerMiniApp(app, { botToken: token, telegram: bot.telegram });
+
   // Click's Prepare/Complete callbacks are form-encoded POST requests, but
   // this parser MUST be scoped to only those two routes (not app.use()'d
   // globally) -- express body-parsers set req.body = {} for every request
@@ -404,6 +410,16 @@ if (webhookDomain) {
           "ForOneAdmin_bot"
         );
       }
+
+      // Replaces the default "Menu"/"/" button next to the input box with one
+      // that opens the Mini App. Set once at startup rather than per chat, so
+      // it is there for everyone including people who never open the menu.
+      bot.telegram
+        .setChatMenuButton({
+          menuButton: { type: "web_app", text: "Kabinet", web_app: { url: `${webhookDomain}/app` } },
+        })
+        .then(() => console.log(`Mini App menu button -> ${webhookDomain}/app`))
+        .catch((err) => console.error("setChatMenuButton failed (ignored):", err.message));
     })
     .catch((err) => {
       console.error("Storage initialisation failed -- refusing to start:", err);
