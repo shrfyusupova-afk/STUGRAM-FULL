@@ -97,6 +97,11 @@ const webhookPath = "/telegram/webhook";
 // into something that does. Hashing (rather than generating a fresh random)
 // keeps the value stable across restarts, so a webhook registered by an
 // older instance still validates against a newer one.
+// Reported on /health so a restart is visible as a moving timestamp -- a
+// process that keeps crashing and coming back looks identical to a healthy
+// one otherwise.
+const STARTED_AT = new Date().toISOString();
+
 const SECRET_TOKEN_OK = /^[A-Za-z0-9_-]{1,256}$/;
 function usableWebhookSecret(raw, envName) {
   if (!raw) return crypto.randomBytes(32).toString("hex");
@@ -302,6 +307,13 @@ if (webhookDomain) {
       // check below.
       webhook: webhookState.status,
       ...(webhookState.detail ? { webhookDetail: webhookState.detail } : {}),
+      // Which commit is actually serving. Without this there is no way to
+      // tell a finished deploy from a queued one except by finding a
+      // behaviour that changed -- and when a deploy exists precisely to fix
+      // "the bot answers nothing", there is no such behaviour to look at.
+      // Render injects RENDER_GIT_COMMIT; anywhere else this is just absent.
+      commit: (process.env.RENDER_GIT_COMMIT || "unknown").slice(0, 7),
+      startedAt: STARTED_AT,
     })
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
