@@ -1,26 +1,24 @@
 const { Markup } = require("telegraf");
 const { t } = require("./i18n");
-const { getPublicUrl } = require("./botInfo");
 
 // A persistent bottom (reply) keyboard, not an inline keyboard attached to
 // one chat message -- stays docked under the input box across the whole
 // conversation instead of scrolling away with the chat.
 //
-// The cabinet is a web_app button, which reply keyboards support: tapping it
-// opens the Mini App in place rather than sending any text, so it needs no
-// bot.hears() handler at all. Telegram only accepts an HTTPS URL for one, so
-// it is omitted entirely when running locally with no public domain -- the
-// rest of the menu is unaffected.
+// The Mini App is deliberately NOT a button here. It is reachable from the
+// Menu button beside the input box (set once in index.js via
+// setChatMenuButton), which is where Telegram itself puts a Mini App, so
+// duplicating it in the keyboard only made this menu longer.
 function mainMenuKeyboard(lang) {
   const m = t(lang, "menu");
-  const publicUrl = getPublicUrl();
-  const rows = [
+  return Markup.keyboard([
     [m.discover, m.profile],
     [m.likes, m.vip],
     [m.premium, m.anonChat],
-  ];
-  rows.push(publicUrl ? [Markup.button.webApp(m.cabinet, `${publicUrl}/app`), m.complaint] : [m.complaint]);
-  return Markup.keyboard(rows).resize().persistent();
+    [m.complaint],
+  ])
+    .resize()
+    .persistent();
 }
 
 // Neutral "you're at the main menu" -- used whenever we're just returning

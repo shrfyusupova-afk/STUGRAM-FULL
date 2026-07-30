@@ -411,10 +411,10 @@ function registerDiscoverHandlers(bot) {
       await ctx.reply(t(lang, "noProfileYet"));
       return;
     }
-    // Shown when a browsing session starts, not on every swipe: it is a rule
-    // people need to know once, and repeating it under every card would be
-    // noise they stop reading.
-    await ctx.reply(t(lang, "mediaProtectedNotice"), { parse_mode: "HTML" });
+    // No "your photos are protected" preamble here: protect_content already
+    // enforces it silently on every card (see PROTECTED), and an explanatory
+    // wall of text between tapping "browse" and seeing the first person just
+    // delays the thing they asked for.
     await showNextCandidate(ctx, lang, me.gender);
   });
 
