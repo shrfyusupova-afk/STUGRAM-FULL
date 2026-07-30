@@ -1,0 +1,71 @@
+# Render Blueprint -- creates the bot's web service AND its database together,
+# with every environment variable already declared, so setting the project up
+# on a fresh Render account is one click instead of a form filled in by hand
+# (which is how a missing CLICK_* key silently disabled payments before).
+#
+# Use it from Render: New + -> Blueprint -> pick this repository.
+#
+# Secrets are deliberately NOT in this file. `sync: false` means Render asks
+# for the value in the UI on first deploy and then keeps it -- so the tokens
+# and the Click keys never enter git.
+
+services:
+  - type: web
+    name: foreveryone-dating-bot
+    runtime: node
+    plan: free
+    # package.json lives in a subdirectory, and the repository root also has a
+    # Dockerfile for a different project -- without both of these Render would
+    # build the wrong thing.
+    rootDir: telegram-dating-bot
+    buildCommand: npm install
+    startCommand: npm start
+    # /health reports which storage backend is live and whether Click is
+    # configured, so a bad deploy is visible immediately rather than after a
+    # user complains.
+    healthCheckPath: /health
+    envVars:
+      # Wired automatically from the database below -- this is the single
+      # setting that decides whether profiles survive a restart at all.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foreveryone-db
+          property: connectionString
+
+      # Asked for once in the Render UI, then remembered.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_BOT_TOKEN
+        sync: false
+      # REQUIRED. Without it the bot falls back to a PIN that is readable in
+      # this repository's source, and says so on /health.
+      - key: ADMIN_PIN_CODE
+        sync: false
+
+      # Click merchant credentials. Leave blank to launch without payments --
+      # every paid feature then shows "not configured yet" instead of breaking,
+      # and /health reports it.
+      - key: CLICK_MERCHANT_ID
+        sync: false
+      - key: CLICK_SERVICE_ID
+        sync: false
+      - key: CLICK_SECRET_KEY
+        sync: false
+
+      # Webhook secrets: Render generates strong random values, so the webhook
+      # endpoints are never left accepting forged Telegram updates. The app can
+      # generate its own if these are absent, but then they change on every
+      # restart -- better to pin them here.
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: ADMIN_WEBHOOK_SECRET
+        generateValue: true
+
+databases:
+  # NOTE: Render's free Postgres is time-limited (currently 30 days), after
+  # which it must be upgraded or it is removed. Plan for that BEFORE it
+  # expires -- this database holds every profile, like and payment record.
+  - name: foreveryone-db
+    databaseName: foreveryone
+    user: foreveryone
+    plan: free
