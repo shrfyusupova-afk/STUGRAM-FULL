@@ -56,6 +56,14 @@ services:
       # endpoints are never left accepting forged Telegram updates. The app can
       # generate its own if these are absent, but then they change on every
       # restart -- better to pin them here.
+      #
+      # Render's generateValue emits base64, which contains + / and = --
+      # characters Telegram rejects in secret_token (it allows only
+      # A-Z a-z 0-9 _ - ). src/index.js hashes any non-conforming value into
+      # one that works, so this is safe; without that hashing step setWebhook
+      # fails with "secret token contains unallowed characters" on every boot
+      # and the bot receives nothing at all while looking perfectly healthy.
+      # Do not remove that sanitising step.
       - key: TELEGRAM_WEBHOOK_SECRET
         generateValue: true
       - key: ADMIN_WEBHOOK_SECRET
