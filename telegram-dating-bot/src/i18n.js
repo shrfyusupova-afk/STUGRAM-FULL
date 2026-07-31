@@ -175,9 +175,13 @@ const STRINGS = {
     referralProgress: (have, need) =>
       `🎉 Yana bitta do'stingiz qo'shildi! (${have}/${need})\n` +
       `Bepul ochishgacha yana <b>${need - have} ta</b> qoldi.`,
-    referralCreditEarned: (credits) =>
-      "🎁 <b>Tabriklaymiz!</b>\n\n" +
-      "Do'stlaringizni taklif qilganingiz uchun <b>1 ta bepul anketa ochish</b> imkoniyatini oldingiz.\n" +
+    referralProgressWithCredits: (have, need, credits) =>
+      `🎉 Yana bitta do'stingiz qo'shildi! (${have}/${need})\n` +
+      `Keyingi bepul ochishgacha yana <b>${need - have} ta</b> qoldi.\n\n` +
+      `💡 Eslatma: sizda allaqachon <b>${credits} ta</b> bepul profil ochish imkoniyati bor.`,
+    referralCreditEarned: (need, credits) =>
+      `🎉 Yana bitta do'stingiz qo'shildi! (${need}/${need})\n\n` +
+      "🎁 <b>Tabriklaymiz!</b> Do'stlaringizni taklif qilganingiz uchun <b>1 ta bepul anketa ochish</b> imkoniyatini oldingiz.\n" +
       `Hozir sizda jami: <b>${credits} ta</b>.`,
     unlockPaywallWithCredits: ({ price, credits }) =>
       "🔐 <b>Bu anketani ochish</b>\n\n" +
@@ -449,9 +453,13 @@ const STRINGS = {
     referralProgress: (have, need) =>
       `🎉 Ещё один друг присоединился! (${have}/${need})\n` +
       `До бесплатного открытия осталось: <b>${need - have}</b>.`,
-    referralCreditEarned: (credits) =>
-      "🎁 <b>Поздравляем!</b>\n\n" +
-      "За приглашённых друзей вы получили <b>1 бесплатное открытие анкеты</b>.\n" +
+    referralProgressWithCredits: (have, need, credits) =>
+      `🎉 Ещё один друг присоединился! (${have}/${need})\n` +
+      `До следующего бесплатного открытия осталось: <b>${need - have}</b>.\n\n` +
+      `💡 Напоминаем: у вас уже есть <b>${credits}</b> бесплатных открытия анкеты.`,
+    referralCreditEarned: (need, credits) =>
+      `🎉 Ещё один друг присоединился! (${need}/${need})\n\n` +
+      "🎁 <b>Поздравляем!</b> За приглашённых друзей вы получили <b>1 бесплатное открытие анкеты</b>.\n" +
       `Сейчас у вас всего: <b>${credits}</b>.`,
     unlockPaywallWithCredits: ({ price, credits }) =>
       "🔐 <b>Открыть эту анкету</b>\n\n" +
@@ -722,9 +730,13 @@ const STRINGS = {
     referralProgress: (have, need) =>
       `🎉 One more friend joined! (${have}/${need})\n` +
       `<b>${need - have}</b> to go until a free unlock.`,
-    referralCreditEarned: (credits) =>
-      "🎁 <b>Nice one!</b>\n\n" +
-      "Your invites earned you <b>1 free profile unlock</b>.\n" +
+    referralProgressWithCredits: (have, need, credits) =>
+      `🎉 One more friend joined! (${have}/${need})\n` +
+      `<b>${need - have}</b> to go until the next free unlock.\n\n` +
+      `💡 Reminder: you already have <b>${credits}</b> free profile unlocks available.`,
+    referralCreditEarned: (need, credits) =>
+      `🎉 One more friend joined! (${need}/${need})\n\n` +
+      "🎁 <b>Nice one!</b> Your invites earned you <b>1 free profile unlock</b>.\n" +
       `You now have <b>${credits}</b> in total.`,
     unlockPaywallWithCredits: ({ price, credits }) =>
       "🔐 <b>Unlock this profile</b>\n\n" +

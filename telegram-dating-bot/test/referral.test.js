@@ -106,8 +106,8 @@ test(`${REFERRALS_PER_CREDIT} completed invites earn exactly one free unlock`, a
     const { sent } = await inviteAndComplete(host, `Friend${i}`);
     assert.strictEqual(await db.getUnlockCredits(host.id), 0, `no credit yet after ${i}`);
     assert.ok(
-      sent.some((c) => toUser(c, host) && /qo'shildi/.test(c.payload.text || "")),
-      "the referrer should hear about each join"
+      sent.some((c) => toUser(c, host) && new RegExp(`\\(${i}/${REFERRALS_PER_CREDIT}\\)`).test(c.payload.text || "")),
+      `the referrer should see ${i}/${REFERRALS_PER_CREDIT} progress, not just "someone joined"`
     );
   }
 
@@ -117,10 +117,30 @@ test(`${REFERRALS_PER_CREDIT} completed invites earn exactly one free unlock`, a
     sent.some((c) => toUser(c, host) && /bepul anketa ochish/.test(c.payload.text || "")),
     "the referrer should be told they earned it"
   );
+  assert.ok(
+    sent.some((c) => toUser(c, host) && new RegExp(`\\(${REFERRALS_PER_CREDIT}/${REFERRALS_PER_CREDIT}\\)`).test(c.payload.text || "")),
+    "the payout message should show the completed 3/3, not hide the count"
+  );
 
   // And it keeps working: three more, one more credit. Not four.
   for (let i = 4; i <= 6; i++) await inviteAndComplete(host, `Friend${i}`);
   assert.strictEqual(await db.getUnlockCredits(host.id), 2);
+});
+
+// A credit earned at 3/3 sits unspent until the referrer chooses to use it.
+// The next progress update after that must not just restart the counter at
+// "1/3" as if nothing happened -- it has to remind them the earlier credit
+// is still there, or it is easy to forget a free unlock exists at all.
+test("a progress update after earning a credit reminds you it is still unspent", async () => {
+  const host = user("Reminder");
+  await register(host, { gender: "male", name: "Reminder" });
+  for (let i = 1; i <= REFERRALS_PER_CREDIT; i++) await inviteAndComplete(host, `Rw${i}`);
+  assert.strictEqual(await db.getUnlockCredits(host.id), 1, "the third invite already paid out");
+
+  const { sent } = await inviteAndComplete(host, "Rw4");
+  const text = sent.find((c) => toUser(c, host))?.payload.text || "";
+  assert.match(text, /\(1\/3\)/, "the next cycle's progress restarts at 1, not carrying the old total");
+  assert.match(text, /allaqachon.*1 ta.*bepul profil ochish imkoniyati bor/, "and it must not let the unspent credit go unmentioned");
 });
 
 test("the reward waits for a COMPLETED anketa, not the click", async () => {

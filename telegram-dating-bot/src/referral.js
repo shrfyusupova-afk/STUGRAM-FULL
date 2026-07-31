@@ -134,9 +134,18 @@ async function notifyReferrer(telegram, outcome, langOf) {
   if (!outcome || outcome.capped) return;
   try {
     const lang = (await langOf(outcome.referrerId)) || DEFAULT_LANG;
+    // Not a multiple of REFERRALS_PER_CREDIT here -- when it is, creditGranted
+    // is already true and takes the branch above instead.
+    const have = outcome.total % REFERRALS_PER_CREDIT;
     const text = outcome.creditGranted
-      ? t(lang, "referralCreditEarned")(outcome.credits)
-      : t(lang, "referralProgress")(outcome.total % REFERRALS_PER_CREDIT, REFERRALS_PER_CREDIT);
+      ? t(lang, "referralCreditEarned")(REFERRALS_PER_CREDIT, outcome.credits)
+      // A credit already sitting unspent from an earlier cycle is worth
+      // repeating on every progress update, not just the moment it was
+      // earned -- otherwise it is easy to forget you have a free unlock
+      // waiting and never come back to spend it.
+      : outcome.credits > 0
+        ? t(lang, "referralProgressWithCredits")(have, REFERRALS_PER_CREDIT, outcome.credits)
+        : t(lang, "referralProgress")(have, REFERRALS_PER_CREDIT);
     await telegram.sendMessage(outcome.referrerId, text, { parse_mode: "HTML" });
   } catch (err) {
     // Blocked the bot, deleted their account, network blip -- none of it is
