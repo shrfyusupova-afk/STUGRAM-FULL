@@ -57,6 +57,15 @@ module.exports = {
   hasVipChat: store.hasVipChat,
   hasUnlocked: store.hasUnlocked,
   grantUnlock: store.grantUnlock,
+  // Referrals + the free profile views they pay for. Both backends implement
+  // all of these, so unlike txStore below there is nothing to fall back to.
+  createReferral: store.createReferral,
+  getReferral: store.getReferral,
+  markReferralRewarded: store.markReferralRewarded,
+  countReferrals: store.countReferrals,
+  getUnlockCredits: store.getUnlockCredits,
+  addUnlockCredits: store.addUnlockCredits,
+  consumeUnlockCredit: store.consumeUnlockCredit,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,

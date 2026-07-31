@@ -109,6 +109,7 @@ test("a new user can register and lands on the main menu", async () => {
     "👑 VIP suhbat",
     "💎 Premium",
     "🕵️ Anonim chat",
+    "🎁 Do'st taklif qilish",
     "🚨 Shikoyat qilmoqchiman",
   ]);
   // The Mini App is on Telegram's own Menu button, not duplicated here.
@@ -124,6 +125,7 @@ test("every main menu button answers", async () => {
     "👑 VIP suhbat",
     "💎 Premium",
     "🕵️ Anonim chat",
+    "🎁 Do'st taklif qilish",
     "🚨 Shikoyat qilmoqchiman",
   ]) {
     const sent = await h.send(M(), h.textUpdate(label, AZIZ));

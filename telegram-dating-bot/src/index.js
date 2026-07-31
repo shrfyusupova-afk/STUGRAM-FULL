@@ -13,6 +13,11 @@ const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard } = 
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { registerMiniApp } = require("./miniApp");
+const {
+  referrerFromPayload,
+  registerReferralClick,
+  registerReferralHandlers,
+} = require("./referral");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
@@ -221,6 +226,27 @@ bot.start(async (ctx) => {
     await handleUnlockDeepLink(ctx, lang, candidateId);
     return;
   }
+
+  // An invite link. The payload is read HERE and nowhere else -- it never
+  // becomes message text, so the wizard's rule that a command is never
+  // profile data (see commandName in profileWizard.js) stays intact.
+  //
+  // Only the pending row is written now. Nothing is paid until this person
+  // finishes their anketa, because paying on the click is what would turn
+  // throwaway accounts into free credits.
+  const referrerId = referrerFromPayload(payload);
+  if (referrerId) {
+    try {
+      const outcome = await registerReferralClick(referrerId, ctx.from.id);
+      if (outcome !== "recorded") {
+        console.log(`Referral from ${referrerId} for ${ctx.from.id} not recorded: ${outcome}`);
+      }
+    } catch (err) {
+      // A broken invite must never stop somebody from signing up.
+      console.error("referral click failed (ignored):", err.message);
+    }
+  }
+
   await startNewProfile(ctx);
 });
 
@@ -264,6 +290,7 @@ registerLikesHandlers(bot);
 registerProfileSettingsHandlers(bot);
 registerPremiumHandlers(bot);
 registerVipChatHandlers(bot);
+registerReferralHandlers(bot);
 
 bot.telegram
   .getMe()

@@ -8,6 +8,9 @@ const {
   getLikers,
   hasLiked,
   hasUnlocked,
+  grantUnlock,
+  getUnlockCredits,
+  consumeUnlockCredit,
   hasPremium,
   recordDislike,
   getDislikes,
@@ -23,6 +26,7 @@ const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
 const { promptForComplaint, SOURCE } = require("./complaints");
 const { profileLinkHref } = require("./profileLink");
+const { REFERRALS_PER_CREDIT } = require("./referral");
 const { isRegistered } = require("./profileState");
 
 function isPremiumProfile(profile) {
@@ -475,6 +479,53 @@ function registerDiscoverHandlers(bot) {
     await ctx.reply(t(lang, "unlockNotConfigured"));
   });
 
+  // Spending a referral credit on this profile.
+  //
+  // The order of operations here is the whole point. A person can tap this
+  // button twice before the first reply lands, and an old message keeps its
+  // buttons forever, so this must be safe to run repeatedly:
+  //
+  //   1. free already? -> reveal, spend NOTHING. Covers the case where they
+  //      matched, bought Premium, or already unlocked this person since the
+  //      paywall was drawn -- charging a credit there would be theft.
+  //   2. take the credit FIRST, and only act if the take succeeded.
+  //      consumeUnlockCredit does the check and the decrement in one
+  //      statement, so of two simultaneous taps exactly one gets a credit.
+  //   3. record the unlock, then reveal. Recording before revealing means a
+  //      failure to send the card still leaves them owning the profile --
+  //      they paid for it, and they can open it again from the same link.
+  bot.action(/^unlock:credit:(.+)$/, async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    const candidateId = String(ctx.match[1]);
+    const buyerId = ctx.from.id;
+    await safeAnswerCbQuery(ctx);
+
+    if (await canViewProfile(buyerId, candidateId)) {
+      await revealProfile(ctx, lang, candidateId);
+      return;
+    }
+
+    const candidate = await getProfile(candidateId);
+    if (!isRegistered(candidate) || candidate.active === false) {
+      await ctx.reply(t(lang, "profileUnavailable"));
+      return;
+    }
+
+    if (!(await consumeUnlockCredit(buyerId))) {
+      // Nothing left -- either they spent it in another chat window or the
+      // button belongs to an old message. Re-draw the paywall rather than
+      // leaving them looking at a button that did nothing.
+      await ctx.reply(t(lang, "unlockCreditGone"));
+      await handleUnlockDeepLink(ctx, lang, candidateId);
+      return;
+    }
+
+    await grantUnlock(buyerId, candidateId);
+    const left = await getUnlockCredits(buyerId);
+    await ctx.reply(t(lang, "unlockCreditUsed")(left), { parse_mode: "HTML" });
+    await revealProfile(ctx, lang, candidateId);
+  });
+
   // Kept for messages sent before profile reveals became direct (no button) --
   // re-checks access before revealing anything, since a forwarded/stale
   // button could otherwise leak it.
@@ -494,9 +545,19 @@ function registerDiscoverHandlers(bot) {
 // which deep-links back into the bot as /start unlock_<candidateId>. If the
 // viewer already has access (paid before, or a mutual like happened since),
 // this skips the paywall entirely and shows the profile straight away.
+// The same expression unlockLinkText is already given, so the price on the
+// card and the price on the paywall can never drift apart. The currency word
+// lives in the translation, not here -- it differs per language.
+const priceLabel = () => UNLOCK_PRICE_SOM.toLocaleString("uz-UZ");
+
+// The paywall. Three different screens depending on what this person can
+// already do, because "pay up" is the wrong thing to say to someone who has
+// earned a free unlock and to someone who has no idea a free route exists.
 async function handleUnlockDeepLink(ctx, lang, candidateId) {
   const buyerId = ctx.from.id;
 
+  // Already theirs: paid before, has Premium, or the two of them matched
+  // since. Nothing to sell, and nothing to spend.
   if (candidateId && (await canViewProfile(buyerId, candidateId))) {
     await revealProfile(ctx, lang, candidateId);
     return;
@@ -504,13 +565,36 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
 
   const orderId = candidateId ? await createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
   const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
-
-  const unlockButton = clickUrl
+  const payButton = clickUrl
     ? Markup.button.url(t(lang, "unlockPayButton"), clickUrl)
     : Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop");
-  const premiumButton = Markup.button.callback(t(lang, "unlockPremiumButton"), "premium:offer");
 
-  await ctx.reply(t(lang, "unlockPaywallIntro"), Markup.inlineKeyboard([[premiumButton], [unlockButton]]));
+  const credits = await getUnlockCredits(buyerId);
+
+  if (credits > 0 && candidateId) {
+    await ctx.reply(t(lang, "unlockPaywallWithCredits")({ price: priceLabel(), credits }), {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [payButton],
+        [Markup.button.callback(t(lang, "unlockUseCreditButton")(credits), `unlock:credit:${candidateId}`)],
+      ]),
+    });
+    return;
+  }
+
+  // No credits: say what the two free routes are instead of only naming a
+  // price. Waiting for a like back costs nothing and already works; inviting
+  // friends is the route this screen can actually start.
+  await ctx.reply(
+    t(lang, "unlockPaywallNoCredits")({ price: priceLabel(), perCredit: REFERRALS_PER_CREDIT }),
+    {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [payButton],
+        [Markup.button.callback(t(lang, "unlockInviteFriendsButton"), "referral:show")],
+      ]),
+    }
+  );
 }
 
 module.exports = {

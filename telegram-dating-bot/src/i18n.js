@@ -63,6 +63,7 @@ const STRINGS = {
       premium: "💎 Premium",
       anonChat: "🕵️ Anonim chat",
       complaint: "🚨 Shikoyat qilmoqchiman",
+      referral: "🎁 Do'st taklif qilish",
     },
     anonChatIntro:
       "🕵️ Anonim chat\n\n" +
@@ -127,11 +128,57 @@ const STRINGS = {
     unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
+    referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
+      "🎁 <b>Do'stlaringizni taklif qiling</b>\n\n" +
+      "Har bir do'stingiz shu yerda o'z sevgisini topishi mumkin — " +
+      "siz esa buning uchun sovg'a olasiz.\n\n" +
+      "🔗 <b>Sizning havolangiz:</b>\n" +
+      `<code>${link}</code>\n\n` +
+      `👥 Taklif qilganlaringiz: <b>${invited} ta</b>\n` +
+      `🔓 Bepul ochish imkoniyati: <b>${credits} ta</b>\n\n` +
+      `📌 Har <b>${perCredit} ta</b> do'stingiz anketasini to'ldirib bo'lgach, ` +
+      "siz <b>1 ta</b> anketani bepul ochib ko'rasiz.\n" +
+      `Keyingi bepul ochishgacha: <b>${remaining} ta</b> do'st qoldi.\n\n` +
+      "⚠️ Do'stingiz anketani <b>oxirigacha</b> — telefon raqamigacha — to'ldirishi shart. " +
+      "Shundagina hisobga olinadi.",
+    referralShareButton: "📤 Havolani ulashish",
+    referralShareText: "Men tanishuv botini topdim — sen ham qara! 💛",
+    referralLinkUnavailable:
+      "🎁 Taklif havolasi hozircha tayyor emas. Bir necha daqiqadan keyin qayta urinib ko'ring.",
+    referralProgress: (have, need) =>
+      `🎉 Yana bitta do'stingiz qo'shildi! (${have}/${need})\n` +
+      `Bepul ochishgacha yana <b>${need - have} ta</b> qoldi.`,
+    referralCreditEarned: (credits) =>
+      "🎁 <b>Tabriklaymiz!</b>\n\n" +
+      "Do'stlaringizni taklif qilganingiz uchun <b>1 ta bepul anketa ochish</b> imkoniyatini oldingiz.\n" +
+      `Hozir sizda jami: <b>${credits} ta</b>.`,
+    unlockPaywallWithCredits: ({ price, credits }) =>
+      "🔐 <b>Bu anketani ochish</b>\n\n" +
+      `💳 Bu funksiya pullik — <b>${price} so'm</b>.\n\n` +
+      "🎁 Lekin siz do'stlaringizni taklif qilganingiz uchun sizda " +
+      `<b>${credits} ta</b> bepul ochish imkoniyati bor.\n\n` +
+      "Quyidagidan birini tanlang 👇",
+    unlockPaywallNoCredits: ({ price, perCredit }) =>
+      "🔐 <b>Bu anketani ochish</b>\n\n" +
+      `💳 Bu funksiya pullik — <b>${price} so'm</b>.\n\n` +
+      "🆓 <b>Bepul ko'rmoqchimisiz? Ikki yo'l bor:</b>\n" +
+      "❤️ Unga layk bosing va u ham sizga layk bossa — anketa o'zi ochiladi, " +
+      "hech qanday to'lovsiz.\n" +
+      `🎁 Yoki <b>${perCredit} ta</b> do'stingizni taklif qiling — 1 ta bepul ochish sizniki.`,
+    unlockUseCreditButton: (credits) => `🎁 Bepul ochish (${credits} ta bor)`,
+    unlockInviteFriendsButton: "🎁 Do'stlarni taklif qilish",
+    unlockCreditUsed: (left) =>
+      "🎁 Bepul imkoniyatdan foydalandingiz!\n" +
+      `Qolgan bepul ochishlar: <b>${left} ta</b>.`,
+    unlockCreditGone: "🎁 Bepul ochish imkoniyati qolmadi.",
     profileBelowIntro: "👇 Bu insonning profili pastda:",
     unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!",
     matchedToast: "🎉 Mos tushdingiz! Endi profilni bepul ko'rishingiz mumkin.",
     matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz!`,
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
+    profileUnavailable:
+      "😔 Bu anketa endi mavjud emas — egasi uni o'chirgan yoki yopgan.\n" +
+      "Bepul ochish imkoniyatingiz saqlanib qoldi, uni boshqasiga ishlatishingiz mumkin.",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
     newLikeNotification: (count) =>
@@ -256,6 +303,7 @@ const STRINGS = {
       premium: "💎 Премиум",
       anonChat: "🕵️ Анонимный чат",
       complaint: "🚨 Хочу пожаловаться",
+      referral: "🎁 Пригласить друга",
     },
     anonChatIntro:
       "🕵️ Анонимный чат\n\n" +
@@ -320,11 +368,56 @@ const STRINGS = {
     unlockPayButton: "🔓 Получить доступ к анкете",
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
+    referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
+      "🎁 <b>Пригласите друзей</b>\n\n" +
+      "Каждый ваш друг может найти здесь свою любовь — " +
+      "а вы получите за это подарок.\n\n" +
+      "🔗 <b>Ваша ссылка:</b>\n" +
+      `<code>${link}</code>\n\n` +
+      `👥 Вы пригласили: <b>${invited}</b>\n` +
+      `🔓 Бесплатных открытий: <b>${credits}</b>\n\n` +
+      `📌 За каждые <b>${perCredit}</b> друзей, заполнивших анкету, ` +
+      "вы открываете <b>1</b> анкету бесплатно.\n" +
+      `До следующего бесплатного открытия: <b>${remaining}</b>.\n\n` +
+      "⚠️ Друг должен заполнить анкету <b>до конца</b> — включая номер телефона. " +
+      "Только тогда это засчитывается.",
+    referralShareButton: "📤 Поделиться ссылкой",
+    referralShareText: "Нашёл бот знакомств — посмотри и ты! 💛",
+    referralLinkUnavailable:
+      "🎁 Ссылка пока не готова. Попробуйте через несколько минут.",
+    referralProgress: (have, need) =>
+      `🎉 Ещё один друг присоединился! (${have}/${need})\n` +
+      `До бесплатного открытия осталось: <b>${need - have}</b>.`,
+    referralCreditEarned: (credits) =>
+      "🎁 <b>Поздравляем!</b>\n\n" +
+      "За приглашённых друзей вы получили <b>1 бесплатное открытие анкеты</b>.\n" +
+      `Сейчас у вас всего: <b>${credits}</b>.`,
+    unlockPaywallWithCredits: ({ price, credits }) =>
+      "🔐 <b>Открыть эту анкету</b>\n\n" +
+      `💳 Услуга платная — <b>${price} сум</b>.\n\n` +
+      "🎁 Но за приглашённых друзей у вас есть " +
+      `<b>${credits}</b> бесплатных открытий.\n\n` +
+      "Выберите 👇",
+    unlockPaywallNoCredits: ({ price, perCredit }) =>
+      "🔐 <b>Открыть эту анкету</b>\n\n" +
+      `💳 Услуга платная — <b>${price} сум</b>.\n\n` +
+      "🆓 <b>Хотите бесплатно? Есть два пути:</b>\n" +
+      "❤️ Поставьте лайк и дождитесь ответного — анкета откроется сама, без оплаты.\n" +
+      `🎁 Или пригласите <b>${perCredit}</b> друзей — одно бесплатное открытие ваше.`,
+    unlockUseCreditButton: (credits) => `🎁 Открыть бесплатно (есть ${credits})`,
+    unlockInviteFriendsButton: "🎁 Пригласить друзей",
+    unlockCreditUsed: (left) =>
+      "🎁 Вы использовали бесплатное открытие!\n" +
+      `Осталось: <b>${left}</b>.`,
+    unlockCreditGone: "🎁 Бесплатных открытий не осталось.",
     profileBelowIntro: "👇 Профиль этого человека ниже:",
     unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!",
     matchedToast: "🎉 Это совпадение! Теперь вы можете бесплатно посмотреть анкету.",
     matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}!`,
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
+    profileUnavailable:
+      "😔 Этой анкеты больше нет — владелец удалил или закрыл её.\n" +
+      "Ваше бесплатное открытие сохранено, потратите его на другую.",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
     newLikeNotification: (count) =>
@@ -449,6 +542,7 @@ const STRINGS = {
       premium: "💎 Premium",
       anonChat: "🕵️ Anonymous chat",
       complaint: "🚨 I want to report",
+      referral: "🎁 Invite a friend",
     },
     anonChatIntro:
       "🕵️ Anonymous chat\n\n" +
@@ -513,11 +607,56 @@ const STRINGS = {
     unlockPayButton: "🔓 Get access to this profile",
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
+    referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
+      "🎁 <b>Invite your friends</b>\n\n" +
+      "Every friend you bring can find their person here — " +
+      "and you get something for it.\n\n" +
+      "🔗 <b>Your link:</b>\n" +
+      `<code>${link}</code>\n\n` +
+      `👥 Invited: <b>${invited}</b>\n` +
+      `🔓 Free unlocks: <b>${credits}</b>\n\n` +
+      `📌 For every <b>${perCredit}</b> friends who complete their profile, ` +
+      "you unlock <b>1</b> profile for free.\n" +
+      `Until the next free unlock: <b>${remaining}</b>.\n\n` +
+      "⚠️ Your friend must finish the whole form — phone number included. " +
+      "Only then does it count.",
+    referralShareButton: "📤 Share the link",
+    referralShareText: "Found a dating bot — take a look! 💛",
+    referralLinkUnavailable:
+      "🎁 The invite link is not ready yet. Try again in a few minutes.",
+    referralProgress: (have, need) =>
+      `🎉 One more friend joined! (${have}/${need})\n` +
+      `<b>${need - have}</b> to go until a free unlock.`,
+    referralCreditEarned: (credits) =>
+      "🎁 <b>Nice one!</b>\n\n" +
+      "Your invites earned you <b>1 free profile unlock</b>.\n" +
+      `You now have <b>${credits}</b> in total.`,
+    unlockPaywallWithCredits: ({ price, credits }) =>
+      "🔐 <b>Unlock this profile</b>\n\n" +
+      `💳 This is a paid feature — <b>${price} UZS</b>.\n\n` +
+      "🎁 But your invites left you " +
+      `<b>${credits}</b> free unlocks.\n\n` +
+      "Pick one 👇",
+    unlockPaywallNoCredits: ({ price, perCredit }) =>
+      "🔐 <b>Unlock this profile</b>\n\n" +
+      `💳 This is a paid feature — <b>${price} UZS</b>.\n\n` +
+      "🆓 <b>Want it free? Two ways:</b>\n" +
+      "❤️ Like them and wait for a like back — the profile opens by itself, no payment.\n" +
+      `🎁 Or invite <b>${perCredit}</b> friends and one free unlock is yours.`,
+    unlockUseCreditButton: (credits) => `🎁 Unlock free (${credits} left)`,
+    unlockInviteFriendsButton: "🎁 Invite friends",
+    unlockCreditUsed: (left) =>
+      "🎁 Free unlock used!\n" +
+      `Remaining: <b>${left}</b>.`,
+    unlockCreditGone: "🎁 No free unlocks left.",
     profileBelowIntro: "👇 Their profile is below:",
     unlockPaymentSuccessIntro: "🎉 Payment successful!",
     matchedToast: "🎉 It's a match! You can now view the profile for free.",
     matchNotification: (name) => `🎉 You and ${name} matched!`,
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
+    profileUnavailable:
+      "😔 This profile is gone -- the owner deleted or closed it.\n" +
+      "Your free unlock is untouched; spend it on someone else.",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,
     newLikeNotification: (count) =>

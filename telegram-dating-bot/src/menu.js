@@ -15,7 +15,10 @@ function mainMenuKeyboard(lang) {
     [m.discover, m.profile],
     [m.likes, m.vip],
     [m.premium, m.anonChat],
-    [m.complaint],
+    // Invite sits next to the complaint row rather than at the top: it is the
+    // free route to a paid feature, so it should be findable without being
+    // the first thing pushed at someone who just arrived.
+    [m.referral, m.complaint],
   ])
     .resize()
     .persistent();

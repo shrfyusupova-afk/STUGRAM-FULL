@@ -1,5 +1,6 @@
 const { Scenes, Markup } = require("telegraf");
-const { getProfile, saveProfile, setTelegramUsername } = require("../db");
+const { getProfile, saveProfile, setTelegramUsername, getLanguage } = require("../db");
+const { rewardIfEarned, notifyReferrer } = require("../referral");
 const { sendMainMenu, mainMenuKeyboard } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
@@ -219,6 +220,24 @@ async function finish(ctx, lang, profile) {
   }
 
   await ctx.reply(t(lang, "profileSaved")(saved), mainMenuKeyboard(lang));
+
+  // The one moment an invitation is worth anything: this person now has a
+  // complete anketa, phone number included. Paying on the /start click
+  // instead would make a referral credit cost nothing but a throwaway
+  // account.
+  //
+  // finish() also runs when an EXISTING user edits their profile, so this
+  // must not pay twice -- rewardIfEarned claims the invitee with a single
+  // conditional update and returns null for every later call.
+  //
+  // Wrapped: the referrer's bonus is not worth failing this person's
+  // registration over. Their anketa is already saved by the line above.
+  try {
+    const outcome = await rewardIfEarned(ctx.from.id);
+    if (outcome) await notifyReferrer(ctx.telegram, outcome, getLanguage);
+  } catch (err) {
+    console.error("referral reward failed (ignored):", err.message);
+  }
 }
 
 const profileWizard = new Scenes.WizardScene(

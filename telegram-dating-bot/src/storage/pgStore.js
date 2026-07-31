@@ -178,6 +178,31 @@ async function init() {
     `CREATE INDEX IF NOT EXISTS click_undelivered_idx
        ON click_transactions (status, delivered) WHERE status = 'paid' AND delivered = FALSE`
   );
+
+  // Who invited whom. referred_id is the PRIMARY KEY, not a surrogate: a
+  // person can be invited exactly once, ever, and making that a key constraint
+  // means the database refuses a second row rather than the application
+  // having to remember to check. That is also what stops the obvious abuse --
+  // delete the account, rejoin through the same link, collect again -- because
+  // this row deliberately SURVIVES deleteProfile.
+  await query(`
+    CREATE TABLE IF NOT EXISTS referrals (
+      referred_id TEXT PRIMARY KEY,
+      referrer_id TEXT NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      rewarded    BOOLEAN NOT NULL DEFAULT FALSE,
+      rewarded_at TIMESTAMPTZ
+    )`);
+  // Both lookups this table gets are "everything one referrer brought in",
+  // either in total or within the last 24 hours for the daily cap.
+  await query(`CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals (referrer_id, created_at)`);
+
+  // Free profile views, earned by inviting people. An INTEGER on the profile
+  // rather than a ledger table: the only questions ever asked are "how many
+  // are left" and "take one", and both are a single row update. DEFAULT 0
+  // matters -- every profile that already exists must start with none rather
+  // than NULL, or every arithmetic on it would silently produce NULL.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS unlock_credits INTEGER NOT NULL DEFAULT 0`);
 }
 
 // Rows come back with snake_case columns and Date objects; the rest of the
@@ -485,6 +510,95 @@ async function grantUnlock(buyerId, candidateId) {
   );
 }
 
+// --- referrals ---------------------------------------------------------------
+
+// Returns true only if this is the FIRST time this person has been recorded as
+// invited by anyone. ON CONFLICT DO NOTHING plus the row count is what makes
+// that a single atomic question -- a SELECT followed by an INSERT would let
+// two updates arriving together both decide they were first.
+async function createReferral(referrerId, referredId) {
+  const { rowCount } = await query(
+    `INSERT INTO referrals (referrer_id, referred_id) VALUES ($1, $2)
+       ON CONFLICT (referred_id) DO NOTHING`,
+    [String(referrerId), String(referredId)]
+  );
+  return rowCount > 0;
+}
+
+async function getReferral(referredId) {
+  const { rows } = await query(
+    `SELECT referrer_id, referred_id, created_at, rewarded FROM referrals WHERE referred_id = $1`,
+    [String(referredId)]
+  );
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    referrerId: r.referrer_id,
+    referredId: r.referred_id,
+    createdAt: r.created_at,
+    rewarded: r.rewarded,
+  };
+}
+
+// Flips rewarded exactly once. The `AND rewarded = FALSE` is the whole point:
+// the caller can be invoked twice for the same person (a retry, a duplicate
+// update) and only one of those calls will see a row, so only one reward is
+// ever paid out for one invitee.
+async function markReferralRewarded(referredId) {
+  const { rowCount } = await query(
+    `UPDATE referrals SET rewarded = TRUE, rewarded_at = NOW()
+       WHERE referred_id = $1 AND rewarded = FALSE`,
+    [String(referredId)]
+  );
+  return rowCount > 0;
+}
+
+// sinceIso limits the count to a window -- used for the daily cap, so one
+// person cannot register a hundred throwaway accounts in an afternoon.
+async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = null } = {}) {
+  const conditions = ["referrer_id = $1"];
+  const params = [String(referrerId)];
+  if (rewardedOnly) conditions.push("rewarded = TRUE");
+  if (sinceIso) {
+    params.push(sinceIso);
+    conditions.push(`created_at >= $${params.length}`);
+  }
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS n FROM referrals WHERE ${conditions.join(" AND ")}`,
+    params
+  );
+  return rows[0].n;
+}
+
+// --- unlock credits ----------------------------------------------------------
+
+async function getUnlockCredits(userId) {
+  const { rows } = await query(`SELECT unlock_credits FROM profiles WHERE user_id = $1`, [String(userId)]);
+  return rows.length ? rows[0].unlock_credits || 0 : 0;
+}
+
+async function addUnlockCredits(userId, amount) {
+  const { rows } = await query(
+    `UPDATE profiles SET unlock_credits = unlock_credits + $2 WHERE user_id = $1 RETURNING unlock_credits`,
+    [String(userId), amount]
+  );
+  return rows.length ? rows[0].unlock_credits : 0;
+}
+
+// Take one credit, but only if there is one. The check and the decrement are
+// the SAME statement on purpose: reading the balance and then writing it back
+// would let two taps on the same button both pass the check and both spend,
+// handing out two profiles for one credit. Returns false when there was
+// nothing to spend, so the caller can fall back to the paywall.
+async function consumeUnlockCredit(userId) {
+  const { rowCount } = await query(
+    `UPDATE profiles SET unlock_credits = unlock_credits - 1
+       WHERE user_id = $1 AND unlock_credits > 0`,
+    [String(userId)]
+  );
+  return rowCount > 0;
+}
+
 async function recordDislike(userId, candidateId) {
   await query(
     `INSERT INTO dislikes (user_id, candidate_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -729,6 +843,8 @@ module.exports = {
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, listAdmins, removeAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
+  createReferral, getReferral, markReferralRewarded, countReferrals,
+  getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,

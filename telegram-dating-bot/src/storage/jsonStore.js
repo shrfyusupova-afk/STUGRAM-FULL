@@ -10,6 +10,7 @@ const DISLIKES_DB_PATH = path.join(__dirname, "..", "..", "data", "dislikes.json
 const DISCOVER_STATE_PATH = path.join(__dirname, "..", "..", "data", "discoverState.json");
 const VIP_CHAT_PATH = path.join(__dirname, "..", "..", "data", "vipChatAccess.json");
 const COMPLAINTS_PATH = path.join(__dirname, "..", "..", "data", "complaints.json");
+const REFERRALS_PATH = path.join(__dirname, "..", "..", "data", "referrals.json");
 
 // Null-prototype objects, not plain {} -- every ID here (candidateId,
 // targetId) can originate from callback_data or a /start deep-link payload,
@@ -307,6 +308,82 @@ async function grantUnlock(buyerId, candidateId) {
   writeJson(UNLOCKS_DB_PATH, all);
 }
 
+// --- referrals ---------------------------------------------------------------
+//
+// Keyed by the INVITED person, matching the Postgres primary key: someone can
+// be invited exactly once ever. These rows deliberately survive deleteProfile,
+// which is what stops "delete the account, rejoin through the same link,
+// collect the reward again".
+
+async function createReferral(referrerId, referredId) {
+  const all = readJson(REFERRALS_PATH);
+  const key = String(referredId);
+  if (all[key]) return false;
+  all[key] = { referrerId: String(referrerId), createdAt: new Date().toISOString(), rewarded: false };
+  writeJson(REFERRALS_PATH, all);
+  return true;
+}
+
+async function getReferral(referredId) {
+  const entry = readJson(REFERRALS_PATH)[String(referredId)];
+  if (!entry) return null;
+  return { ...entry, referredId: String(referredId) };
+}
+
+// Returns true only for the call that actually flips the flag, so a retry
+// cannot pay a second reward for the same invitee.
+async function markReferralRewarded(referredId) {
+  const all = readJson(REFERRALS_PATH);
+  const key = String(referredId);
+  if (!all[key] || all[key].rewarded) return false;
+  all[key] = { ...all[key], rewarded: true, rewardedAt: new Date().toISOString() };
+  writeJson(REFERRALS_PATH, all);
+  return true;
+}
+
+async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = null } = {}) {
+  const all = readJson(REFERRALS_PATH);
+  const wanted = String(referrerId);
+  let n = 0;
+  for (const entry of Object.values(all)) {
+    if (entry.referrerId !== wanted) continue;
+    if (rewardedOnly && !entry.rewarded) continue;
+    if (sinceIso && !(entry.createdAt >= sinceIso)) continue;
+    n++;
+  }
+  return n;
+}
+
+// --- unlock credits ----------------------------------------------------------
+
+async function getUnlockCredits(userId) {
+  const profile = readJson(DB_PATH)[String(userId)];
+  return profile?.unlockCredits || 0;
+}
+
+async function addUnlockCredits(userId, amount) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return 0;
+  const next = (all[key].unlockCredits || 0) + amount;
+  all[key] = { ...all[key], unlockCredits: next };
+  writeJson(DB_PATH, all);
+  return next;
+}
+
+// Refuses to go below zero rather than trusting the caller to have checked --
+// the Postgres version enforces the same thing in its WHERE clause, and the
+// two backends must not disagree about whether an empty balance can be spent.
+async function consumeUnlockCredit(userId) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  const have = all[key]?.unlockCredits || 0;
+  if (have <= 0) return false;
+  all[key] = { ...all[key], unlockCredits: have - 1 };
+  writeJson(DB_PATH, all);
+  return true;
+}
+
 // Dislikes are permanent (unlike the old in-memory-only "shown this session"
 // tracking) so a disliked profile never resurfaces in discovery again, even
 // after the in-memory pool cycles or the process restarts.
@@ -472,6 +549,13 @@ module.exports = {
   hasLiked,
   hasUnlocked,
   grantUnlock,
+  createReferral,
+  getReferral,
+  markReferralRewarded,
+  countReferrals,
+  getUnlockCredits,
+  addUnlockCredits,
+  consumeUnlockCredit,
   recordDislike,
   getDislikes,
   getDiscoverState,
