@@ -9,6 +9,7 @@ const { getSalesSummary } = require("./click");
 const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
 const { isRegistered } = require("./profileState");
+const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -532,48 +533,6 @@ async function sendSearchResults(ctx, query) {
   await ctx.reply(view.text, { parse_mode: "HTML", disable_web_page_preview: true, ...view.keyboard });
 }
 
-// Telegram file ids belong to the bot that received them. The anketa photo is
-// uploaded to the MAIN bot, so the admin bot -- a separate bot with its own
-// token -- gets "wrong file identifier" when it tries to resend that id, and
-// the card silently came out as text with no photo. Everything below exists
-// to get the actual bytes across that boundary.
-//
-// getFile caps downloads at 20 MB, which a long anketa video can exceed; that
-// case reports itself rather than disappearing.
-const MEDIA_FETCH_TIMEOUT_MS = 20000;
-
-async function fetchProfileMedia(mainBotTelegram, fileId) {
-  const link = await mainBotTelegram.getFileLink(fileId);
-  const res = await fetch(String(link), { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`fayl yuklab olinmadi (HTTP ${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-// Returns null on success, or the reason it could not be shown.
-async function replyWithProfileMedia(ctx, profile, extra, mainBotTelegram) {
-  const method = profile.mediaType === "video" ? "replyWithVideo" : "replyWithPhoto";
-
-  // When one token runs both bots the id is valid here and this is a plain
-  // resend -- no download, no upload.
-  let directError;
-  try {
-    await ctx[method](profile.mediaFileId, extra);
-    return null;
-  } catch (err) {
-    directError = err.message;
-  }
-
-  if (!mainBotTelegram) return directError;
-
-  try {
-    const buffer = await fetchProfileMedia(mainBotTelegram, profile.mediaFileId);
-    await ctx[method]({ source: buffer }, extra);
-    return null;
-  } catch (err) {
-    return `${directError} → ${err.message}`;
-  }
-}
-
 // Sends the search hit as the actual profile media with everything under it.
 // If the media genuinely cannot be shown, the text card SAYS so and why --
 // silently dropping it is what made "is it a photo or a video? nothing shows"
@@ -583,6 +542,21 @@ async function sendUserCard(ctx, id, profile, mainBotTelegram) {
   const keyboard = await userActionsKeyboard(id, profile, ctx.from.id);
 
   if (profile.mediaFileId) {
+    // Two jobs, and the second one is the important one.
+    //
+    // Visibly: the panel says "uploading photo..." the instant the id is
+    // tapped, instead of looking like nothing happened.
+    //
+    // Structurally: sendChatAction is on Telegraf's webhook-reply allowlist,
+    // so this call IS the HTTP response to Telegram's webhook request. That
+    // closes the connection here rather than at the end of the handler (see
+    // handleUpdate's finally). Without it Telegram waits for the whole
+    // download-and-re-upload, decides delivery failed, and redelivers the
+    // update on a backoff -- which is what turned a tap into minutes.
+    await ctx
+      .sendChatAction(profile.mediaType === "video" ? "upload_video" : "upload_photo")
+      .catch(() => {});
+
     // Protected here too: an admin has no business forwarding somebody's
     // anketa photo out of the panel either.
     const failure = await replyWithProfileMedia(
