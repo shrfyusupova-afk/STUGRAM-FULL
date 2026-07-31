@@ -308,6 +308,21 @@ async function grantUnlock(buyerId, candidateId) {
   writeJson(UNLOCKS_DB_PATH, all);
 }
 
+
+// The highest "N people liked you" milestone already announced to this
+// person. Same purpose as the Postgres column of the same name.
+async function getLikeNoticeAt(userId) {
+  return readJson(DB_PATH)[String(userId)]?.likeNoticeAt || 0;
+}
+
+async function setLikeNoticeAt(userId, value) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return;
+  all[key] = { ...all[key], likeNoticeAt: value };
+  writeJson(DB_PATH, all);
+}
+
 // --- referrals ---------------------------------------------------------------
 //
 // Keyed by the INVITED person, matching the Postgres primary key: someone can
@@ -556,6 +571,8 @@ module.exports = {
   getUnlockCredits,
   addUnlockCredits,
   consumeUnlockCredit,
+  getLikeNoticeAt,
+  setLikeNoticeAt,
   recordDislike,
   getDislikes,
   getDiscoverState,

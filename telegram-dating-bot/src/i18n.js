@@ -181,11 +181,11 @@ const STRINGS = {
       "Bepul ochish imkoniyatingiz saqlanib qoldi, uni boshqasiga ishlatishingiz mumkin.",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
     likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
-    newLikeNotification: (count) =>
-      `❤️ Sizga bitta odam layk bosdi!\n\n` +
-      `💌 Sizni layk bosganlar soni: ${count} ta\n\n` +
-      `Kim ekanini bilmoqchimisiz? Pastdagi tugmani bosing 👇`,
     seeWhoLikedButton: "👀 Kim layk bosganini ko'rish",
+    likeMilestoneNotification: (count) =>
+      `💌 <b>Sizga ${count} ta odam layk bosdi!</b>\n\n` +
+      "Ular sizning javobingizni kutishmoqda 💛\n" +
+      "Kim ekanini bilmoqchi bo'lsangiz, pastdagi tugmani bosing 👇",
     openProfileLink: "💬 Profilga o'tish va yozish",
     premiumDetails:
       "💎 Premium obuna — 1 oy\n\n" +
@@ -420,11 +420,11 @@ const STRINGS = {
       "Ваше бесплатное открытие сохранено, потратите его на другую.",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
     likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
-    newLikeNotification: (count) =>
-      `❤️ Вам поставили лайк!\n\n` +
-      `💌 Всего лайков вас ждёт: ${count}\n\n` +
-      `Хотите узнать, кто это? Нажмите кнопку ниже 👇`,
     seeWhoLikedButton: "👀 Посмотреть, кто лайкнул",
+    likeMilestoneNotification: (count) =>
+      `💌 <b>Вам поставили лайк ${count} человек!</b>\n\n` +
+      "Они ждут вашего ответа 💛\n" +
+      "Хотите узнать, кто это — нажмите кнопку ниже 👇",
     openProfileLink: "💬 Перейти в профиль и написать",
     premiumDetails:
       "💎 Премиум подписка — 1 месяц\n\n" +
@@ -659,11 +659,11 @@ const STRINGS = {
       "Your free unlock is untouched; spend it on someone else.",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
     likesIntro: (count) => `💌 ${count} people liked you! 😍`,
-    newLikeNotification: (count) =>
-      `❤️ Someone liked you!\n\n` +
-      `💌 Likes waiting for you: ${count}\n\n` +
-      `Want to see who? Tap the button below 👇`,
     seeWhoLikedButton: "👀 See who liked me",
+    likeMilestoneNotification: (count) =>
+      `💌 <b>${count} people have liked you!</b>\n\n` +
+      "They are waiting to hear back 💛\n" +
+      "Tap below to see who 👇",
     openProfileLink: "💬 Open profile and message",
     premiumDetails:
       "💎 Premium subscription — 1 month\n\n" +

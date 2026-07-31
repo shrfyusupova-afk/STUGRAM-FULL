@@ -66,6 +66,8 @@ module.exports = {
   getUnlockCredits: store.getUnlockCredits,
   addUnlockCredits: store.addUnlockCredits,
   consumeUnlockCredit: store.consumeUnlockCredit,
+  getLikeNoticeAt: store.getLikeNoticeAt,
+  setLikeNoticeAt: store.setLikeNoticeAt,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,

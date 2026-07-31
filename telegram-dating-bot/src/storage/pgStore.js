@@ -203,6 +203,12 @@ async function init() {
   // matters -- every profile that already exists must start with none rather
   // than NULL, or every arithmetic on it would silently produce NULL.
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS unlock_credits INTEGER NOT NULL DEFAULT 0`);
+
+  // The highest "N people liked you" milestone this person has already been
+  // told about. Without it the bot either pings on every single like -- which
+  // is what people mute a bot for -- or has to re-derive "have I said this
+  // yet" from data that does not record it.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS like_notice_at INTEGER NOT NULL DEFAULT 0`);
 }
 
 // Rows come back with snake_case columns and Date objects; the rest of the
@@ -508,6 +514,16 @@ async function grantUnlock(buyerId, candidateId) {
     `INSERT INTO unlocks (buyer_id, candidate_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
     [String(buyerId), String(candidateId)]
   );
+}
+
+
+async function getLikeNoticeAt(userId) {
+  const { rows } = await query(`SELECT like_notice_at FROM profiles WHERE user_id = $1`, [String(userId)]);
+  return rows.length ? rows[0].like_notice_at || 0 : 0;
+}
+
+async function setLikeNoticeAt(userId, value) {
+  await query(`UPDATE profiles SET like_notice_at = $2 WHERE user_id = $1`, [String(userId), value]);
 }
 
 // --- referrals ---------------------------------------------------------------
@@ -845,6 +861,7 @@ module.exports = {
   recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
   createReferral, getReferral, markReferralRewarded, countReferrals,
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
+  getLikeNoticeAt, setLikeNoticeAt,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,

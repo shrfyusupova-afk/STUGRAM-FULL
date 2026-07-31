@@ -66,6 +66,14 @@ const pg = require("../src/storage/pgStore");
   await pg.deleteProfile(2001);
   assert.ok(await pg.getReferral(2001), "the referral record outlives the profile");
 
+  // 6. The like-milestone marker: same story as unlock_credits -- a profile
+  //    written before the column existed must read as 0, not NULL.
+  assert.strictEqual(await pg.getLikeNoticeAt(1001), 0, "existing profiles start at 0, not NULL");
+  await pg.setLikeNoticeAt(1001, 5);
+  assert.strictEqual(await pg.getLikeNoticeAt(1001), 5);
+  await pg.setLikeNoticeAt(1001, 3);
+  assert.strictEqual(await pg.getLikeNoticeAt(1001), 3, "the marker must be able to go DOWN again");
+
   console.log("\nall postgres migration + referral checks passed");
   await pg.close();
 })().catch((e) => { console.error("FAILED:", e.message); process.exit(1); });

@@ -11,6 +11,8 @@ const {
   grantUnlock,
   getUnlockCredits,
   consumeUnlockCredit,
+  getLikeNoticeAt,
+  setLikeNoticeAt,
   hasPremium,
   recordDislike,
   getDislikes,
@@ -287,6 +289,15 @@ function sleep(ms) {
 
 // One promise chain per recipient: messages to different people still go out
 // in parallel, only messages to the SAME person are serialised.
+// The chain serialises everything for one chat, which is what makes the
+// milestone decision safe: two likes landing together cannot both read the
+// old marker and both announce.
+//
+// The pace is only paid when something was actually SENT. Most runs through
+// here now send nothing (a like below the next milestone), and sleeping over
+// those would push the one message that does matter behind a second of dead
+// waiting per silent like -- with three quick likes, the announcement at
+// three would arrive more than two seconds late for no reason.
 function queueNotification(chatKey, task) {
   const prev = notifyChains.get(chatKey) || Promise.resolve();
   const chain = prev
@@ -295,8 +306,9 @@ function queueNotification(chatKey, task) {
       // Blocked the bot, deleted their account, etc. -- the like itself is
       // already recorded, so it simply shows up in their list later.
       console.error("new-like notification failed:", err.message);
+      return false;
     })
-    .then(() => sleep(MIN_NOTIFY_GAP_MS));
+    .then((sent) => (sent ? sleep(MIN_NOTIFY_GAP_MS) : undefined));
 
   notifyChains.set(chatKey, chain);
   // Drop the entry once this chain is the last one still pending, so the map
@@ -307,17 +319,59 @@ function queueNotification(chatKey, task) {
   return chain;
 }
 
+// A message per like is how a bot gets muted. People are told at milestones
+// instead: at 3, at 5, at 10, and then every ten after that. Each one is a
+// reason to come back ("three people are waiting") rather than a nudge about
+// one stranger.
+const LIKE_MILESTONES = [3, 5, 10];
+const LIKE_MILESTONE_STEP = 10;
+
+// The largest milestone this count has reached, or 0 below the first one.
+function milestoneFor(count) {
+  if (count < LIKE_MILESTONES[0]) return 0;
+  const last = LIKE_MILESTONES[LIKE_MILESTONES.length - 1];
+  if (count < last) {
+    let best = 0;
+    for (const m of LIKE_MILESTONES) if (count >= m) best = m;
+    return best;
+  }
+  return Math.floor(count / LIKE_MILESTONE_STEP) * LIKE_MILESTONE_STEP;
+}
+
+// Announces a milestone at most once per crossing.
+//
+// The stored marker moves DOWN as well as up. Somebody who works through
+// their likes drops back under a milestone, and when new likes push them over
+// it again that is fresh news worth a message -- but only then, not on every
+// like in between. Without the downward move a person would be told once and
+// never again for the rest of their time on the bot.
 async function notifyNewLike(telegram, likedId) {
   return queueNotification(String(likedId), async () => {
-    const lang = await getLanguage(likedId) || DEFAULT_LANG;
     // Counted at send time, not queue time, so the number is current even if
     // several likes were waiting ahead of this one.
     const count = await pendingLikerCount(likedId);
+    const reached = milestoneFor(count);
+    const announced = await getLikeNoticeAt(likedId);
+
+    if (reached === announced) return false;
+
+    if (reached < announced) {
+      // They have responded to some; re-arm without saying anything.
+      await setLikeNoticeAt(likedId, reached);
+      return false;
+    }
+
+    await setLikeNoticeAt(likedId, reached);
+    const lang = (await getLanguage(likedId)) || DEFAULT_LANG;
     await telegram.sendMessage(
       likedId,
-      t(lang, "newLikeNotification")(count),
-      Markup.inlineKeyboard([[Markup.button.callback(t(lang, "seeWhoLikedButton"), "likes:show")]])
+      t(lang, "likeMilestoneNotification")(count),
+      {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "seeWhoLikedButton"), "likes:show")]]),
+      }
     );
+    return true;
   });
 }
 
@@ -611,5 +665,16 @@ module.exports = {
   pendingLikerCount,
   // Not part of the bot's own surface -- exposed so the candidate picker can
   // be exercised directly against both storage backends.
-  __test: { pickCandidate, MAX_SHOWN_MEMORY },
+  __test: {
+    pickCandidate,
+    MAX_SHOWN_MEMORY,
+    milestoneFor,
+    LIKE_MILESTONES,
+    LIKE_MILESTONE_STEP,
+    // Notifications are paced, so they finish AFTER the update that caused
+    // them. A test that asserts on them has to wait for the queue rather than
+    // guess at a delay -- guessing is how a suite ends up passing because it
+    // looked too early.
+    pendingNotifications: () => Promise.all([...notifyChains.values()]),
+  },
 };

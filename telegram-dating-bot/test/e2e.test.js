@@ -158,7 +158,10 @@ test("a slash command is never stored as profile data", async () => {
 });
 
 // --- discovery ---------------------------------------------------------------
-test("a like notifies once and is not double counted", async () => {
+// Notifications are now milestone-based: nobody is pinged for a single like.
+// The dedup rule this case was written for is unchanged and still checked --
+// one stored row per pair, no matter how often the button is tapped.
+test("a like is stored once and stays quiet below the first milestone", async () => {
   const him = freshUser("Liker");
   const her = freshUser("Liked");
   await register(him, { gender: "male", name: "Liker" });
@@ -166,17 +169,19 @@ test("a like notifies once and is not double counted", async () => {
 
   await browseTo(him, "Liked");
   const first = await h.send(M(), h.textUpdate("❤️", him));
+  await wait(50);
   assert.ok(
-    first.some((c) => toUser(c, her) && /layk bosdi/.test(c.payload.text || "")),
-    "the first like must notify"
+    !first.some((c) => toUser(c, her) && /layk bosdi/.test(c.payload.text || "")),
+    "one like is not worth a message"
   );
+
   const second = await h.send(M(), h.textUpdate("❤️", him));
   assert.ok(
-    !second.some((c) => toUser(c, her) && /layk bosdi/.test(c.payload.text || "")),
-    "liking the same person again must not notify again"
+    !second.some((c) => toUser(c, her)),
+    "liking the same person again must not notify"
   );
   const likes = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "likes.json"), "utf8"));
-  assert.deepStrictEqual(likes[String(her.id)], [String(him.id)]);
+  assert.deepStrictEqual(likes[String(her.id)], [String(him.id)], "exactly one stored row");
 });
 
 // The complaint prompt used to swallow the next thing typed no matter what it
