@@ -314,6 +314,10 @@ if (webhookDomain) {
       // Render injects RENDER_GIT_COMMIT; anywhere else this is just absent.
       commit: (process.env.RENDER_GIT_COMMIT || "unknown").slice(0, 7),
       startedAt: STARTED_AT,
+      // Whether the service is holding itself awake. Read together with
+      // startedAt this answers "will the next tap be instant or a cold
+      // start", which is otherwise only knowable by trying it.
+      keepAwake: process.env.KEEP_AWAKE !== "false",
     })
   );
   app.get("/policy", (req, res) => res.type("html").send(renderPolicyHtml()));
@@ -505,6 +509,36 @@ if (webhookDomain) {
           console.error("delivery sweep failed:", err.message)
         );
       }, DELIVERY_SWEEP_MS).unref();
+
+      // Render's free plan stops a web service after ~15 minutes with no
+      // inbound HTTP traffic, and starting it again takes the better part of
+      // a minute. For a bot that means the FIRST tap after a quiet spell
+      // waits for a cold start while Telegram, getting no answer, redelivers
+      // the update -- indistinguishable to the person tapping from the bot
+      // being broken.
+      //
+      // Requesting our own public URL counts as inbound traffic, so the
+      // service never goes idle. It must be the public URL, not localhost:
+      // only traffic through Render's router resets the idle timer.
+      //
+      // The cost is real and worth knowing: an always-awake service uses
+      // ~730 instance-hours a month against a free allowance of 750 for the
+      // whole account. That fits for ONE service and does not fit for two,
+      // so KEEP_AWAKE=false turns it off without a redeploy.
+      const KEEP_AWAKE_MS = 10 * 60 * 1000;
+      if (process.env.KEEP_AWAKE !== "false") {
+        const ping = () =>
+          // Generous: a measured cold start on this plan took 27s, and the
+          // very first ping after a deploy can still meet one. Aborting
+          // early would only turn a working wake-up into a logged failure.
+          fetch(`${webhookDomain}/health`, { signal: AbortSignal.timeout(60000) }).catch((err) =>
+            console.warn("keep-awake ping failed (ignored):", err.message)
+          );
+        setInterval(ping, KEEP_AWAKE_MS).unref();
+        console.log(`keep-awake: pinging ${webhookDomain}/health every ${KEEP_AWAKE_MS / 60000} min`);
+      } else {
+        console.log("keep-awake: disabled (KEEP_AWAKE=false) -- the service will sleep when idle");
+      }
 
       keepWebhookRegistered(
         bot.telegram,
