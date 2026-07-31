@@ -347,6 +347,29 @@ async function backfillMatchUnlocks() {
 }
 
 
+
+// Same answer as the Postgres version, computed from the files this backend
+// already holds in memory -- no per-liker round trips here either.
+async function countPendingLikers(userId) {
+  const key = String(userId);
+  const likes = readJson(LIKES_DB_PATH);
+  const profiles = readJson(DB_PATH);
+  const myLikes = new Set(likes[key] === undefined ? [] : []);
+  // likes is keyed by the LIKED person, so "who have I liked" means scanning
+  // for lists that contain me.
+  for (const [likedId, likers] of Object.entries(likes)) {
+    if ((likers || []).includes(key)) myLikes.add(String(likedId));
+  }
+  let n = 0;
+  for (const likerId of likes[key] || []) {
+    if (myLikes.has(String(likerId))) continue;
+    const p = profiles[String(likerId)];
+    if (!p?.mediaFileId || p.active === false) continue;
+    n++;
+  }
+  return n;
+}
+
 // --- win-back ----------------------------------------------------------------
 // Same behaviour as the Postgres version; see there for why each field exists.
 
@@ -666,6 +689,7 @@ module.exports = {
   consumeUnlockCredit,
   getLikeNoticeAt,
   setLikeNoticeAt,
+  countPendingLikers,
   backfillMatchUnlocks,
   touchLastSeen,
   listWinbackTargets,

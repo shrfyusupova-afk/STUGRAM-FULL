@@ -22,6 +22,7 @@ const {
   getLanguage,
 } = require("./db");
 const { t, DEFAULT_LANG } = require("./i18n");
+const { isGoneError, retryAfterMs } = require("./telegramSafety");
 const { pendingLikerCount } = require("./discover");
 
 // Day 3 while the bot is still a recent memory, day 7 as the last word.
@@ -63,20 +64,9 @@ function oppositeGender(gender) {
   return gender === "male" ? "female" : "male";
 }
 
-// Telegram says "Forbidden: bot was blocked by the user" / "user is
-// deactivated" with a 403. That is an ordinary outcome, not a failure: the
-// person is simply gone, and every later message to them is wasted quota.
-function isGone(err) {
-  const code = err?.response?.error_code ?? err?.code;
-  return code === 403;
-}
-
-// 429 comes with the seconds to wait. Guessing instead of reading it is how a
-// rate-limited batch turns into a rate-limited hour.
-function retryAfterMs(err) {
-  const seconds = err?.response?.parameters?.retry_after ?? err?.parameters?.retry_after;
-  return Number.isFinite(seconds) ? (seconds + 1) * 1000 : null;
-}
+// isGone / retryAfterMs live in telegramSafety.js: the broadcast needs the
+// same two answers and the two senders must not disagree about them.
+const isGone = isGoneError;
 
 function keyboard(lang) {
   return Markup.inlineKeyboard([

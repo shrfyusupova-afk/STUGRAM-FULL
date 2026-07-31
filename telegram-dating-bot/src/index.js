@@ -41,16 +41,31 @@ const { sendPolicyDocument, renderPolicyHtml } = require("./policy");
 // For a bot whose entire job is to stay reachable that trade is backwards,
 // especially where a restart means a cold start and minutes of downtime.
 //
-// Continuing is safe here specifically because this app keeps no long-lived
-// in-memory state that could be left half-updated: everything persistent is
-// read from disk per operation and written atomically, and the only in-memory
-// state (anon-chat queues) is deliberately disposable. So there is nothing to
-// protect by exiting -- only uptime to lose.
+// Continuing is safe for a REJECTION specifically because this app keeps no
+// long-lived in-memory state that could be left half-updated: everything
+// persistent is read per operation and written atomically, and the only
+// in-memory state (anon-chat queues) is deliberately disposable. A failed
+// sendMessage in a timer is not a reason to drop every user's session.
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection (bot kept running):", reason);
 });
+
+// An uncaught EXCEPTION is a different thing, and this used to keep running
+// through one too. It should not.
+//
+// After an uncaught exception the process is in a state nobody reasoned
+// about: a handler stopped halfway, whatever it was holding is half-written,
+// and every later update is served by that. The result is a service that
+// answers /health with "ok" and quietly does the wrong thing -- which is
+// worse than a crash, because a crash is visible and Render restarts it
+// within seconds, while a zombie is restarted by nobody.
+//
+// So: say what happened, then die, and let the platform bring back a process
+// whose state is known. The exit code is non-zero so the restart is recorded
+// as a failure rather than a clean shutdown.
 process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception (bot kept running):", err);
+  console.error("Uncaught exception -- exiting so the platform restarts a clean process:", err);
+  process.exit(1);
 });
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -190,6 +205,20 @@ bot.use(session());
 const lastSeenUsername = new Map();
 const lastSeenTouch = new Map();
 const LAST_SEEN_THROTTLE_MS = 60 * 60 * 1000;
+
+// Both maps above gain an entry per person and nothing removed them, so they
+// grew for the lifetime of the process -- one entry per user who ever sent a
+// message, held forever, on a 512 MB instance. Dropping an entry costs
+// nothing: the worst case is one extra username write or one extra last-seen
+// write the next time that person appears.
+const BOOKKEEPING_SWEEP_MS = 6 * 60 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - LAST_SEEN_THROTTLE_MS;
+  for (const [id, at] of lastSeenTouch) if (at < cutoff) lastSeenTouch.delete(id);
+  // Nothing timestamps the username cache, and it only exists to skip a
+  // redundant write, so it is simply emptied.
+  lastSeenUsername.clear();
+}, BOOKKEEPING_SWEEP_MS).unref();
 bot.use((ctx, next) => {
   const from = ctx.from;
   if (from?.id) {

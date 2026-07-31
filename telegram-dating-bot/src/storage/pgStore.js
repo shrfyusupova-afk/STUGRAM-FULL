@@ -569,6 +569,34 @@ async function backfillMatchUnlocks() {
 }
 
 
+
+// How many people have liked this person and are still waiting for an answer.
+//
+// This used to be done in the application: one query for the likers, then TWO
+// more per liker. A profile with 500 admirers cost 1001 queries against a
+// five-connection pool, and it is called on every like received, on every
+// Mini App open, and once per person in a win-back sweep -- so a single sweep
+// could fire tens of thousands of queries and stall every real user behind
+// them. It is one indexed query.
+//
+// The filter matches what the likes list actually shows, so the number and the
+// list underneath it agree.
+async function countPendingLikers(userId) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS n
+       FROM likes l
+       JOIN profiles p ON p.user_id = l.liker_id
+      WHERE l.liked_id = $1
+        AND p.active = TRUE
+        AND p.media_file_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM likes b WHERE b.liker_id = $1 AND b.liked_id = l.liker_id
+        )`,
+    [String(userId)]
+  );
+  return rows[0].n;
+}
+
 // --- win-back ----------------------------------------------------------------
 
 // Coming back resets the campaign, and clears bot_blocked: somebody who just
@@ -976,6 +1004,7 @@ module.exports = {
   createReferral, getReferral, markReferralRewarded, countReferrals,
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   getLikeNoticeAt, setLikeNoticeAt,
+  countPendingLikers,
   backfillMatchUnlocks,
   touchLastSeen, listWinbackTargets, markWinbackSent, markBotBlocked,
   setNotificationsEnabled, getNotificationsEnabled, countNewProfilesSince,

@@ -13,6 +13,7 @@ const {
   consumeUnlockCredit,
   getLikeNoticeAt,
   setLikeNoticeAt,
+  countPendingLikers,
   hasPremium,
   recordDislike,
   getDislikes,
@@ -260,22 +261,13 @@ async function revealProfile(ctx, lang, candidateId) {
 // How many people have liked this user WITHOUT being liked back yet -- i.e.
 // how many are still waiting for a decision. That's the number worth showing,
 // since already-matched people need no further action.
+// One query on Postgres. The old shape -- fetch the likers, then two more
+// queries per liker -- cost 1001 round trips for a profile with 500 admirers,
+// against a five-connection pool, on every like received and once per person
+// in a win-back sweep. A single sweep could therefore fire tens of thousands
+// of queries and stall every real user waiting behind them.
 async function pendingLikerCount(userId) {
-  const likers = await getLikers(userId);
-  // Checked in parallel rather than one await at a time -- with a database
-  // backend a sequential loop would be one round-trip per liker.
-  //
-  // Counts only likers the list will actually show. Without the profile
-  // check, someone whose anketa was deleted or hidden still added to "5
-  // people liked you" while the list underneath had four -- the same
-  // filtering likes.js applies, so the number and the list agree.
-  const states = await Promise.all(
-    likers.map(async (likerId) => ({
-      likedBack: await hasLiked(userId, likerId),
-      profile: await getProfile(likerId),
-    }))
-  );
-  return states.filter((s) => !s.likedBack && s.profile?.mediaFileId && s.profile.active !== false).length;
+  return countPendingLikers(userId);
 }
 
 // EVERY like gets its own notification -- none are ever dropped. Telegram

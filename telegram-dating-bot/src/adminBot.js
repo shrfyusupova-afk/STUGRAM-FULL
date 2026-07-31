@@ -10,6 +10,7 @@ const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
 const { isRegistered } = require("./profileState");
 const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
+const { isGoneError, retryAfterMs } = require("./telegramSafety");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -227,6 +228,7 @@ function fileIdFromSentMessage(message) {
 
 async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, recipients) {
   let sent = 0;
+  let blocked = 0;
   let failed = 0;
   let lastProgressAt = Date.now();
 
@@ -249,24 +251,51 @@ async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, 
     }
   }
 
+  const deliverTo = async (userId) => {
+    if (draft.fileId) {
+      const method = draft.mediaType === "video" ? "sendVideo" : "sendPhoto";
+      const message = await mainBotTelegram[method](userId, media, {
+        caption: draft.text,
+        parse_mode: "HTML",
+      });
+      // Swap the upload for the id it produced, so the remaining recipients
+      // cost one API call each instead of a re-upload.
+      if (typeof media !== "string") media = fileIdFromSentMessage(message) || media;
+    } else {
+      await mainBotTelegram.sendMessage(userId, draft.text, { parse_mode: "HTML" });
+    }
+  };
+
   for (const userId of recipients) {
     try {
-      if (draft.fileId) {
-        const method = draft.mediaType === "video" ? "sendVideo" : "sendPhoto";
-        const message = await mainBotTelegram[method](userId, media, {
-          caption: draft.text,
-          parse_mode: "HTML",
-        });
-        // Swap the upload for the id it produced, so the remaining recipients
-        // cost one API call each instead of a re-upload.
-        if (typeof media !== "string") media = fileIdFromSentMessage(message) || media;
-      } else {
-        await mainBotTelegram.sendMessage(userId, draft.text, { parse_mode: "HTML" });
-      }
+      await deliverTo(userId);
       sent++;
     } catch (err) {
-      // Blocked the bot, deleted their account, never started it -- entirely
-      // expected across a large audience, and no reason to stop the run.
+      if (isGoneError(err)) {
+        // Blocked the bot, deleted their account, never started it. Expected
+        // across a large audience and no reason to stop.
+        blocked++;
+        continue;
+      }
+      // Being told to slow down is NOT the same as being blocked, and this
+      // used to be counted as one. Two things went wrong at once: the message
+      // was dropped, and the summary told the admin that N people had blocked
+      // the bot when Telegram had simply throttled us -- a comfortable lie
+      // that hides a broadcast which mostly did not arrive.
+      const wait = retryAfterMs(err);
+      if (wait) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        try {
+          await deliverTo(userId);
+          sent++;
+          continue;
+        } catch (retryErr) {
+          if (isGoneError(retryErr)) {
+            blocked++;
+            continue;
+          }
+        }
+      }
       failed++;
     }
 
@@ -275,7 +304,7 @@ async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, 
     if (Date.now() - lastProgressAt > 30000) {
       lastProgressAt = Date.now();
       try {
-        await adminTelegram.sendMessage(adminChatId, `📤 Yuborilmoqda... ${sent + failed}/${recipients.length}`);
+        await adminTelegram.sendMessage(adminChatId, `📤 Yuborilmoqda... ${sent + blocked + failed}/${recipients.length}`);
       } catch {
         /* progress is a nicety; never let it break the run */
       }
@@ -289,14 +318,15 @@ async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, 
       adminChatId,
       `✅ Reklama yuborildi!\n\n` +
         `📬 Yetkazildi: ${sent} ta\n` +
-        `❌ Yetkazilmadi: ${failed} ta (botni bloklagan yoki o'chirgan)\n` +
-        `👥 Jami urinildi: ${recipients.length} ta`,
+        `🚫 Botni bloklagan: ${blocked} ta\n` +
+        `⚠️ Xatolik tufayli yetmadi: ${failed} ta\n` +
+        `👥 Jami: ${recipients.length} ta`,
       adminMenuKeyboard()
     );
   } catch (err) {
     console.error("broadcast summary failed:", err.message);
   }
-  console.log(`Broadcast finished: ${sent} delivered, ${failed} failed, ${recipients.length} total`);
+  console.log(`Broadcast finished: ${sent} delivered, ${blocked} blocked, ${failed} failed, ${recipients.length} total`);
 }
 
 // Shown while stepping through complaints one at a time.
@@ -455,6 +485,19 @@ const SEARCH_RESULT_LIMIT = 300;
 // admin searches again.
 const searchState = new Map();
 
+// One entry per admin, each holding up to SEARCH_RESULT_LIMIT full profiles.
+// Nothing removed them, so an admin who ran one wide search kept 300 profiles
+// resident for the lifetime of the process, and every later search added
+// another set for the next admin. Bounded by admin count, so never fatal --
+// but it is a lot of memory held for a list nobody is looking at any more.
+const SEARCH_STATE_TTL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - SEARCH_STATE_TTL_MS;
+  for (const [adminId, state] of searchState) {
+    if ((state.openedAt || 0) < cutoff) searchState.delete(adminId);
+  }
+}, SEARCH_STATE_TTL_MS).unref();
+
 // The anketa asks for an age, not a date of birth -- nothing on file can
 // produce a day and month. The birth YEAR is the closest honest answer, and
 // it is derived, so it is shown as such rather than as a stored fact.
@@ -527,7 +570,7 @@ async function sendSearchResults(ctx, query) {
     return;
   }
 
-  const state = { query, hits, page: 0 };
+  const state = { query, hits, page: 0, openedAt: Date.now() };
   searchState.set(ctx.from.id, state);
   const view = renderSearchPage(state);
   await ctx.reply(view.text, { parse_mode: "HTML", disable_web_page_preview: true, ...view.keyboard });

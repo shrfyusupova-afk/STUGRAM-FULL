@@ -40,6 +40,30 @@ function isFlooding(userId) {
   return true;
 }
 
+// Both maps above gain one entry per person who has ever sent an update, and
+// nothing removed them: an entry was only ever overwritten when that same
+// person came back. At a hundred thousand users that is a hundred thousand
+// entries held forever for a window that expired days ago -- on a 512 MB
+// instance, an out-of-memory kill rather than a slow leak.
+//
+// Sweeping is cheap because the entries are tiny and only the expired ones are
+// touched. unref() so this timer alone never keeps the process alive.
+const SWEEP_INTERVAL_MS = 60_000;
+
+function sweep(now = Date.now()) {
+  let removed = 0;
+  for (const [userId, entry] of hits) {
+    if (now - entry.windowStart > WINDOW_MS) {
+      hits.delete(userId);
+      warnedThisWindow.delete(userId);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+setInterval(sweep, SWEEP_INTERVAL_MS).unref();
+
 // Registered before the stage/session middleware: dropping here means a flood
 // never reaches a single handler, so it costs one Map lookup and nothing
 // else -- no database read, no outgoing reply, no relay to anyone else.
@@ -49,4 +73,9 @@ function floodGuardMiddleware(ctx, next) {
   return next();
 }
 
-module.exports = { floodGuardMiddleware };
+module.exports = {
+  floodGuardMiddleware,
+  // Exposed so the sweep can be driven directly: waiting a real minute to find
+  // out whether memory is reclaimed is not a test.
+  __test: { sweep, size: () => hits.size, WINDOW_MS, MAX_PER_WINDOW },
+};
