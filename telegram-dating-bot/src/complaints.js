@@ -4,6 +4,11 @@ const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { mainMenuKeyboard } = require("./menu");
 
+// Every main-menu label, in every language. The prompt swaps the keyboard,
+// but Telegram keeps the previous one one tap away, so these arrive at the
+// text handler below far more often than a stray tap would suggest.
+const MENU_LABELS = new Set(Object.values(STRINGS).flatMap((dict) => Object.values(dict.menu)));
+
 // Where a complaint was filed from. Only affects the label the admin sees and
 // whether a specific person is attached to it.
 const SOURCE = {
@@ -120,6 +125,18 @@ function registerComplaintHandlers(bot) {
       cancelReport(ctx.from.id);
       await ctx.reply(t(lang, "complaintCancelled"), mainMenuKeyboard(lang));
       return;
+    }
+
+    // Tapping a main-menu button while the prompt is open means "I changed my
+    // mind, take me there" -- never "file this button's name as a complaint",
+    // which is exactly what used to happen: tapping "🔍 Yangi tanishuvlar"
+    // filed a complaint whose entire text was "🔍 Yangi tanishuvlar", handed
+    // the person a complaint number they never asked for, and left the admins
+    // reading nonsense. The draft is dropped and the update carries on to the
+    // handler that owns that button (registered after this one in index.js).
+    if (MENU_LABELS.has(ctx.message.text)) {
+      cancelReport(ctx.from.id);
+      return next();
     }
 
     const text = ctx.message.text.trim();

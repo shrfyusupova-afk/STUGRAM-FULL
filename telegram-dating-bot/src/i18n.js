@@ -37,6 +37,8 @@ const STRINGS = {
     errContactOwn: "Iltimos, o'zingizning raqamingizni ulashing:",
     backButton: "⬅️ Orqaga",
     errFirstStep: "Bu birinchi qadam, orqaga qaytarib bo'lmaydi.",
+    errCommandInForm:
+      "Hozir anketa to'ldirilyapti. Buyruqlar ishlamaydi — savolga javob yozing.\nBoshidan boshlash uchun /start yuboring.",
     confirmIntro: (linkHtml) =>
       `✅ Ma'lumotlaringizni tasdiqlaysizmi?\n\n` +
       `"Ha" tugmasini bosish orqali kiritilgan ma'lumotlar to'g'riligini tasdiqlaysiz hamda ${linkHtml} rozilik bildirasiz.\n\n` +
@@ -228,6 +230,8 @@ const STRINGS = {
     errContactOwn: "Пожалуйста, поделитесь своим собственным номером:",
     backButton: "⬅️ Назад",
     errFirstStep: "Это первый шаг, назад пути нет.",
+    errCommandInForm:
+      "Сейчас заполняется анкета. Команды не работают — ответьте на вопрос.\nЧтобы начать заново, отправьте /start.",
     confirmIntro: (linkHtml) =>
       `✅ Вы подтверждаете свои данные?\n\n` +
       `Нажимая "Да", вы подтверждаете достоверность введённых данных и соглашаетесь с ${linkHtml}.\n\n` +
@@ -419,6 +423,8 @@ const STRINGS = {
     errContactOwn: "Please share your own phone number:",
     backButton: "⬅️ Back",
     errFirstStep: "This is the first step, there's nothing before it.",
+    errCommandInForm:
+      "The form is open. Commands do nothing here -- answer the question.\nSend /start to begin again.",
     confirmIntro: (linkHtml) =>
       `✅ Do you confirm your details?\n\n` +
       `By tapping "Yes", you confirm that the information you entered is accurate and agree to the ${linkHtml}.\n\n` +

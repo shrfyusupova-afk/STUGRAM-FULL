@@ -19,6 +19,27 @@ function isBackText(ctx, lang) {
   return ctx.message?.text?.trim() === t(lang, "backButton");
 }
 
+// A slash command is never the answer to "what is your name?". The stage
+// middleware runs before bot.start, so while the form is open EVERY update
+// belongs to the current step -- and "/start" was being stored as somebody's
+// name (verified: the saved profile really did come out named "/start").
+// Worse, that left no way out at all: someone who opened the form and
+// changed their mind had every later tap read as input to whatever step
+// they were stuck on.
+function commandName(ctx) {
+  const msg = ctx.message;
+  if (typeof msg?.text !== "string") return null;
+  const entity = msg.entities?.find((e) => e.type === "bot_command" && e.offset === 0);
+  if (!entity) return null;
+  // "/anketa@SomeBot" in a group -- the bot name is not part of the command.
+  return msg.text.slice(1, entity.length).split("@")[0].toLowerCase();
+}
+
+// The commands that mean "take me back to the beginning of the form". Both
+// already do exactly that outside the wizard, so honouring them inside it is
+// the behaviour a person expects, not a special case they have to learn.
+const RESTART_COMMANDS = new Set(["start", "anketa"]);
+
 // One render function per step -- called both when moving forward AND when
 // going back, so each step always sets its OWN correct keyboard rather than
 // relying on whatever the previous step left behind.
@@ -217,6 +238,18 @@ const profileWizard = new Scenes.WizardScene(
     const lang = ctx.wizard.state.lang;
     const idx = ctx.wizard.state.stepIndex;
     const stepKey = STEP_ORDER[idx];
+
+    const command = commandName(ctx);
+    if (command) {
+      if (RESTART_COMMANDS.has(command)) {
+        ctx.wizard.state.profile = ctx.wizard.state.isEditing ? { ...(await getProfile(ctx.from.id)) } : {};
+        ctx.wizard.state.stepIndex = 0;
+        await renderStep(ctx, STEP_ORDER[0]);
+        return;
+      }
+      await ctx.reply(t(lang, "errCommandInForm"));
+      return;
+    }
 
     if (isBackText(ctx, lang)) {
       if (idx === 0) {

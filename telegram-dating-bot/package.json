@@ -5,7 +5,8 @@
   "description": "Standalone Telegram bot for a dating/matchmaking (tanishish) service — profile creation flow.",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node test/adminMedia.test.js && node test/e2e.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
