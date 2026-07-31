@@ -209,6 +209,29 @@ async function init() {
   // is what people mute a bot for -- or has to re-derive "have I said this
   // yet" from data that does not record it.
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS like_notice_at INTEGER NOT NULL DEFAULT 0`);
+
+  // Win-back campaign state.
+  //
+  // last_seen_at is the only way to know somebody has drifted: updated_at
+  // moves only when the anketa is saved, so a person who browses daily and
+  // never edits looks identical to one who left months ago.
+  //
+  // winback_stage records how far the campaign has got with this person (0 =
+  // nothing sent, 3 = the day-3 message, 7 = the day-7 one). It is reset the
+  // moment they come back, so the sequence starts over next time rather than
+  // being spent forever.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS winback_stage INTEGER NOT NULL DEFAULT 0`);
+  // DEFAULT TRUE matters: everyone who already exists has not opted out.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE`);
+  // Telegram answers 403 for "bot was blocked by the user". That is not an
+  // error, it is a fact worth recording -- writing to them again is wasted
+  // quota forever.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN NOT NULL DEFAULT FALSE`);
+  await query(
+    `CREATE INDEX IF NOT EXISTS profiles_winback_idx ON profiles (last_seen_at)
+       WHERE active = TRUE AND notifications_enabled = TRUE AND bot_blocked = FALSE`
+  );
 }
 
 // Rows come back with snake_case columns and Date objects; the rest of the
@@ -543,6 +566,78 @@ async function backfillMatchUnlocks() {
       JOIN likes b ON b.liker_id = a.liked_id AND b.liked_id = a.liker_id
     ON CONFLICT DO NOTHING`);
   return rowCount;
+}
+
+
+// --- win-back ----------------------------------------------------------------
+
+// Coming back resets the campaign, and clears bot_blocked: somebody who just
+// sent an update plainly has not blocked us, whatever a stale 403 once said.
+async function touchLastSeen(userId) {
+  await query(
+    `UPDATE profiles SET last_seen_at = NOW(), winback_stage = 0, bot_blocked = FALSE WHERE user_id = $1`,
+    [String(userId)]
+  );
+}
+
+// Who is due the message for this stage. `stage` doubles as the marker, so
+// "winback_stage < $stage" is both "hasn't had this one" and "hasn't had a
+// later one" in a single condition.
+//
+// last_seen_at IS NULL covers profiles created before the column existed --
+// they are treated as idle, which is almost certainly true.
+async function listWinbackTargets(stage, beforeIso, limit) {
+  const { rows } = await query(
+    `SELECT user_id, gender, name
+       FROM profiles
+      WHERE active = TRUE
+        AND notifications_enabled = TRUE
+        AND bot_blocked = FALSE
+        AND name IS NOT NULL
+        AND winback_stage < $1
+        -- COALESCE, not "IS NULL OR": last_seen_at is null for anyone who
+        -- registered before the column existed AND for anyone who signed up
+        -- and left, because the middleware that writes it cannot run before
+        -- the profile row exists. Treating null as "infinitely idle" put a
+        -- brand-new signup into the day-3 batch the same afternoon. Falling
+        -- back to updated_at is both safe and true: a profile saved four days
+        -- ago and untouched since really has been idle four days.
+        AND COALESCE(last_seen_at, updated_at) < $2
+      ORDER BY COALESCE(last_seen_at, updated_at)
+      LIMIT $3`,
+    [stage, beforeIso, limit]
+  );
+  return rows.map((r) => ({ userId: r.user_id, gender: r.gender, name: r.name }));
+}
+
+async function markWinbackSent(userId, stage) {
+  await query(`UPDATE profiles SET winback_stage = $2 WHERE user_id = $1`, [String(userId), stage]);
+}
+
+async function markBotBlocked(userId) {
+  await query(`UPDATE profiles SET bot_blocked = TRUE WHERE user_id = $1`, [String(userId)]);
+}
+
+async function setNotificationsEnabled(userId, enabled) {
+  await query(`UPDATE profiles SET notifications_enabled = $2 WHERE user_id = $1`, [String(userId), !!enabled]);
+}
+
+async function getNotificationsEnabled(userId) {
+  const { rows } = await query(`SELECT notifications_enabled FROM profiles WHERE user_id = $1`, [String(userId)]);
+  return rows.length ? rows[0].notifications_enabled !== false : true;
+}
+
+// The number in the message is real. "New people joined!" with nothing behind
+// it is the fastest way to teach somebody that these messages are noise.
+async function countNewProfilesSince(gender, sinceIso) {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS n FROM profiles
+      WHERE gender = $1 AND active = TRUE
+        AND media_file_id IS NOT NULL AND phone IS NOT NULL
+        AND updated_at >= $2`,
+    [gender, sinceIso]
+  );
+  return rows[0].n;
 }
 
 // --- referrals ---------------------------------------------------------------
@@ -882,6 +977,8 @@ module.exports = {
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   getLikeNoticeAt, setLikeNoticeAt,
   backfillMatchUnlocks,
+  touchLastSeen, listWinbackTargets, markWinbackSent, markBotBlocked,
+  setNotificationsEnabled, getNotificationsEnabled, countNewProfilesSince,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,

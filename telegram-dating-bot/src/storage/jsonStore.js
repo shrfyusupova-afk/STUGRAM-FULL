@@ -346,6 +346,76 @@ async function backfillMatchUnlocks() {
   return granted;
 }
 
+
+// --- win-back ----------------------------------------------------------------
+// Same behaviour as the Postgres version; see there for why each field exists.
+
+async function touchLastSeen(userId) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return;
+  all[key] = { ...all[key], lastSeenAt: new Date().toISOString(), winbackStage: 0, botBlocked: false };
+  writeJson(DB_PATH, all);
+}
+
+async function listWinbackTargets(stage, beforeIso, limit) {
+  const all = readJson(DB_PATH);
+  const out = [];
+  for (const [userId, p] of Object.entries(all)) {
+    if (!p?.name) continue;
+    if (p.active === false) continue;
+    if (p.notificationsEnabled === false) continue;
+    if (p.botBlocked) continue;
+    if ((p.winbackStage || 0) >= stage) continue;
+    // See the Postgres version: a missing lastSeenAt falls back to updatedAt
+    // rather than counting as infinitely idle, which would have put a signup
+    // from this afternoon into the day-3 batch.
+    const idleSince = p.lastSeenAt || p.updatedAt;
+    if (idleSince && idleSince >= beforeIso) continue;
+    out.push({ userId, gender: p.gender, name: p.name, idleSince: idleSince || "" });
+  }
+  // Oldest (and never-seen) first, matching the SQL ordering.
+  out.sort((a, b) => String(a.idleSince).localeCompare(String(b.idleSince)));
+  return out.slice(0, limit).map(({ userId, gender, name }) => ({ userId, gender, name }));
+}
+
+function patchProfile(userId, patch) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return;
+  all[key] = { ...all[key], ...patch };
+  writeJson(DB_PATH, all);
+}
+
+async function markWinbackSent(userId, stage) {
+  patchProfile(userId, { winbackStage: stage });
+}
+
+async function markBotBlocked(userId) {
+  patchProfile(userId, { botBlocked: true });
+}
+
+async function setNotificationsEnabled(userId, enabled) {
+  patchProfile(userId, { notificationsEnabled: !!enabled });
+}
+
+async function getNotificationsEnabled(userId) {
+  const p = readJson(DB_PATH)[String(userId)];
+  return p ? p.notificationsEnabled !== false : true;
+}
+
+async function countNewProfilesSince(gender, sinceIso) {
+  const all = readJson(DB_PATH);
+  let n = 0;
+  for (const p of Object.values(all)) {
+    if (p?.gender !== gender) continue;
+    if (p.active === false || !p.mediaFileId || !p.phone) continue;
+    if (!p.updatedAt || p.updatedAt < sinceIso) continue;
+    n++;
+  }
+  return n;
+}
+
 // --- referrals ---------------------------------------------------------------
 //
 // Keyed by the INVITED person, matching the Postgres primary key: someone can
@@ -597,6 +667,13 @@ module.exports = {
   getLikeNoticeAt,
   setLikeNoticeAt,
   backfillMatchUnlocks,
+  touchLastSeen,
+  listWinbackTargets,
+  markWinbackSent,
+  markBotBlocked,
+  setNotificationsEnabled,
+  getNotificationsEnabled,
+  countNewProfilesSince,
   recordDislike,
   getDislikes,
   getDiscoverState,

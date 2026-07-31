@@ -4,7 +4,7 @@ const express = require("express");
 const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
-const { registerDiscoverHandlers, handleUnlockDeepLink, sendProfileToChat } = require("./discover");
+const { registerDiscoverHandlers, handleUnlockDeepLink, sendProfileToChat, openDiscovery } = require("./discover");
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
@@ -18,6 +18,7 @@ const {
   registerReferralClick,
   registerReferralHandlers,
 } = require("./referral");
+const { startWinbackSweeper, registerWinbackHandlers } = require("./winback");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
@@ -26,7 +27,7 @@ const { createAdminBot } = require("./adminBot");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
   grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
-  backfillMatchUnlocks,
+  backfillMatchUnlocks, touchLastSeen,
 } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
@@ -187,6 +188,8 @@ bot.use(session());
 // update must not be delayed (or dropped) because a bookkeeping write was
 // slow or failed.
 const lastSeenUsername = new Map();
+const lastSeenTouch = new Map();
+const LAST_SEEN_THROTTLE_MS = 60 * 60 * 1000;
 bot.use((ctx, next) => {
   const from = ctx.from;
   if (from?.id) {
@@ -197,6 +200,19 @@ bot.use((ctx, next) => {
       lastSeenUsername.set(from.id, handle);
       Promise.resolve(setTelegramUsername(from.id, handle)).catch((err) =>
         console.error("username capture failed (ignored):", err.message)
+      );
+    }
+
+    // "When were they last here" -- the only thing that can tell an active
+    // person from one who drifted away, since updated_at moves only when the
+    // anketa is saved. Throttled to once an hour per person: writing on every
+    // update would be a database round-trip per tap for a field nothing reads
+    // more than twice a day.
+    const now = Date.now();
+    if (now - (lastSeenTouch.get(from.id) || 0) > LAST_SEEN_THROTTLE_MS) {
+      lastSeenTouch.set(from.id, now);
+      Promise.resolve(touchLastSeen(from.id)).catch((err) =>
+        console.error("last-seen update failed (ignored):", err.message)
       );
     }
   }
@@ -304,6 +320,7 @@ registerProfileSettingsHandlers(bot);
 registerPremiumHandlers(bot);
 registerVipChatHandlers(bot);
 registerReferralHandlers(bot);
+registerWinbackHandlers(bot, { openDiscovery });
 
 bot.telegram
   .getMe()
@@ -579,6 +596,11 @@ if (webhookDomain) {
       } else {
         console.log("keep-awake: disabled (KEEP_AWAKE=false) -- the service will sleep when idle");
       }
+
+      // Runs inside this process on a timer, not as a second Render service:
+      // the free plan bills instance-hours per ACCOUNT, so a second always-on
+      // service would push the pair past the monthly allowance and stop both.
+      startWinbackSweeper(bot.telegram);
 
       keepWebhookRegistered(
         bot.telegram,

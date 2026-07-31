@@ -69,6 +69,14 @@ module.exports = {
   getLikeNoticeAt: store.getLikeNoticeAt,
   setLikeNoticeAt: store.setLikeNoticeAt,
   backfillMatchUnlocks: store.backfillMatchUnlocks,
+  // Win-back campaign.
+  touchLastSeen: store.touchLastSeen,
+  listWinbackTargets: store.listWinbackTargets,
+  markWinbackSent: store.markWinbackSent,
+  markBotBlocked: store.markBotBlocked,
+  setNotificationsEnabled: store.setNotificationsEnabled,
+  getNotificationsEnabled: store.getNotificationsEnabled,
+  countNewProfilesSince: store.countNewProfilesSince,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,

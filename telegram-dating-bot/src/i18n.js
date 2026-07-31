@@ -142,6 +142,33 @@ const STRINGS = {
       "⚠️ Do'stingiz anketani <b>oxirigacha</b> — telefon raqamigacha — to'ldirishi shart. " +
       "Shundagina hisobga olinadi.",
     referralShareButton: "📤 Havolani ulashish",
+    // --- win-back campaign ---
+    // Every number here is counted from the database at send time. A message
+    // that says "new people joined" when nobody did is the fastest way to
+    // teach somebody to ignore this bot.
+    winbackWaiting: ({ name, waiting }) =>
+      `👋 <b>${name}, sizni kutishyapti!</b>\n\n` +
+      `💌 Siz yo'q ekansiz, <b>${waiting} kishi</b> sizning anketangizga layk bosdi.\n` +
+      "Ular hozir ham javobingizni kutishmoqda.\n\n" +
+      "Bir daqiqa vaqtingizni ajrating — kim ekanini ko'ring 👇",
+    winbackFresh: ({ name, fresh, gender }) =>
+      `💛 <b>${name}, sizni sog'indik!</b>\n\n` +
+      `Siz kirmagan uch kunda botga <b>${fresh} ta</b> yangi ` +
+      `${gender === "male" ? "qiz" : "yigit"} qo'shildi — ` +
+      "ular ham jiddiy tanishuv izlab yurishibdi.\n\n" +
+      "🔥 Eng yaxshi anketalar tez ketadi. Ulgurib qoling 👇",
+    winbackFreshWeek: ({ name, fresh, gender }) =>
+      `💔 <b>${name}, bir hafta bo'ldi...</b>\n\n` +
+      `Shu vaqt ichida <b>${fresh} ta</b> yangi ` +
+      `${gender === "male" ? "qiz" : "yigit"} anketa ochdi. ` +
+      "Ehtimol, ular orasida aynan siz qidirayotgan inson bordir.\n\n" +
+      "💛 Bitta layk — bitta imkoniyat. Bir ko'z tashlang 👇",
+    winbackBrowseButton: "🔍 Anketalarni ko'rish",
+    winbackMuteButton: "🔕 Bunday xabarlar kerak emas",
+    winbackMuted:
+      "🔕 Yaxshi, boshqa bunday xabar yubormaymiz.\n\n" +
+      "Fikringiz o'zgarsa — «⚙️ Anketa sozlamalari» bo'limidan qaytadan yoqishingiz mumkin. " +
+      "Layk va mos tushishlar haqidagi xabarlar esa o'z holicha qoladi.",
     referralShareText: "Men tanishuv botini topdim — sen ham qara! 💛",
     referralLinkUnavailable:
       "🎁 Taklif havolasi hozircha tayyor emas. Bir necha daqiqadan keyin qayta urinib ko'ring.",
@@ -205,6 +232,13 @@ const STRINGS = {
     profileSettingsIntro: "⚙️ Anketa sozlamalari:",
     profileSettingsEdit: "✏️ Anketani tahrirlash",
     profileSettingsView: "👁 Mening anketam",
+    notificationsEnableButton: "🔔 Bildirishnomalarni yoqish",
+    notificationsDisableButton: "🔕 Bildirishnomalarni o'chirish",
+    notificationsEnabledNotice:
+      "🔔 Yoqildi. Yangi anketalar va sizni kutayotganlar haqida xabar beramiz.",
+    notificationsDisabledNotice:
+      "🔕 O'chirildi. Eslatma xabarlari kelmaydi.\n\n" +
+      "Layk va mos tushishlar haqidagi xabarlar esa o'z holicha qoladi.",
     profileSettingsDeactivate: "🔴 Anketani faolsizlantirish",
     profileSettingsActivate: "🟢 Anketani faollantirish",
     profileDeactivated: "✅ Anketangiz faolsizlantirildi. Endi boshqalarga ko'rinmaysiz.",
@@ -386,6 +420,29 @@ const STRINGS = {
       "⚠️ Друг должен заполнить анкету <b>до конца</b> — включая номер телефона. " +
       "Только тогда это засчитывается.",
     referralShareButton: "📤 Поделиться ссылкой",
+    winbackWaiting: ({ name, waiting }) =>
+      `👋 <b>${name}, вас ждут!</b>\n\n` +
+      `💌 Пока вас не было, <b>${waiting} человек</b> поставили лайк вашей анкете.\n` +
+      "Они до сих пор ждут вашего ответа.\n\n" +
+      "Уделите минуту — посмотрите, кто это 👇",
+    winbackFresh: ({ name, fresh, gender }) =>
+      `💛 <b>${name}, мы соскучились!</b>\n\n` +
+      `За три дня, что вас не было, в боте появилось <b>${fresh}</b> новых ` +
+      `${gender === "male" ? "девушек" : "парней"} — ` +
+      "они тоже ищут серьёзное знакомство.\n\n" +
+      "🔥 Лучшие анкеты разбирают быстро. Успейте 👇",
+    winbackFreshWeek: ({ name, fresh, gender }) =>
+      `💔 <b>${name}, прошла неделя...</b>\n\n` +
+      `За это время анкеты создали <b>${fresh}</b> новых ` +
+      `${gender === "male" ? "девушек" : "парней"}. ` +
+      "Возможно, среди них именно тот человек, которого вы ищете.\n\n" +
+      "💛 Один лайк — один шанс. Загляните 👇",
+    winbackBrowseButton: "🔍 Посмотреть анкеты",
+    winbackMuteButton: "🔕 Такие сообщения не нужны",
+    winbackMuted:
+      "🔕 Хорошо, больше таких сообщений не будет.\n\n" +
+      "Передумаете — включите обратно в «⚙️ Настройки анкеты». " +
+      "Уведомления о лайках и совпадениях останутся как были.",
     referralShareText: "Нашёл бот знакомств — посмотри и ты! 💛",
     referralLinkUnavailable:
       "🎁 Ссылка пока не готова. Попробуйте через несколько минут.",
@@ -448,6 +505,13 @@ const STRINGS = {
     profileSettingsIntro: "⚙️ Настройки анкеты:",
     profileSettingsEdit: "✏️ Редактировать анкету",
     profileSettingsView: "👁 Моя анкета",
+    notificationsEnableButton: "🔔 Включить уведомления",
+    notificationsDisableButton: "🔕 Отключить уведомления",
+    notificationsEnabledNotice:
+      "🔔 Включено. Будем сообщать о новых анкетах и о тех, кто вас ждёт.",
+    notificationsDisabledNotice:
+      "🔕 Отключено. Напоминания приходить не будут.\n\n" +
+      "Уведомления о лайках и совпадениях остаются как были.",
     profileSettingsDeactivate: "🔴 Деактивировать анкету",
     profileSettingsActivate: "🟢 Активировать анкету",
     profileDeactivated: "✅ Ваша анкета деактивирована. Теперь она не видна другим.",
@@ -629,6 +693,29 @@ const STRINGS = {
       "⚠️ Your friend must finish the whole form — phone number included. " +
       "Only then does it count.",
     referralShareButton: "📤 Share the link",
+    winbackWaiting: ({ name, waiting }) =>
+      `👋 <b>${name}, people are waiting for you!</b>\n\n` +
+      `💌 While you were away, <b>${waiting} people</b> liked your profile.\n` +
+      "They are still waiting to hear back.\n\n" +
+      "Take a minute -- see who they are 👇",
+    winbackFresh: ({ name, fresh, gender }) =>
+      `💛 <b>${name}, we have missed you!</b>\n\n` +
+      `In the three days you were away, <b>${fresh}</b> new ` +
+      `${gender === "male" ? "women" : "men"} joined -- ` +
+      "looking for something serious, same as you.\n\n" +
+      "🔥 The best profiles do not stay free for long 👇",
+    winbackFreshWeek: ({ name, fresh, gender }) =>
+      `💔 <b>${name}, it has been a week...</b>\n\n` +
+      `In that time <b>${fresh}</b> new ` +
+      `${gender === "male" ? "women" : "men"} created a profile. ` +
+      "One of them might be exactly who you are looking for.\n\n" +
+      "💛 One like, one chance. Take a look 👇",
+    winbackBrowseButton: "🔍 Browse profiles",
+    winbackMuteButton: "🔕 Stop sending these",
+    winbackMuted:
+      "🔕 Done -- no more messages like this.\n\n" +
+      "Changed your mind? Turn them back on in \"⚙️ Profile settings\". " +
+      "Like and match notifications are untouched.",
     referralShareText: "Found a dating bot — take a look! 💛",
     referralLinkUnavailable:
       "🎁 The invite link is not ready yet. Try again in a few minutes.",
@@ -691,6 +778,13 @@ const STRINGS = {
     profileSettingsIntro: "⚙️ Profile settings:",
     profileSettingsEdit: "✏️ Edit profile",
     profileSettingsView: "👁 My profile",
+    notificationsEnableButton: "🔔 Turn notifications on",
+    notificationsDisableButton: "🔕 Turn notifications off",
+    notificationsEnabledNotice:
+      "🔔 On. We will tell you about new profiles and about people waiting for you.",
+    notificationsDisabledNotice:
+      "🔕 Off. No more reminders.\n\n" +
+      "Like and match notifications are untouched.",
     profileSettingsDeactivate: "🔴 Deactivate profile",
     profileSettingsActivate: "🟢 Activate profile",
     profileDeactivated: "✅ Your profile has been deactivated. Others can no longer see it.",

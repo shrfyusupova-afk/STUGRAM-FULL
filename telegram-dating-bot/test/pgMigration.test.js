@@ -74,6 +74,39 @@ const pg = require("../src/storage/pgStore");
   await pg.setLikeNoticeAt(1001, 3);
   assert.strictEqual(await pg.getLikeNoticeAt(1001), 3, "the marker must be able to go DOWN again");
 
+  // 7. Win-back state. The important one is the idle fallback: a profile with
+  //    no last_seen_at must be judged by updated_at, not treated as
+  //    infinitely idle -- otherwise a signup from this afternoon lands in the
+  //    day-3 batch.
+  const fresh = "1002";
+  await pg.saveProfile(fresh, { name: "Yangi", age: 25, gender: "male", genderLabel: "Erkak",
+    location: "Toshkent", bio: "bio", phone: "+998900000002", mediaFileId: "F", mediaType: "photo" });
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  assert.strictEqual(
+    (await pg.listWinbackTargets(3, threeDaysAgo, 50)).some((t) => t.userId === fresh),
+    false,
+    "a profile saved just now is not idle, even with last_seen_at NULL"
+  );
+
+  await pg.touchLastSeen(fresh);
+  await pg.markWinbackSent(fresh, 3);
+  assert.strictEqual(
+    (await pg.listWinbackTargets(3, new Date().toISOString(), 50)).some((t) => t.userId === fresh),
+    false,
+    "a stage already sent is not re-sent"
+  );
+  await pg.touchLastSeen(fresh);
+  assert.strictEqual(await pg.getNotificationsEnabled(fresh), true, "defaults to on");
+  await pg.setNotificationsEnabled(fresh, false);
+  assert.strictEqual(await pg.getNotificationsEnabled(fresh), false);
+  await pg.markBotBlocked(fresh);
+  assert.strictEqual(
+    (await pg.listWinbackTargets(7, new Date().toISOString(), 50)).some((t) => t.userId === fresh),
+    false,
+    "blocked and opted out are both excluded"
+  );
+  assert.ok((await pg.countNewProfilesSince("male", threeDaysAgo)) >= 1, "new profiles are counted");
+
   console.log("\nall postgres migration + referral checks passed");
   await pg.close();
 })().catch((e) => { console.error("FAILED:", e.message); process.exit(1); });

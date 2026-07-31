@@ -469,26 +469,32 @@ async function showNextCandidate(ctx, lang, myGender) {
   await ctx.reply(t(lang, "discoverTemporaryProblem"), discoverKeyboard(lang));
 }
 
+
+// The one way into browsing, so the menu button and the win-back message's
+// "see profiles" button land on exactly the same screen rather than drifting
+// into two versions of it.
+async function openDiscovery(ctx) {
+  const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+  const me = await getProfile(ctx.from.id);
+  // Says so out loud rather than silently doing nothing -- a tap that
+  // produces no response at all just reads as "the bot is broken".
+  if (!me?.gender) {
+    await ctx.reply(t(lang, "noProfileYet"));
+    return;
+  }
+  // No "your photos are protected" preamble here: protect_content already
+  // enforces it silently on every card (see PROTECTED), and an explanatory
+  // wall of text between tapping "browse" and seeing the first person just
+  // delays the thing they asked for.
+  await showNextCandidate(ctx, lang, me.gender);
+}
+
 function registerDiscoverHandlers(bot) {
   const discoverLabels = Object.values(STRINGS).map((dict) => dict.menu.discover);
   const backLabels = Object.values(STRINGS).map((dict) => dict.backButton);
   const reportLabels = Object.values(STRINGS).map((dict) => dict.reportUserButton);
 
-  bot.hears(discoverLabels, async (ctx) => {
-    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    const me = await getProfile(ctx.from.id);
-    // Says so out loud rather than silently doing nothing -- a tap that
-    // produces no response at all just reads as "the bot is broken".
-    if (!me?.gender) {
-      await ctx.reply(t(lang, "noProfileYet"));
-      return;
-    }
-    // No "your photos are protected" preamble here: protect_content already
-    // enforces it silently on every card (see PROTECTED), and an explanatory
-    // wall of text between tapping "browse" and seeing the first person just
-    // delays the thing they asked for.
-    await showNextCandidate(ctx, lang, me.gender);
-  });
+  bot.hears(discoverLabels, openDiscovery);
 
   bot.hears(LIKE, async (ctx) => {
     const state = await getDiscoverState(ctx.from.id);
@@ -673,6 +679,7 @@ module.exports = {
   buildProfileCaption,
   canViewProfile,
   recordLikeWithMatchNotification,
+  openDiscovery,
   // Exported so likes.js asks the SAME question about access rather than
   // re-deriving it from mutual likes -- which is what quietly handed the
   // contact to both sides of a match.
