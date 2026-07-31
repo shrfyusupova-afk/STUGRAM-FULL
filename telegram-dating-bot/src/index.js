@@ -26,6 +26,7 @@ const { createAdminBot } = require("./adminBot");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
   grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
+  backfillMatchUnlocks,
 } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
@@ -64,6 +65,18 @@ if (!token) {
 // which is exactly what moving off the JSON files was meant to stop.
 async function prepareStorage() {
   await initStorage();
+
+  // Pairs that matched BEFORE the contact stopped being granted to both sides
+  // already had each other's number. Taking it back retroactively would mean
+  // the app removing something a person was given, so their access is written
+  // down explicitly instead. Idempotent, and a no-op after the first run.
+  try {
+    const granted = await backfillMatchUnlocks();
+    if (granted) console.log(`Backfilled ${granted} pre-existing match unlock(s).`);
+  } catch (err) {
+    console.error("match unlock backfill failed (continuing):", err.message);
+  }
+
   if (!usePostgres) return;
   try {
     const { migrateJsonToPg } = require("./storage/migrateJsonToPg");

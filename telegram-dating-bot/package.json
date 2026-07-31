@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/adminMedia.test.js && node test/e2e.test.js && node test/referral.test.js && node test/likeMilestones.test.js",
+    "test": "node test/adminMedia.test.js && node test/e2e.test.js && node test/referral.test.js && node test/likeMilestones.test.js && node test/match.test.js",
     "test:pg": "node test/pgMigration.test.js"
   },
   "dependencies": {

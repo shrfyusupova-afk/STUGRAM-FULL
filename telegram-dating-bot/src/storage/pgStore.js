@@ -526,6 +526,25 @@ async function setLikeNoticeAt(userId, value) {
   await query(`UPDATE profiles SET like_notice_at = $2 WHERE user_id = $1`, [String(userId), value]);
 }
 
+
+// One-off repair for pairs that matched BEFORE the contact stopped being
+// granted to both sides. Those two people already had each other's number;
+// taking it away retroactively would be the app removing something a person
+// was given, which is worse than the inconsistency it tidies up.
+//
+// A single indexed self-join, and ON CONFLICT makes it a no-op on every run
+// after the first, so it is safe to call at every boot. Delete it once every
+// deployment has started at least once past this change.
+async function backfillMatchUnlocks() {
+  const { rowCount } = await query(`
+    INSERT INTO unlocks (buyer_id, candidate_id)
+    SELECT a.liker_id, a.liked_id
+      FROM likes a
+      JOIN likes b ON b.liker_id = a.liked_id AND b.liked_id = a.liker_id
+    ON CONFLICT DO NOTHING`);
+  return rowCount;
+}
+
 // --- referrals ---------------------------------------------------------------
 
 // Returns true only if this is the FIRST time this person has been recorded as
@@ -862,6 +881,7 @@ module.exports = {
   createReferral, getReferral, markReferralRewarded, countReferrals,
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   getLikeNoticeAt, setLikeNoticeAt,
+  backfillMatchUnlocks,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,

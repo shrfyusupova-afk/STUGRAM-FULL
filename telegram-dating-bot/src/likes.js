@@ -5,6 +5,7 @@ const {
   sendCandidate,
   buildProfileCaption,
   recordLikeWithMatchNotification,
+  canViewProfile,
 } = require("./discover");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
@@ -50,8 +51,22 @@ async function showLikers(ctx) {
     // already offered right on this card via the ❤️ button, so there's
     // nothing to pitch a paywall for. A mutual match reveals the contact
     // directly on the card -- no separate "View profile" tap needed.
-    const mutualMatch = await hasLiked(myId, id) && await hasLiked(id, myId);
-    const captionOptions = mutualMatch ? { includeUnlock: false, contactPhone: profile.phone } : { includeUnlock: false };
+    // Two different questions, deliberately answered by two different rules.
+    //
+    // Whether to show ❤️/👎 depends only on whether this is already a mutual
+    // like: using canViewProfile here would hide ❤️ from a Premium user, who
+    // could then never like a liker back and the other person would never be
+    // told about a real match.
+    //
+    // Whether to show the CONTACT is canViewProfile, because a match no
+    // longer grants it to both sides -- it goes to whoever liked first. Left
+    // on mutualMatch, this list quietly handed the number to the responder
+    // anyway, one screen away from the paywall that had just refused them.
+    const mutualMatch = (await hasLiked(myId, id)) && (await hasLiked(id, myId));
+    const canSee = await canViewProfile(myId, id);
+    const captionOptions = canSee
+      ? { includeUnlock: false, contactPhone: profile.phone }
+      : { includeUnlock: false };
     const keyboard = mutualMatch ? undefined : respondKeyboard(id);
     await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
   }
@@ -72,22 +87,21 @@ function registerLikesHandlers(bot) {
     const candidateId = ctx.match[1];
     const myId = ctx.from.id;
     const lang = await getLanguage(myId) || DEFAULT_LANG;
-    // skipProfileFor: this person is already looking at the card, which is
-    // rewritten in place just below. Without this they'd get a second,
-    // identical photo pushed underneath the one they just tapped.
-    await recordLikeWithMatchNotification(ctx, myId, candidateId, { skipProfileFor: myId });
+    await recordLikeWithMatchNotification(ctx, myId, candidateId);
     await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
     const candidate = await getProfile(candidateId);
     if (!candidate) return;
 
-    // Only a genuine mutual like reveals the contact. Liking someone who
-    // hasn't liked back yet must not expose their number just because they
-    // now appear in this list.
-    const mutual = await hasLiked(candidateId, myId);
+    // Asks the one question that decides this everywhere: does this viewer
+    // actually have access? A mutual like is no longer enough on its own --
+    // on a match the contact goes to whoever liked FIRST, and answering a
+    // like is by definition not that. Reading "mutual" here instead was
+    // exactly how the responder kept seeing the number.
+    const canSee = await canViewProfile(myId, candidateId);
     const caption = buildProfileCaption(lang, candidateId, candidate, {
       includeUnlock: false,
-      ...(mutual ? { contactPhone: candidate.phone } : {}),
+      ...(canSee ? { contactPhone: candidate.phone } : {}),
     });
 
     try {

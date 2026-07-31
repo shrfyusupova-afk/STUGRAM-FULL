@@ -213,12 +213,16 @@ async function sendCandidate(ctx, lang, candidateId, profile, keyboardExtra, cap
 // True once the viewer can see this candidate's contact for free: they paid
 // for a one-time unlock, both sides have liked each other, or the viewer has
 // an active Premium subscription (its whole point is unlimited access).
+// Access is a recorded fact, not something re-derived from the likes table.
+//
+// It used to include "we liked each other", which handed the contact to BOTH
+// sides of a match. It no longer does: on a match the person who liked FIRST
+// is granted an unlock row, and that row is what this reads. Deriving it from
+// mutual likes cannot express that, because neither backend records which
+// like came first -- but the code that forms the match knows, so it writes
+// the answer down at that moment instead.
 async function canViewProfile(viewerId, candidateId) {
-  return (
-    await hasUnlocked(viewerId, candidateId) ||
-    await hasPremium(viewerId) ||
-    (await hasLiked(viewerId, candidateId) && await hasLiked(candidateId, viewerId))
-  );
+  return (await hasUnlocked(viewerId, candidateId)) || (await hasPremium(viewerId));
 }
 
 // Sends a candidate's profile straight to an arbitrary chat (not necessarily
@@ -375,11 +379,10 @@ async function notifyNewLike(telegram, likedId) {
   });
 }
 
-// skipProfileFor: the id of someone who is ALREADY looking at this person's
-// card (the likes list edits it in place). Sending them the profile again
-// would put a second, identical photo in the chat right under the one they
-// just tapped.
-async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipProfileFor } = {}) {
+// The old skipProfileFor option is gone with the change above: the person who
+// answers a like is no longer sent a profile card at all, so there is no
+// longer a duplicate to suppress.
+async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const alreadyLikedByMe = await hasLiked(likerId, likedId);
   await recordLike(likerId, likedId);
   // A repeat tap on someone already liked is not news -- never re-notify.
@@ -395,25 +398,26 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipProf
     return;
   }
 
+  // A match. Note who is who: likedId had ALREADY liked, which is the only
+  // reason this is a match at all, so likedId liked FIRST and likerId is the
+  // one who just answered.
+  //
+  // Only the first liker is given the contact. They took the risk of liking a
+  // stranger with nothing in return; the reward for that is the connection.
+  // The one answering already knows somebody is interested -- they saw it in
+  // their likes list -- so for them the contact is worth paying for.
   const me = await getProfile(likerId);
   const them = await getProfile(likedId);
   if (!me || !them) return;
 
-  const myLang = await getLanguage(likerId) || DEFAULT_LANG;
-  const theirLang = await getLanguage(likedId) || DEFAULT_LANG;
+  const myLang = (await getLanguage(likerId)) || DEFAULT_LANG;
+  const theirLang = (await getLanguage(likedId)) || DEFAULT_LANG;
 
-  const skipLiker = String(skipProfileFor) === String(likerId);
-  try {
-    await ctx.telegram.sendMessage(
-      likerId,
-      skipLiker
-        ? t(myLang, "matchNotification")(them.name)
-        : `${t(myLang, "matchNotification")(them.name)}\n\n${t(myLang, "profileBelowIntro")}`
-    );
-    if (!skipLiker) await sendProfileToChat(ctx.telegram, likerId, myLang, likedId);
-  } catch (err) {
-    console.error("match notification (liker) failed:", err.message);
-  }
+  // Written down rather than inferred later: canViewProfile reads this row,
+  // and nothing in either backend records which like came first.
+  await grantUnlock(likedId, likerId);
+
+  // The first liker: told, and given the contact.
   try {
     await ctx.telegram.sendMessage(
       likedId,
@@ -421,7 +425,17 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipProf
     );
     await sendProfileToChat(ctx.telegram, likedId, theirLang, likerId);
   } catch (err) {
-    console.error("match notification (liked) failed:", err.message);
+    console.error("match notification (first liker) failed:", err.message);
+  }
+
+  // The one who answered: told what happened and what it means, honestly --
+  // the other person has their contact and can write first. Then the usual
+  // unlock screen, which already offers the free routes as well as the price.
+  try {
+    await ctx.reply(t(myLang, "matchNotificationLocked")(them.name), { parse_mode: "HTML" });
+    await handleUnlockDeepLink(ctx, myLang, String(likedId));
+  } catch (err) {
+    console.error("match notification (responder) failed:", err.message);
   }
 }
 
@@ -659,6 +673,10 @@ module.exports = {
   buildProfileCaption,
   canViewProfile,
   recordLikeWithMatchNotification,
+  // Exported so likes.js asks the SAME question about access rather than
+  // re-deriving it from mutual likes -- which is what quietly handed the
+  // contact to both sides of a match.
+  canViewProfile,
   // Shared with the mini app so the "how many people liked you" number it
   // shows is the same one the bot's own notification counts, not a second
   // implementation that could drift.

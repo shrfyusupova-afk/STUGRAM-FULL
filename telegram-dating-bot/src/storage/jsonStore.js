@@ -323,6 +323,29 @@ async function setLikeNoticeAt(userId, value) {
   writeJson(DB_PATH, all);
 }
 
+
+// See the Postgres version: pairs that matched before the contact stopped
+// being granted to both sides keep what they already had.
+async function backfillMatchUnlocks() {
+  const likes = readJson(LIKES_DB_PATH);
+  const unlocks = readJson(UNLOCKS_DB_PATH);
+  let granted = 0;
+  // likes is keyed by the LIKED person, holding the list of who liked them.
+  for (const [likedId, likers] of Object.entries(likes)) {
+    for (const likerId of likers || []) {
+      const mutual = (likes[likerId] || []).includes(String(likedId));
+      if (!mutual) continue;
+      const set = new Set(unlocks[likerId] || []);
+      if (set.has(String(likedId))) continue;
+      set.add(String(likedId));
+      unlocks[likerId] = [...set];
+      granted++;
+    }
+  }
+  if (granted) writeJson(UNLOCKS_DB_PATH, unlocks);
+  return granted;
+}
+
 // --- referrals ---------------------------------------------------------------
 //
 // Keyed by the INVITED person, matching the Postgres primary key: someone can
@@ -573,6 +596,7 @@ module.exports = {
   consumeUnlockCredit,
   getLikeNoticeAt,
   setLikeNoticeAt,
+  backfillMatchUnlocks,
   recordDislike,
   getDislikes,
   getDiscoverState,

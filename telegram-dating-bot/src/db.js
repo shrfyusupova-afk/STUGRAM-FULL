@@ -68,6 +68,7 @@ module.exports = {
   consumeUnlockCredit: store.consumeUnlockCredit,
   getLikeNoticeAt: store.getLikeNoticeAt,
   setLikeNoticeAt: store.setLikeNoticeAt,
+  backfillMatchUnlocks: store.backfillMatchUnlocks,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,

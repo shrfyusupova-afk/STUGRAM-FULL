@@ -173,7 +173,11 @@ const STRINGS = {
     unlockCreditGone: "🎁 Bepul ochish imkoniyati qolmadi.",
     profileBelowIntro: "👇 Bu insonning profili pastda:",
     unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!",
-    matchedToast: "🎉 Mos tushdingiz! Endi profilni bepul ko'rishingiz mumkin.",
+    matchedToast: "🎉 Mos tushdingiz!",
+    matchNotificationLocked: (name) =>
+      `🎉 <b>Siz ${name} bilan mos tushdingiz!</b>\n\n` +
+      `${name} sizning aloqangizni oldi — u sizga birinchi bo'lib yozishi mumkin.\n\n` +
+      "Agar siz ham uning anketasini ochmoqchi bo'lsangiz, quyidagidan foydalaning 👇",
     matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz!`,
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     profileUnavailable:
@@ -412,7 +416,11 @@ const STRINGS = {
     unlockCreditGone: "🎁 Бесплатных открытий не осталось.",
     profileBelowIntro: "👇 Профиль этого человека ниже:",
     unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!",
-    matchedToast: "🎉 Это совпадение! Теперь вы можете бесплатно посмотреть анкету.",
+    matchedToast: "🎉 Это совпадение!",
+    matchNotificationLocked: (name) =>
+      `🎉 <b>У вас совпадение с ${name}!</b>\n\n` +
+      `${name} получил(а) ваши контакты — может написать вам первым.\n\n` +
+      "Если вы тоже хотите открыть анкету, выберите ниже 👇",
     matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}!`,
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     profileUnavailable:
@@ -651,7 +659,11 @@ const STRINGS = {
     unlockCreditGone: "🎁 No free unlocks left.",
     profileBelowIntro: "👇 Their profile is below:",
     unlockPaymentSuccessIntro: "🎉 Payment successful!",
-    matchedToast: "🎉 It's a match! You can now view the profile for free.",
+    matchedToast: "🎉 It's a match!",
+    matchNotificationLocked: (name) =>
+      `🎉 <b>It's a match with ${name}!</b>\n\n` +
+      `${name} has your contact and can write to you first.\n\n` +
+      "If you want to open their profile too, pick below 👇",
     matchNotification: (name) => `🎉 You and ${name} matched!`,
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     profileUnavailable:
