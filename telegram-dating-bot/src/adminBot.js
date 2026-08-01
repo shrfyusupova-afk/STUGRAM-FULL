@@ -11,6 +11,7 @@ const { profileLinkHref, profileLinkKind } = require("./profileLink");
 const { isRegistered } = require("./profileState");
 const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
 const { isGoneError, retryAfterMs } = require("./telegramSafety");
+const { floodGuardMiddleware } = require("./floodGuard");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -682,6 +683,14 @@ async function safeUpdateCard(ctx, text, keyboard) {
 // sending it from the admin bot would land in a chat they've never opened.
 function createAdminBot(token, mainBotTelegram) {
   const bot = new Telegraf(token);
+
+  // The main bot's flood guard exists because nothing else caps how fast a
+  // scripted client can fire updates. That reasoning applies here too, and
+  // more sharply: both bots run in this one process and share the same
+  // 5-connection Postgres pool, so a flood of admin-bot updates -- even
+  // unauthenticated ones, since /start alone does an isAdmin lookup -- can
+  // starve the pool and degrade the MAIN bot's real users, not just this one.
+  bot.use(floodGuardMiddleware);
 
   bot.start(async (ctx) => {
     // Being in the admins table is not enough on its own any more -- the
