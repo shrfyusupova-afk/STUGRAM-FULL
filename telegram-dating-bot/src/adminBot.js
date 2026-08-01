@@ -12,6 +12,7 @@ const { isRegistered } = require("./profileState");
 const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
 const { isGoneError, retryAfterMs } = require("./telegramSafety");
 const { floodGuardMiddleware } = require("./floodGuard");
+const { alert } = require("./alerts");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -1292,6 +1293,7 @@ function createAdminBot(token, mainBotTelegram) {
 
   bot.catch((err, ctx) => {
     console.error(`Admin bot error for update ${ctx.updateType}:`, err);
+    alert(`Admin bot error on ${ctx.updateType}:\n${err.stack || err.message}`).catch(() => {});
   });
 
   return bot;

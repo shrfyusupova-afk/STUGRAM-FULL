@@ -24,6 +24,7 @@ const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
+const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
   grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
@@ -65,7 +66,13 @@ process.on("unhandledRejection", (reason) => {
 // as a failure rather than a clean shutdown.
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception -- exiting so the platform restarts a clean process:", err);
-  process.exit(1);
+  // Best-effort, capped at 2s: this process is dying either way, and the
+  // send racing against a hard timeout inside alert() means a slow or
+  // hanging Telegram API call cannot delay the exit -- a zombie process is
+  // exactly the outcome the exit below exists to avoid.
+  alert(`Bot crashed and is restarting:\n${err.stack || err.message}`, { bypassThrottle: true, timeoutMs: 2000 })
+    .catch(() => {})
+    .finally(() => process.exit(1));
 });
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -174,6 +181,14 @@ const adminToken = process.env.ADMIN_BOT_TOKEN;
 // the bot they actually use, not through the admin bot.
 const bot = new Telegraf(token);
 const adminBot = adminToken ? createAdminBot(adminToken, bot.telegram) : null;
+
+// The admin bot's client when there is one -- an alert landing in the same
+// place as the rest of the operator's tools makes more sense than it arriving
+// as an unrelated message in the dating bot real users are also in. Falls
+// back to the main bot's client so alerts still work for anyone who has not
+// set up the admin bot at all.
+configureAlerts((adminBot || bot).telegram);
+
 const adminWebhookPath = "/telegram/admin-webhook";
 let adminWebhookSecret = process.env.ADMIN_WEBHOOK_SECRET;
 if (adminBot && webhookDomain) {
@@ -358,6 +373,7 @@ bot.telegram
 
 bot.catch((err, ctx) => {
   console.error(`Bot error for update ${ctx.updateType}:`, err);
+  alert(`Main bot error on ${ctx.updateType}:\n${err.stack || err.message}`).catch(() => {});
 });
 
 if (webhookDomain) {
@@ -387,6 +403,10 @@ if (webhookDomain) {
         process.env.CLICK_MERCHANT_ID && process.env.CLICK_SERVICE_ID && process.env.CLICK_SECRET_KEY
           ? "configured"
           : "NOT CONFIGURED (no payments possible)",
+      // Without ALERT_CHAT_ID, a crash or a broadcast failure is invisible
+      // until someone thinks to load this page or a user complains -- worth
+      // seeing at a glance, same reasoning as the two fields above it.
+      alerts: ALERT_CHAT_ID ? "configured" : "NOT CONFIGURED (crashes and failures are silent)",
       // The failure this endpoint previously could NOT see: everything above
       // can read "ok" while Telegram has no webhook for us, so the bot is
       // running and silently receiving nothing. Updated by the periodic

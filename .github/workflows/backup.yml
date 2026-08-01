@@ -1,0 +1,50 @@
+name: Daily database backup
+
+# Render Cron Jobs require a paid plan, so this runs here instead. Two
+# consequences worth knowing about:
+#   - GitHub disables a scheduled workflow after 60 days with no OTHER
+#     activity in the repository (commits, PRs, etc.) -- a repo that goes
+#     quiet for two months needs someone to re-enable this in the Actions
+#     tab, or the backups silently stop with no alert, because the workflow
+#     that would send the alert is the one that stopped running.
+#   - This needs DATABASE_URL_EXTERNAL, not the DATABASE_URL Render injects
+#     into the bot's own service -- that one is Render's INTERNAL hostname
+#     and does not resolve from a GitHub-hosted runner. Use the "External"
+#     connection string from the Render dashboard's Connect panel.
+on:
+  schedule:
+    # 21:00 UTC = 02:00 in Tashkent (UTC+5) -- outside the bot's active hours.
+    - cron: "0 21 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ubuntu's own postgresql-client package can lag behind whatever
+      # Postgres version Render provisions, and pg_dump must be the SAME
+      # VERSION OR NEWER than the server or the dump can come out silently
+      # incomplete. The PGDG repo below is the Postgres project's own apt
+      # source and always carries the latest release, which by definition
+      # can never be older than anything Render could possibly be running.
+      - name: Install the latest PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run backup
+        env:
+          DATABASE_URL_EXTERNAL: ${{ secrets.DATABASE_URL_EXTERNAL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ALERT_CHAT_ID: ${{ secrets.ALERT_CHAT_ID }}
+          BACKUP_KEY: ${{ secrets.BACKUP_KEY }}
+        run: bash telegram-dating-bot/scripts/backup.sh

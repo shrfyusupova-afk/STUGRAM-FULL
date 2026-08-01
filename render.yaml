@@ -52,6 +52,12 @@ services:
       - key: CLICK_SECRET_KEY
         sync: false
 
+      # Your own Telegram user id (a number, get it from @userinfobot). Without
+      # this, a crash or a broadcast failure is invisible until /health is
+      # checked by hand or a user complains -- see /health's "alerts" field.
+      - key: ALERT_CHAT_ID
+        sync: false
+
       # Webhook secrets: Render generates strong random values, so the webhook
       # endpoints are never left accepting forged Telegram updates. The app can
       # generate its own if these are absent, but then they change on every
