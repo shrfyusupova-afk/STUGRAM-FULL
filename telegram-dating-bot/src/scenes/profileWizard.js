@@ -204,6 +204,7 @@ const HANDLERS = {
 };
 
 async function finish(ctx, lang, profile) {
+  const wasAlreadyRegistered = Boolean(ctx.wizard.state.isEditing);
   profile.genderLabel = profile.gender === "male" ? t(lang, "genderMaleValue") : t(lang, "genderFemaleValue");
   const saved = await saveProfile(ctx.from.id, profile);
 
@@ -219,7 +220,12 @@ async function finish(ctx, lang, profile) {
     console.error("username capture at registration failed (ignored):", err.message);
   }
 
-  await ctx.reply(t(lang, "profileSaved")(saved), mainMenuKeyboard(lang));
+  // A brand-new anketa gets a welcome and a pitch for what else is here --
+  // that is the moment to sell the rest of the bot. Editing an existing one
+  // gets the old confirmation instead, so they can actually check what was
+  // just saved rather than hear the same pitch again.
+  const confirmationText = wasAlreadyRegistered ? t(lang, "profileSaved")(saved) : t(lang, "welcomeAfterRegistration")(saved);
+  await ctx.reply(confirmationText, mainMenuKeyboard(lang));
 
   // The one moment an invitation is worth anything: this person now has a
   // complete anketa, phone number included. Paying on the /start click

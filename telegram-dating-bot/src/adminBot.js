@@ -47,7 +47,7 @@ const SKIP_MEDIA_LABEL = "⏭ Rasmsiz davom etish";
 // What the reporter was looking at when they filed, used for the one-line
 // label in the list so an admin can triage without opening each one.
 const SOURCE_LABEL = {
-  discover: "shubhali rasm shikoyati",
+  discover: "profil ustidan shikoyat",
   anon: "anonim chatdan shikoyat",
   general: "umumiy shikoyat",
 };

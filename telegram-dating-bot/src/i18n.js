@@ -55,6 +55,16 @@ const STRINGS = {
       `📍 Manzil: ${p.location}\n` +
       `📝 Ma'lumot: ${p.bio}\n` +
       `📞 Tasdiqlangan raqam: ${p.phone}`,
+    // Shown once, right after a brand-new anketa is finished -- not on an
+    // edit, where profileSaved above (the actual data, so they can check it)
+    // is more useful than a pitch they have already heard.
+    welcomeAfterRegistration: (p) =>
+      `🎉 Xush kelibsiz ForOne oilasiga, ${p.name}!\n\n` +
+      "💛 Yangi tanishuvlar, chin do'stlik va sevgi — aynan shu yerda\n" +
+      "🎁 Do'stlaringizni taklif qiling — bepul sovg'alar oling\n" +
+      "🕵️ Xohlasangiz, hech kim bilmaydigan anonim suhbat ham bor\n\n" +
+      "Balki aynan bugun taqdiringiz o'zgaradi 💍\n" +
+      "Pastdagi menyudan boshlang 👇",
     menu: {
       discover: "🔍 Yangi tanishuvlar",
       profile: "⚙️ Anketa sozlamalari",
@@ -337,6 +347,13 @@ const STRINGS = {
       `📍 Адрес: ${p.location}\n` +
       `📝 О себе: ${p.bio}\n` +
       `📞 Подтверждённый номер: ${p.phone}`,
+    welcomeAfterRegistration: (p) =>
+      `🎉 Добро пожаловать в семью ForOne, ${p.name}!\n\n` +
+      "💛 Новые знакомства, настоящая дружба и любовь — прямо здесь\n" +
+      "🎁 Приглашайте друзей — получайте бесплатные подарки\n" +
+      "🕵️ А если хотите — есть анонимный чат, о котором никто не узнает\n\n" +
+      "Может, именно сегодня изменится ваша судьба 💍\n" +
+      "Начните с меню внизу 👇",
     menu: {
       discover: "🔍 Новые знакомства",
       profile: "⚙️ Настройки анкеты",
@@ -614,6 +631,13 @@ const STRINGS = {
       `📍 Location: ${p.location}\n` +
       `📝 Bio: ${p.bio}\n` +
       `📞 Verified number: ${p.phone}`,
+    welcomeAfterRegistration: (p) =>
+      `🎉 Welcome to the ForOne family, ${p.name}!\n\n` +
+      "💛 New people, real friendships and love — right here\n" +
+      "🎁 Invite friends — get free rewards\n" +
+      "🕵️ Want more mystery? There's an anonymous chat too\n\n" +
+      "Maybe today is the day everything changes 💍\n" +
+      "Start from the menu below 👇",
     menu: {
       discover: "🔍 New matches",
       profile: "⚙️ Profile settings",

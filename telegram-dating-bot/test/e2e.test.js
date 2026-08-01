@@ -99,7 +99,7 @@ const test = (name, fn) => tests.push({ name, fn });
 // --- registration ------------------------------------------------------------
 test("a new user can register and lands on the main menu", async () => {
   const done = await register(AZIZ, { gender: "male", name: "Aziz" });
-  assert.match(said(done), /Anketangiz saqlandi/);
+  assert.match(said(done), /Xush kelibsiz ForOne oilasiga/, "a fresh registration gets the welcome pitch, not a data dump");
   const rows = done.flatMap((c) => c.payload.reply_markup?.keyboard || []);
   const labels = rows.flat().map((b) => b.text || b);
   assert.deepStrictEqual(labels, [
