@@ -60,11 +60,25 @@ for var in DATABASE_URL_EXTERNAL TELEGRAM_BOT_TOKEN ALERT_CHAT_ID BACKUP_KEY; do
   fi
 done
 
+# The whole point of installing from the PGDG apt repo (see the workflow)
+# is a pg_dump that is never older than the server -- but PATH can still
+# resolve to a DIFFERENT, older pg_dump that was already on the runner
+# before that install ran, silently defeating it. So don't trust PATH: look
+# directly at every versioned client under /usr/lib/postgresql/*/bin and use
+# the newest one, exactly the same way postgresql-common's own version
+# selection is supposed to work, just without depending on it.
+PG_DUMP_BIN="pg_dump"
+newest_versioned="$(ls -d /usr/lib/postgresql/*/bin/pg_dump 2>/dev/null | sort -V | tail -1)"
+if [ -n "$newest_versioned" ]; then
+  PG_DUMP_BIN="$newest_versioned"
+fi
+echo "Using pg_dump: $($PG_DUMP_BIN --version)"
+
 echo "Dumping database..."
 # --no-owner --no-privileges: a restore target will not have the exact same
 # role names Render created, and GRANT/OWNER statements for roles that do not
 # exist there would abort the restore partway through.
-if ! pg_dump "$DATABASE_URL_EXTERNAL" --no-owner --no-privileges -f "$DUMP_FILE"; then
+if ! "$PG_DUMP_BIN" "$DATABASE_URL_EXTERNAL" --no-owner --no-privileges -f "$DUMP_FILE"; then
   fail "pg_dump exited with a non-zero status -- see the workflow log for pg_dump's own error output"
 fi
 
