@@ -73,6 +73,27 @@ function pendingReportFor(userId) {
   return pending;
 }
 
+// The lookup above only evicts an expired entry for someone who sends
+// ANOTHER message afterwards. Someone who taps "report" and then never
+// messages this bot again -- closes Telegram, gets distracted for good --
+// leaves their entry sitting in memory forever, since nothing else ever
+// looks it up. Same unbounded-growth shape as floodGuard.js and the admin
+// bot's login state; a periodic sweep here closes it the same way.
+const REPORT_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+
+function sweepPendingReports(now = Date.now()) {
+  let removed = 0;
+  for (const [userId, pending] of pendingReports) {
+    if (now > pending.expiresAt) {
+      pendingReports.delete(userId);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+setInterval(sweepPendingReports, REPORT_SWEEP_INTERVAL_MS).unref();
+
 // A single cancel button, so anything else the person types is unambiguously
 // the complaint itself rather than a menu tap that has to be guessed at.
 function reportKeyboard(lang) {
@@ -194,4 +215,7 @@ module.exports = {
   deliverAdminReply,
   pendingReportFor,
   SOURCE,
+  // Exposed so the sweep can be driven directly: waiting a real hour to find
+  // out whether memory is reclaimed is not a test.
+  __test: { sweepPendingReports, pendingReports, beginReport },
 };

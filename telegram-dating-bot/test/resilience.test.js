@@ -15,6 +15,8 @@ for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync
 
 const { floodGuardMiddleware, __test: flood } = require("../src/floodGuard");
 const { isGoneError, retryAfterMs } = require("../src/telegramSafety");
+const { __test: adminLogin } = require("../src/adminBot");
+const { __test: complaintDrafts } = require("../src/complaints");
 const db = require("../src/db");
 
 const tests = [];
@@ -55,6 +57,55 @@ test("sweeping does not let a live flooder through", async () => {
     });
   }
   assert.strictEqual(allowed, 0, "the limit still applies after a sweep");
+});
+
+// --- the admin bot's login state -----------------------------------------
+// loginState and failedAttempts gain one entry per Telegram id that ever
+// taps the admin bot's /start or gets a PIN digit wrong -- and until this
+// fix, ONLY a successful login ever removed one. A stranger who finds the
+// bot's username, sees the PIN screen, and never comes back -- or anyone who
+// ever fails a guess, which is nearly every stranger who tries -- left an
+// entry that sat forever. Same shape as the flood guard leak above, just in
+// a different file.
+test("the admin login state hands its memory back, without cutting a live lockout short", async () => {
+  const now = Date.now();
+
+  // A pile of strangers who tapped /start and typed nothing, or failed once
+  // and never returned.
+  for (let i = 1; i <= 10_000; i++) {
+    adminLogin.loginState.set(i, "12");
+    adminLogin.failedAttempts.set(i, { count: 1, until: now - adminLogin.FAILED_ATTEMPT_SWEEP_GRACE_MS - 1000 });
+  }
+  // Someone currently mid-lockout from a real recent wrong guess.
+  const activelyLockedOut = 999999;
+  adminLogin.failedAttempts.set(activelyLockedOut, { count: 3, until: now + 60_000 });
+
+  const removed = adminLogin.sweepLoginState(now);
+
+  assert.strictEqual(removed, 10_000, "every stale failed-attempt entry is swept");
+  assert.strictEqual(adminLogin.loginState.size, 0, "in-progress PIN entries are cleared in bulk");
+  assert.strictEqual(
+    adminLogin.failedAttempts.has(activelyLockedOut),
+    true,
+    "a lockout that has not expired yet must survive the sweep"
+  );
+  assert.strictEqual(adminLogin.failedAttempts.get(activelyLockedOut).until, now + 60_000, "and keep its original expiry");
+
+  adminLogin.failedAttempts.delete(activelyLockedOut);
+});
+
+// --- abandoned complaint drafts -------------------------------------------
+// pendingReportFor evicts a stale entry, but only for a person who sends
+// ANOTHER message afterwards. Someone who taps "report" and then never
+// writes to this bot again leaves a small object in memory that nothing
+// would otherwise ever touch.
+test("an abandoned complaint draft does not sit forever", async () => {
+  for (let i = 1; i <= 5_000; i++) complaintDrafts.beginReport(i, { source: "general" });
+  assert.strictEqual(complaintDrafts.pendingReports.size, 5_000);
+
+  const later = Date.now() + 20 * 60 * 1000; // past the 15-minute prompt TTL
+  assert.strictEqual(complaintDrafts.sweepPendingReports(later), 5_000, "every expired draft is swept");
+  assert.strictEqual(complaintDrafts.pendingReports.size, 0);
 });
 
 // --- the query that multiplied ------------------------------------------

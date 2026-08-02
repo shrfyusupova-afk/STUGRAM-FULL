@@ -17,6 +17,15 @@ on:
     - cron: "0 21 * * *"
   workflow_dispatch: {}
 
+# Least privilege: this workflow only ever reads the repository (to check it
+# out) and talks to Render and Telegram over their own APIs -- it has no
+# business writing to this repo or anything else GITHUB_TOKEN could reach by
+# default. Scoping it down means a compromised action in the dependency
+# chain (actions/checkout, or anything apt pulls in) inherits nothing more
+# than read access to this code.
+permissions:
+  contents: read
+
 jobs:
   backup:
     runs-on: ubuntu-latest

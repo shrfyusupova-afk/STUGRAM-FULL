@@ -112,6 +112,39 @@ const GLOBAL_MAX_PER_WINDOW = 100;
 let globalWindowStart = Date.now();
 let globalAttempts = 0;
 
+// loginState and failedAttempts both gain one entry per Telegram id that
+// ever taps /start or gets a digit wrong here, and neither is ever removed
+// on its own -- only a SUCCESSFUL login clears them (see the "Kod to'g'ri!"
+// branch below). A stranger who finds this bot's username, sees the PIN
+// screen, and never comes back leaves an entry that would otherwise sit
+// forever; the same is true of anyone who ever fails a guess, which by
+// definition includes almost every attacker. Same unbounded-growth shape
+// already fixed in floodGuard.js, index.js's username/last-seen caches, and
+// searchState below -- missed here until now.
+const LOGIN_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+// Grace period AFTER an entry's own lockout has already ended, so a sweep
+// can never cut a currently-active lockout short and let an attacker back in
+// early.
+const FAILED_ATTEMPT_SWEEP_GRACE_MS = 60 * 60 * 1000;
+
+function sweepLoginState(now = Date.now()) {
+  // loginState carries no timestamp of its own -- it is just "digits typed
+  // so far" for whoever is mid-entry right now. Safe to drop in bulk, same
+  // as index.js's username cache: the only cost is a real admin who happens
+  // to be typing their PIN at this exact moment starting over.
+  loginState.clear();
+  let removed = 0;
+  for (const [userId, entry] of failedAttempts) {
+    if (now - entry.until > FAILED_ATTEMPT_SWEEP_GRACE_MS) {
+      failedAttempts.delete(userId);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+setInterval(sweepLoginState, LOGIN_SWEEP_INTERVAL_MS).unref();
+
 function lockoutRemainingMs(userId) {
   const entry = failedAttempts.get(userId);
   if (!entry) return 0;
@@ -1299,4 +1332,14 @@ function createAdminBot(token, mainBotTelegram) {
   return bot;
 }
 
-module.exports = { createAdminBot };
+module.exports = {
+  createAdminBot,
+  // Exposed so the sweep can be driven directly: waiting a real hour to find
+  // out whether memory is reclaimed is not a test.
+  __test: {
+    sweepLoginState,
+    loginState,
+    failedAttempts,
+    FAILED_ATTEMPT_SWEEP_GRACE_MS,
+  },
+};
