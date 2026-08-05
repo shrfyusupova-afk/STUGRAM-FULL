@@ -358,13 +358,29 @@ test("the webhook rejects updates without the secret token", async () => {
 // --- admin panel -------------------------------------------------------------
 async function loginAdmin(user = ADMIN, pin = "13579") {
   await h.send(A(), h.commandUpdate("/start", user));
+  await h.send(A(), h.commandUpdate("/iamadmin", user));
   let last;
   for (const d of pin) last = await h.send(A(), h.callbackUpdate(`admin:pin:${d}`, user));
   return last;
 }
 
+test("a stranger sees the FAQ screen, not a hint that this is the admin panel", async () => {
+  const start = await h.send(A(), h.commandUpdate("/start", STRANGER));
+  const text = said(start);
+  assert.ok(!/[Kk]od/.test(text), `must not mention the PIN before /iamadmin: "${text}"`);
+  const buttons = start.flatMap((c) => c.payload.reply_markup?.keyboard || []).flat().map((b) => b.text || b);
+  assert.deepStrictEqual(buttons, ["ForOne - nima?", "ForOne - asoschisi kim?", "ForOne - hizmatlari narxi?"]);
+
+  const answer = await h.send(A(), h.textUpdate("ForOne - hizmatlari narxi?", STRANGER));
+  assert.match(said(answer), /so'm/, "an FAQ button must actually answer, not just decorate the screen");
+
+  const revealed = await h.send(A(), h.commandUpdate("/iamadmin", STRANGER));
+  assert.match(said(revealed), /Kodni kiriting/, "/iamadmin is the only door into the PIN pad");
+});
+
 test("the PIN lockout is per person, so one stranger cannot lock the admins out", async () => {
   await h.send(A(), h.commandUpdate("/start", STRANGER));
+  await h.send(A(), h.commandUpdate("/iamadmin", STRANGER));
   for (const d of "00000") await h.send(A(), h.callbackUpdate(`admin:pin:${d}`, STRANGER));
   const blocked = await h.send(A(), h.callbackUpdate("admin:pin:0", STRANGER));
   assert.match(said(blocked), /kuting/, "a wrong PIN must slow that person down");

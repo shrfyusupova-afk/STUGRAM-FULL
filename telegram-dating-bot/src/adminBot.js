@@ -5,7 +5,13 @@ const {
   getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin, listAdmins, removeAdmin,
   listComplaints, getComplaint, setComplaintReply,
 } = require("./db");
-const { getSalesSummary } = require("./click");
+const {
+  getSalesSummary,
+  PREMIUM_PRICE_SOM,
+  UNLOCK_PRICE_SOM,
+  VIP_CHAT_PRICE_SOM,
+  ANON_GENDER_PRICE_SOM,
+} = require("./click");
 const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
 const { isRegistered } = require("./profileState");
@@ -202,6 +208,39 @@ function adminMenuKeyboard() {
     [LOGOUT_LABEL],
   ]).resize();
 }
+
+// What anyone who is NOT already a proven admin sees on /start -- an ordinary
+// FAQ screen about the product, not an obvious "type the admin code" prompt.
+// Anyone who finds this bot's username and taps it should see a harmless
+// public-facing screen, not a signal that this is the admin panel worth
+// attacking. Real access is unaffected either way: the PIN, the per-user
+// lockout and the global ceiling all still apply exactly as before once
+// /iamadmin actually reveals the code pad -- this only changes what a
+// stranger sees before that.
+const FAQ_WHAT_LABEL = "ForOne - nima?";
+const FAQ_FOUNDER_LABEL = "ForOne - asoschisi kim?";
+const FAQ_PRICING_LABEL = "ForOne - hizmatlari narxi?";
+
+function faqKeyboard() {
+  return Markup.keyboard([[FAQ_WHAT_LABEL], [FAQ_FOUNDER_LABEL], [FAQ_PRICING_LABEL]]).resize();
+}
+
+const FAQ_INTRO_TEXT = "👋 ForOne botiga xush kelibsiz!\n\nSavolingizga javob olish uchun pastdagi tugmalardan birini tanlang.";
+
+const FAQ_WHAT_TEXT =
+  "💛 ForOne — odamlarni bir-biri bilan tanishtiruvchi, do'stlik va jiddiy munosabatlar qurishga yordam beruvchi tanishuv xizmati.\n\n" +
+  "Anketa yaratib, boshqa foydalanuvchilar bilan tanishishingiz, layk bosishingiz va suhbatlashishingiz mumkin.";
+
+// TODO: placeholder -- swap for the real answer once it's provided.
+const FAQ_FOUNDER_TEXT =
+  "ForOne kichik va ishtiyoqli jamoa tomonidan yaratilgan — maqsadimiz odamlarga chin muhabbat va do'stlik topishda yordam berish.";
+
+const FAQ_PRICING_TEXT =
+  "💳 ForOne'dagi xizmatlar narxi:\n\n" +
+  `🔐 Anketani ochish: ${UNLOCK_PRICE_SOM.toLocaleString("uz-UZ")} so'm\n` +
+  `👑 Premium: ${PREMIUM_PRICE_SOM.toLocaleString("uz-UZ")} so'm\n` +
+  `💎 VIP suhbat: ${VIP_CHAT_PRICE_SOM.toLocaleString("uz-UZ")} so'm\n` +
+  `🕵️ Anonim chatda jins tanlash: ${ANON_GENDER_PRICE_SOM.toLocaleString("uz-UZ")} so'm`;
 
 // Where each admin currently is in the complaint list, and which complaint
 // their next typed message should answer.
@@ -729,13 +768,35 @@ function createAdminBot(token, mainBotTelegram) {
   bot.start(async (ctx) => {
     // Being in the admins table is not enough on its own any more -- the
     // session also has to still be within its 12-hour window, or this is
-    // exactly like never having logged in: back to the PIN.
+    // exactly like never having logged in: back to the FAQ screen, same as
+    // anyone who has never proven themselves at all.
+    if (await isAdmin(ctx.from.id) && sessionValid(ctx.from.id)) {
+      await ctx.reply("✅ Xush kelibsiz, admin!", adminMenuKeyboard());
+      return;
+    }
+    await ctx.reply(FAQ_INTRO_TEXT, faqKeyboard());
+  });
+
+  // The only door into the PIN pad. Someone who does not already know this
+  // command sees nothing but the FAQ screen above -- there is no button, no
+  // hint, that this bot is an admin panel at all.
+  bot.command("iamadmin", async (ctx) => {
     if (await isAdmin(ctx.from.id) && sessionValid(ctx.from.id)) {
       await ctx.reply("✅ Xush kelibsiz, admin!", adminMenuKeyboard());
       return;
     }
     loginState.set(ctx.from.id, "");
     await ctx.reply(`🔐 Kodni kiriting:\n${maskCode("")}`, pinKeyboard());
+  });
+
+  bot.hears(FAQ_WHAT_LABEL, async (ctx) => {
+    await ctx.reply(FAQ_WHAT_TEXT, faqKeyboard());
+  });
+  bot.hears(FAQ_FOUNDER_LABEL, async (ctx) => {
+    await ctx.reply(FAQ_FOUNDER_TEXT, faqKeyboard());
+  });
+  bot.hears(FAQ_PRICING_LABEL, async (ctx) => {
+    await ctx.reply(FAQ_PRICING_TEXT, faqKeyboard());
   });
 
   bot.action(/^admin:pin:(\d)$/, async (ctx) => {
