@@ -135,7 +135,7 @@ const STRINGS = {
       "💳 Xizmatimiz pullik va bu 7 900 so'mni tashkil qiladi — har bir profil uchun alohida.\n" +
       "🆓 (Agar tekin yo'ldan foydalanmoqchi bo'lsangiz, u insonning ham sizga layk bosishini kuting 😉)\n\n" +
       "💎 Agar barcha profillarni bepul, cheklovsiz ko'rmoqchi bo'lsangiz — Premium tarifga ulanishingizni maslahat beramiz! ✨",
-    unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
+    unlockPayButton: (price) => `🔓 Profilni ko'rish (${price} so'm)`,
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
@@ -424,7 +424,7 @@ const STRINGS = {
       "💳 Наша услуга платная и стоит 7 900 сум — за каждую анкету отдельно.\n" +
       "🆓 (Если хотите бесплатно, дождитесь, пока этот человек тоже поставит вам лайк 😉)\n\n" +
       "💎 Если хотите смотреть все анкеты бесплатно и без ограничений — рекомендуем подключить Premium! ✨",
-    unlockPayButton: "🔓 Получить доступ к анкете",
+    unlockPayButton: (price) => `🔓 Посмотреть анкету (${price} сум)`,
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
@@ -708,7 +708,7 @@ const STRINGS = {
       "💳 Our service is paid and costs 7,900 UZS — per profile.\n" +
       "🆓 (If you'd like the free way, wait for that person to like you back too 😉)\n\n" +
       "💎 If you'd like unlimited free access to every profile — we recommend subscribing to Premium! ✨",
-    unlockPayButton: "🔓 Get access to this profile",
+    unlockPayButton: (price) => `🔓 View profile (${price} UZS)`,
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>

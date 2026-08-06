@@ -632,8 +632,8 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
   const orderId = candidateId ? await createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
   const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
   const payButton = clickUrl
-    ? Markup.button.url(t(lang, "unlockPayButton"), clickUrl)
-    : Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop");
+    ? Markup.button.url(t(lang, "unlockPayButton")(priceLabel()), clickUrl)
+    : Markup.button.callback(t(lang, "unlockPayButton")(priceLabel()), "unlock:noop");
 
   const credits = await getUnlockCredits(buyerId);
 
