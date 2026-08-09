@@ -17,13 +17,14 @@ const {
   hasPremium,
   recordDislike,
   getDislikes,
+  getMyLikes,
   getDiscoverState,
   setDiscoverState,
   clearDiscoverState,
 } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
-const { sendMainMenu } = require("./menu");
+const { sendMainMenu, mainMenuKeyboard } = require("./menu");
 const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
@@ -111,6 +112,12 @@ async function pickCandidateFromDb(userId, wanted) {
 async function pickCandidateFromMemory(userId, wanted) {
   const all = await getAllProfiles();
   const disliked = new Set(await getDislikes(userId));
+  // A like/dislike is a terminal, one-time reaction to a card: once given,
+  // that candidate must never come back -- including once the "shown"
+  // recycle branch below discards its own memory. Before this, `pool` only
+  // excluded dislikes, so a liked profile was kept out solely by the
+  // ephemeral `shown` list, and reappeared the moment that list got reset.
+  const liked = new Set(await getMyLikes(userId));
   const pool = Object.entries(all).filter(
     ([id, p]) =>
       id !== String(userId) &&
@@ -118,7 +125,8 @@ async function pickCandidateFromMemory(userId, wanted) {
       p.mediaFileId &&
       p.phone &&
       p.active !== false &&
-      !disliked.has(id)
+      !disliked.has(id) &&
+      !liked.has(id)
   );
   if (pool.length === 0) return null;
 
@@ -189,7 +197,7 @@ function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true,
   const username = getUsername();
   const unlockUrl = username ? `https://t.me/${username}?start=unlock_${candidateId}` : null;
   // unlockLinkText already includes its own 🔐 prefix -- don't add a second one here.
-  const unlockLabel = escapeHtml(t(lang, "unlockLinkText")(UNLOCK_PRICE_SOM.toLocaleString("uz-UZ")));
+  const unlockLabel = escapeHtml(t(lang, "unlockLinkText"));
   const unlockLine = unlockUrl ? `<a href="${unlockUrl}">${unlockLabel}</a>` : unlockLabel;
 
   return `${base}\n\n\n${unlockLine}`;
@@ -444,7 +452,11 @@ async function showNextCandidate(ctx, lang, myGender) {
   for (let attempt = 0; attempt < MAX_CANDIDATE_ATTEMPTS; attempt++) {
     const candidate = await pickCandidate(ctx.from.id, myGender);
     if (!candidate) {
-      await ctx.reply(t(lang, "discoverNoCandidates"), discoverKeyboard(lang));
+      // Not discoverKeyboard: with nobody on screen, a Like/Dislike row that
+      // does nothing is confusing. The main menu puts the referral button
+      // (what the message itself is pointing at) one tap away instead of
+      // buried behind "Orqaga".
+      await ctx.reply(t(lang, "discoverNoCandidates"), mainMenuKeyboard(lang));
       return;
     }
     try {
@@ -607,13 +619,12 @@ function registerDiscoverHandlers(bot) {
   });
 }
 
-// Reached via the "🔐 ... (7 900 so'm)" link inside a candidate's card,
-// which deep-links back into the bot as /start unlock_<candidateId>. If the
-// viewer already has access (paid before, or a mutual like happened since),
-// this skips the paywall entirely and shows the profile straight away.
-// The same expression unlockLinkText is already given, so the price on the
-// card and the price on the paywall can never drift apart. The currency word
-// lives in the translation, not here -- it differs per language.
+// Reached via the unlock link inside a candidate's card, which deep-links
+// back into the bot as /start unlock_<candidateId>. If the viewer already has
+// access (paid before, or a mutual like happened since), this skips the
+// paywall entirely and shows the profile straight away.
+// The card's own link is deliberately vague (see unlockLinkText) -- the price
+// only appears once someone actually gets here, on the paywall text below.
 const priceLabel = () => UNLOCK_PRICE_SOM.toLocaleString("uz-UZ");
 
 // The paywall. Three different screens depending on what this person can
@@ -632,8 +643,8 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
   const orderId = candidateId ? await createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
   const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
   const payButton = clickUrl
-    ? Markup.button.url(t(lang, "unlockPayButton")(priceLabel()), clickUrl)
-    : Markup.button.callback(t(lang, "unlockPayButton")(priceLabel()), "unlock:noop");
+    ? Markup.button.url(t(lang, "unlockPayButton"), clickUrl)
+    : Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop");
 
   const credits = await getUnlockCredits(buyerId);
 

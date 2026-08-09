@@ -82,6 +82,7 @@ module.exports = {
   recordLike: store.recordLike,
   getLikers: store.getLikers,
   hasLiked: store.hasLiked,
+  getMyLikes: store.getMyLikes,
   recordDislike: store.recordDislike,
   getDislikes: store.getDislikes,
   // Discovery cursor

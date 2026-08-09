@@ -290,6 +290,20 @@ async function hasLiked(likerId, likedId) {
   return (await getLikers(likedId)).includes(String(likerId));
 }
 
+// likes.json is keyed by WHO WAS LIKED (each value is the list of likers), so
+// "who did this person like" has no direct key -- has to scan every entry.
+// Fine for the JSON fallback (local dev / small deploys only); the Postgres
+// path answers the same question with an indexed query instead.
+async function getMyLikes(userId) {
+  const all = readJson(LIKES_DB_PATH);
+  const key = String(userId);
+  const mine = [];
+  for (const [likedId, likers] of Object.entries(all)) {
+    if (likers.includes(key)) mine.push(likedId);
+  }
+  return mine;
+}
+
 // Per-profile paid unlocks: { [buyerId]: [candidateId, ...] }. Once a buyer
 // has paid for a candidate's contact once, they never have to pay again for
 // that same candidate.
@@ -678,6 +692,7 @@ module.exports = {
   recordLike,
   getLikers,
   hasLiked,
+  getMyLikes,
   hasUnlocked,
   grantUnlock,
   createReferral,

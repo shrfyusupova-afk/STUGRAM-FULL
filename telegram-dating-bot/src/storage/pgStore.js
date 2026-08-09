@@ -381,7 +381,16 @@ const CANDIDATE_FILTER = `
     AND p.media_file_id IS NOT NULL AND p.media_file_id <> ''
     AND p.phone IS NOT NULL AND p.phone <> ''
     AND p.active = TRUE
-    AND NOT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = $1 AND d.candidate_id = p.user_id)`;
+    AND NOT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = $1 AND d.candidate_id = p.user_id)
+    -- A liker/dislike is a terminal, one-time reaction to a card: once either
+    -- is given, that candidate must never come back, in the recycled branch
+    -- below included -- CANDIDATE_FILTER is shared by both queries, so this
+    -- one line covers it everywhere. Before this, only dislikes were
+    -- permanent; a liked profile was excluded ONLY via the ephemeral "shown"
+    -- list, which the recycled branch deliberately discards once the pool
+    -- runs dry -- so on a small candidate pool, someone you had already
+    -- liked would reappear within a swipe or two of running out.
+    AND NOT EXISTS (SELECT 1 FROM likes l WHERE l.liker_id = $1 AND l.liked_id = p.user_id)`;
 
 const PREMIUM_ORDER = (weightParam) =>
   `ORDER BY power(random(), 1.0 / (CASE WHEN p.premium_until > NOW() THEN ${weightParam}::float ELSE 1 END)) DESC`;
@@ -522,6 +531,14 @@ async function hasLiked(likerId, likedId) {
     [String(likerId), String(likedId)]
   );
   return rows.length > 0;
+}
+
+// Not used by pickCandidateRow itself (the exclusion is baked into
+// CANDIDATE_FILTER above) -- exposed only so jsonStore's equivalent has a
+// matching counterpart, same as every other function pair in this file.
+async function getMyLikes(userId) {
+  const { rows } = await query(`SELECT liked_id FROM likes WHERE liker_id = $1`, [String(userId)]);
+  return rows.map((r) => r.liked_id);
 }
 
 async function hasUnlocked(buyerId, candidateId) {
@@ -1000,7 +1017,7 @@ module.exports = {
   pickCandidateRow,
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, listAdmins, removeAdmin, getLanguage, setLanguage,
-  recordLike, getLikers, hasLiked, hasUnlocked, grantUnlock,
+  recordLike, getLikers, hasLiked, getMyLikes, hasUnlocked, grantUnlock,
   createReferral, getReferral, markReferralRewarded, countReferrals,
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   getLikeNoticeAt, setLikeNoticeAt,

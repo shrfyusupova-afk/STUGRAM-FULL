@@ -127,15 +127,22 @@ const STRINGS = {
     vipClickButton: "💳 Click orqali to'lash",
     vipClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     vipJoinMessage: (link) => `🎉 Xush kelibsiz! Guruhga qo'shilish uchun havola:\n${link}`,
-    discoverNoCandidates: "Hozircha mos nomzodlar topilmadi. Keyinroq qayta urinib ko'ring.",
+    discoverNoCandidates:
+      "🌱 Siz bizdagi barcha mos nomzodlarni ko'rib chiqdingiz!\n\n" +
+      "ForOne hali yosh loyiha — ochilganimizga ko'p bo'lmagani uchun anketalar hozircha tugadi. " +
+      "Lekin har kuni yangi odamlar qo'shilib bormoqda, tez orada yana yangi tanishuvlar sizni kutadi 💛\n\n" +
+      "Bu orada:\n" +
+      "🎁 Do'stlaringizni taklif qiling — har 3 ta do'st uchun 1 ta bepul profil ochish sovg'a qiladi\n" +
+      "👑 Boshqa funksiyalarni (Premium, VIP suhbat) sinab ko'ring\n\n" +
+      "Do'stlaringizga botni ulashing — ular ham sevgisini topadi, siz esa sovrin yutasiz! 🏆",
     discoverTemporaryProblem: "Vaqtinchalik nosozlik yuz berdi. Iltimos, biroz keyin qayta urinib ko'ring 🙏",
-    unlockLinkText: (price) => `🔐 Profilni to'liq ko'rish (${price} so'm)`,
+    unlockLinkText: "🔐 Profilni to'liq ko'rish huquqini olish",
     unlockPaywallIntro:
       "🔐 Bu profilni ko'rish huquqini olishni xohlaysizmi?\n\n" +
       "💳 Xizmatimiz pullik va bu 7 900 so'mni tashkil qiladi — har bir profil uchun alohida.\n" +
       "🆓 (Agar tekin yo'ldan foydalanmoqchi bo'lsangiz, u insonning ham sizga layk bosishini kuting 😉)\n\n" +
       "💎 Agar barcha profillarni bepul, cheklovsiz ko'rmoqchi bo'lsangiz — Premium tarifga ulanishingizni maslahat beramiz! ✨",
-    unlockPayButton: (price) => `🔓 Profilni ko'rish (${price} so'm)`,
+    unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
@@ -416,9 +423,16 @@ const STRINGS = {
     vipClickButton: "💳 Оплатить через Click",
     vipClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена. Скоро заработает! 🚧",
     vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
-    discoverNoCandidates: "Подходящих анкет пока не найдено. Попробуйте позже.",
+    discoverNoCandidates:
+      "🌱 Вы просмотрели все подходящие анкеты!\n\n" +
+      "ForOne — молодой проект, мы работаем совсем недавно, поэтому анкеты пока закончились. " +
+      "Но каждый день добавляются новые люди, и скоро вас ждут новые знакомства 💛\n\n" +
+      "А пока:\n" +
+      "🎁 Пригласите друзей — за каждые 3 друзей вы получаете 1 бесплатное открытие анкеты\n" +
+      "👑 Попробуйте другие функции (Premium, VIP чат)\n\n" +
+      "Поделитесь ботом с друзьями — они тоже найдут свою любовь, а вы получите приз! 🏆",
     discoverTemporaryProblem: "Произошёл временный сбой. Пожалуйста, попробуйте чуть позже 🙏",
-    unlockLinkText: (price) => `🔐 Посмотреть анкету полностью (${price} сум)`,
+    unlockLinkText: "🔐 Получить доступ к анкете полностью",
     unlockPaywallIntro:
       "🔐 Хотите получить доступ к просмотру этой анкеты?\n\n" +
       "💳 Наша услуга платная и стоит 7 900 сум — за каждую анкету отдельно.\n" +
@@ -700,9 +714,16 @@ const STRINGS = {
     vipClickButton: "💳 Pay with Click",
     vipClickNotConfigured: "💳 Click payments aren't fully set up yet. Coming soon! 🚧",
     vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
-    discoverNoCandidates: "No matching candidates found yet. Try again later.",
+    discoverNoCandidates:
+      "🌱 You've seen everyone who matches right now!\n\n" +
+      "ForOne is still a young project -- we haven't been open long, so profiles have run out for the moment. " +
+      "New people join every day, and fresh matches are coming soon 💛\n\n" +
+      "In the meantime:\n" +
+      "🎁 Invite your friends -- every 3 friends earns you 1 free profile unlock\n" +
+      "👑 Try other features (Premium, VIP chat)\n\n" +
+      "Share the bot with friends -- they might find love too, and you win a prize! 🏆",
     discoverTemporaryProblem: "Something went wrong for a moment. Please try again shortly 🙏",
-    unlockLinkText: (price) => `🔐 View full profile (${price} UZS)`,
+    unlockLinkText: "🔐 Get full access to this profile",
     unlockPaywallIntro:
       "🔐 Want to get access to view this profile?\n\n" +
       "💳 Our service is paid and costs 7,900 UZS — per profile.\n" +
