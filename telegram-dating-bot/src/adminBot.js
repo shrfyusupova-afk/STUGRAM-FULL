@@ -19,7 +19,7 @@ const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
 const { isGoneError, retryAfterMs } = require("./telegramSafety");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { alert } = require("./alerts");
-const { isConfigured: aiConfigured, askAdminAssistant } = require("./aiAssistant");
+const { isConfigured: aiConfigured, askAdminAssistant, buildDataSnapshot } = require("./aiAssistant");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -45,6 +45,7 @@ const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
 const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
 const BROADCAST_LABEL = "📢 Reklama berish";
+const REPORT_LABEL = "📈 To'liq hisobot";
 const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
@@ -206,7 +207,8 @@ function adminMenuKeyboard() {
   return Markup.keyboard([
     [STATS_LABEL, USERS_LABEL],
     [SALES_LABEL, COMPLAINTS_LABEL],
-    [BROADCAST_LABEL, AI_LABEL],
+    [REPORT_LABEL, AI_LABEL],
+    [BROADCAST_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
 }
@@ -764,6 +766,73 @@ async function safeUpdateCard(ctx, text, keyboard) {
   }
 }
 
+function pct(part, whole) {
+  return whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "0.0%";
+}
+
+function som(n) {
+  return `${n.toLocaleString("uz-UZ")} so'm`;
+}
+
+// Same real snapshot the AI assistant grounds its answers in (see
+// aiAssistant.js), just formatted straight into text here -- no model call,
+// no API cost, no dependency on ANTHROPIC_API_KEY at all. This is the button
+// for "give me everything about the bot right now" without waiting on, or
+// paying for, a language model.
+function formatFullReport(snapshot) {
+  const p = snapshot.profiles;
+  const last30 = snapshot.newRegistrationsLast30Days;
+  const prior30 = snapshot.newRegistrationsPrior30Days;
+  const growthPercent =
+    prior30.total > 0
+      ? `${(((last30.total - prior30.total) / prior30.total) * 100).toFixed(1)}%`
+      : last30.total > 0
+        ? "yangi (avvalgi 30 kunda hech kim qo'shilmagan)"
+        : "0.0%";
+  const dailyAvg = (last30.total / 30).toFixed(1);
+
+  const allRevenue =
+    snapshot.salesAllTime.premium.totalRevenue +
+    snapshot.salesAllTime.unlock.totalRevenue +
+    snapshot.salesAllTime.vipchat.totalRevenue +
+    snapshot.salesAllTime.anongender.totalRevenue;
+  const last30Revenue =
+    snapshot.salesLast30Days.premium.totalRevenue +
+    snapshot.salesLast30Days.unlock.totalRevenue +
+    snapshot.salesLast30Days.vipchat.totalRevenue +
+    snapshot.salesLast30Days.anongender.totalRevenue;
+
+  return (
+    `📈 ForOne — To'liq hisobot\n` +
+    `🕒 ${new Date(snapshot.generatedAt).toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent" })}\n\n` +
+    `👥 Foydalanuvchilar\n` +
+    `• Jami: ${p.total} ta\n` +
+    `• Erkak: ${p.male} ta (${pct(p.male, p.total)})\n` +
+    `• Ayol: ${p.female} ta (${pct(p.female, p.total)})\n` +
+    `• Faol: ${p.active} ta (${pct(p.active, p.total)})\n` +
+    `• Faolsiz: ${p.total - p.active} ta (${pct(p.total - p.active, p.total)})\n` +
+    `• Premium (hozir faol): ${p.premiumNow} ta (${pct(p.premiumNow, p.total)})\n` +
+    (p.pendingAnketa > 0 ? `• Anketasiz to'lov yozuvlari: ${p.pendingAnketa}\n` : "") +
+    `\n📊 O'sish sur'ati (so'nggi 30 kun, avvalgisi bilan solishtirilgan)\n` +
+    `• So'nggi 30 kunda qo'shilgan: ${last30.total} ta (erkak ${last30.male}, ayol ${last30.female})\n` +
+    `• Undan oldingi 30 kunda: ${prior30.total} ta\n` +
+    `• O'sish: ${growthPercent}\n` +
+    `• Kunlik o'rtacha: ${dailyAvg} ta/kun\n\n` +
+    `💰 Sotuvlar (jami vaqt davomida)\n` +
+    `• Premium: ${snapshot.salesAllTime.premium.count} ta — ${som(snapshot.salesAllTime.premium.totalRevenue)}\n` +
+    `• Profil ochish: ${snapshot.salesAllTime.unlock.count} ta — ${som(snapshot.salesAllTime.unlock.totalRevenue)}\n` +
+    `• VIP chat: ${snapshot.salesAllTime.vipchat.count} ta — ${som(snapshot.salesAllTime.vipchat.totalRevenue)}\n` +
+    `• Anonim (jins tanlash): ${snapshot.salesAllTime.anongender.count} ta — ${som(snapshot.salesAllTime.anongender.totalRevenue)}\n` +
+    `• Jami tushum: ${som(allRevenue)}\n\n` +
+    `💵 Sotuvlar (so'nggi 30 kun)\n` +
+    `• Jami tushum: ${som(last30Revenue)} (jami tushumning ${pct(last30Revenue, allRevenue)})\n\n` +
+    `🚨 Shikoyatlar\n` +
+    `• Jami: ${snapshot.complaints.total} ta\n` +
+    `• Javob berilgan: ${snapshot.complaints.answered} ta\n` +
+    `• Javobsiz qolgan: ${snapshot.complaints.pending} ta`
+  );
+}
+
 // mainBotTelegram is the MAIN bot's Telegram client, not this one's. A reply
 // to a complaint has to reach the reporter in the bot they actually use --
 // sending it from the admin bot would land in a chat they've never opened.
@@ -951,6 +1020,20 @@ function createAdminBot(token, mainBotTelegram) {
           `✅ Sotilgan: ${sales.anongender.count} ta\n` +
           `💵 Jami tushum: ${sales.anongender.totalRevenue.toLocaleString("uz-UZ")} so'm`
       );
+    })
+  );
+
+  // One button, the whole picture -- no AI call, no ANTHROPIC_API_KEY needed,
+  // so this keeps working even when the AI assistant doesn't (e.g. no API
+  // credit). Pulls the exact same real snapshot the AI grounds its own
+  // answers in (see aiAssistant.js's buildDataSnapshot), just formatted here
+  // directly instead of handed to a model first.
+  bot.hears(
+    REPORT_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      const snapshot = await buildDataSnapshot();
+      await ctx.reply(formatFullReport(snapshot), adminMenuKeyboard());
     })
   );
 
@@ -1477,5 +1560,6 @@ module.exports = {
     loginState,
     failedAttempts,
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
+    formatFullReport,
   },
 };

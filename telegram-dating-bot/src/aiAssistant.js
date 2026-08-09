@@ -111,4 +111,7 @@ async function askAdminAssistant(question, history = []) {
   return { answer, history: updatedHistory };
 }
 
-module.exports = { isConfigured, askAdminAssistant, __test: { buildDataSnapshot } };
+// Exposed directly (not just under __test) so the admin panel's plain,
+// non-AI "To'liq hisobot" button can build the exact same real numbers
+// without needing ANTHROPIC_API_KEY or spending any API credit at all.
+module.exports = { isConfigured, askAdminAssistant, buildDataSnapshot, __test: { buildDataSnapshot } };
