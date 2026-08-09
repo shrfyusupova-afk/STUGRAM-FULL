@@ -1,7 +1,7 @@
-// Admin-facing "ask a question, get a report" assistant. This calls the real
-// Claude API, but only ever hands it numbers this process already computed --
-// it never lets the model invent statistics. The model's only job is turning
-// a data snapshot into a readable Uzbek report for whatever the admin asked.
+// Admin-facing conversational assistant. It behaves like a normal chat
+// partner on any topic, but the moment the admin asks about the bot's own
+// numbers (users, sales, complaints...), it must answer only from a real,
+// freshly-computed data snapshot -- never an invented statistic.
 const Anthropic = require("@anthropic-ai/sdk");
 const { getProfileStats, listComplaints, countNewProfilesSince } = require("./db");
 const { getSalesSummary } = require("./click");
@@ -15,9 +15,13 @@ if (!API_KEY) {
 
 const client = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
 
-// Cheapest current model: this is short data-formatting work, not reasoning,
-// so there is no reason to pay Sonnet/Opus rates for it.
+// Cheapest current model: even free-form chat here is low-volume (one admin,
+// occasional questions), so there is no reason to pay Sonnet/Opus rates.
 const MODEL = "claude-haiku-4-5";
+
+// How many past turns (question+answer pairs) are kept and resent on every
+// message, so the chat has memory without growing the request without bound.
+const MAX_HISTORY_MESSAGES = 20;
 
 function isConfigured() {
   return Boolean(client);
@@ -25,10 +29,12 @@ function isConfigured() {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Everything the assistant is allowed to talk about, computed fresh from the
-// database for every question. Kept to what the admin panel itself already
-// shows (Statistika / Sotuvlar / Shikoyatlar) plus a last-30-days cut of the
-// same numbers, so "oxirgi oy hisobot" has something to compare against.
+// Everything the assistant can ground bot-related answers in, computed fresh
+// from the database for every question -- never cached, never carried over
+// from a previous turn, so it can't go stale across a long conversation.
+// Kept to what the admin panel itself already shows (Statistika / Sotuvlar /
+// Shikoyatlar) plus a last-30-days cut of the same numbers, so "oxirgi oy
+// hisobot" has something to compare against.
 async function buildDataSnapshot() {
   const now = Date.now();
   const since30 = new Date(now - 30 * DAY_MS).toISOString();
@@ -64,35 +70,45 @@ async function buildDataSnapshot() {
   };
 }
 
-const SYSTEM_PROMPT =
-  "Sen ForOne tanishuv botining ichki admin panelidagi AI yordamchisiz. " +
-  "Senga JSON ko'rinishida botning haqiqiy statistikasi beriladi (foydalanuvchilar, ro'yxatdan o'tishlar, sotuvlar, shikoyatlar). " +
-  "Faqat shu JSON'dagi raqamlardan foydalan -- hech qachon raqam o'ylab topma yoki taxmin qilma. " +
-  "Agar admin so'ragan narsa JSON'da yo'q bo'lsa, aniq ayt: 'bu ma'lumot hozircha mavjud emas' va o'rniga qaysi ma'lumotlar borligini ayt. " +
-  "Javobni har doim o'zbek tilida, admin panel uslubida (emoji va qisqa sarlavhalar bilan, masalan 📊 👥 💰 🚨), lo'nda va tushunarli qilib yoz. " +
-  "Foydasiz kirish so'zlarsiz, to'g'ridan-to'g'ri hisobotdan boshla.";
+function buildSystemPrompt(snapshot) {
+  return (
+    "Sen ForOne tanishuv botining ichki admin panelidagi AI yordamchisiz -- adminning suhbatdoshisan. " +
+    "U sendan istalgan mavzuda savol so'rashi mumkin: botning statistikasi, ish yuritish maslahati, " +
+    "umumiy bilim, yoki oddiy suhbat. Bularning har biriga erkin va foydali javob ber, xuddi bilimli " +
+    "hamkasb bilan suhlashayotgandek.\n\n" +
+    "Faqat BITTA qat'iy qoida bor: agar savol botning o'z ma'lumotlariga oid bo'lsa (foydalanuvchilar soni, " +
+    "ro'yxatdan o'tishlar, sotuvlar, shikoyatlar va h.k.), FAQAT quyidagi JSON'dagi haqiqiy raqamlardan " +
+    "foydalan -- hech qachon raqam o'ylab topma yoki taxmin qilma. Agar so'ralgan narsa shu JSON'da yo'q " +
+    "bo'lsa, aniq ayt: 'bu ma'lumot hozircha mavjud emas' va o'rniga qaysi ma'lumotlar borligini ayt. " +
+    "Boshqa har qanday mavzuda bu cheklov yo'q.\n\n" +
+    `Botning eng so'nggi statistikasi (JSON, faqat shu maqsad uchun):\n${JSON.stringify(snapshot, null, 2)}\n\n` +
+    "Javobni admin so'ragan tilda (aks holda o'zbek tilida) yoz, qisqa va tushunarli qilib, ortiqcha kirish " +
+    "so'zlarsiz to'g'ridan-to'g'ri mohiyatdan boshla."
+  );
+}
 
-async function askAdminAssistant(question) {
+// `history` is the running [{role, content}, ...] transcript the caller
+// keeps per admin. Returns the answer plus the updated history to store --
+// the snapshot itself is never persisted into history (it's rebuilt fresh
+// into `system` every call), so a long chat can't drag a stale one along.
+async function askAdminAssistant(question, history = []) {
   if (!client) throw new Error("ANTHROPIC_API_KEY sozlanmagan");
 
   const snapshot = await buildDataSnapshot();
+  const messages = [...history, { role: "user", content: question }];
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content:
-          `Bot statistikasi (JSON):\n${JSON.stringify(snapshot, null, 2)}\n\n` +
-          `Admin savoli: ${question}`,
-      },
-    ],
+    max_tokens: 1536,
+    system: buildSystemPrompt(snapshot),
+    messages,
   });
 
   const textBlock = response.content.find((b) => b.type === "text");
-  return textBlock ? textBlock.text : "Javob olinmadi.";
+  const answer = textBlock ? textBlock.text : "Javob olinmadi.";
+
+  const updatedHistory = [...messages, { role: "assistant", content: answer }].slice(-MAX_HISTORY_MESSAGES);
+  return { answer, history: updatedHistory };
 }
 
 module.exports = { isConfigured, askAdminAssistant, __test: { buildDataSnapshot } };

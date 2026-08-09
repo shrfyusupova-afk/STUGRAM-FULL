@@ -260,18 +260,23 @@ const complaintCursor = new Map();
 // adminId -> { step: "media"|"text"|"confirm", fileId, mediaType, text }
 const broadcastDraft = new Map();
 
-// Admins who tapped "AI yordamchi" and whose next text message is therefore
-// the question to send to Claude, not a search term or a complaint reply.
+// Admins who tapped "AI yordamchi" and are now in an open chat with it --
+// every text message they send is a question (or a follow-up) until they
+// tap Orqaga, not a search term or a complaint reply.
 const aiAwaiting = new Set();
+// adminId -> [{role, content}, ...] -- the running chat transcript, so the
+// assistant remembers earlier turns in the same conversation. Trimmed by
+// askAdminAssistant itself; cleared whenever the chat is left.
+const aiHistory = new Map();
 
-// Leaving any sub-screen: a half-composed advert, a complaint cursor, and a
-// pending AI question must not survive a jump to another part of the panel,
-// or the next thing typed would be swallowed by whichever flow was left
-// dangling.
+// Leaving any sub-screen: a half-composed advert, a complaint cursor, and an
+// open AI chat must not survive a jump to another part of the panel, or the
+// next thing typed would be swallowed by whichever flow was left dangling.
 function leaveComposers(adminId) {
   broadcastDraft.delete(adminId);
   complaintCursor.delete(adminId);
   aiAwaiting.delete(adminId);
+  aiHistory.delete(adminId);
 }
 
 function cancelKeyboard() {
@@ -951,9 +956,10 @@ function createAdminBot(token, mainBotTelegram) {
 
   // --- AI assistant ---
   //
-  // Free-form Q&A over the bot's own real numbers. The question is answered
-  // by whichever text this admin sends next (see the catch-all "text"
-  // handler below), never by parsing this button press itself.
+  // An open-ended chat, not a one-shot report: every message this admin
+  // sends from here on (see the catch-all "text" handler below) is either
+  // a question or a follow-up, answered with the running history attached,
+  // until they tap Orqaga -- never by parsing this button press itself.
   bot.hears(
     AI_LABEL,
     requireAdmin(async (ctx) => {
@@ -967,12 +973,13 @@ function createAdminBot(token, mainBotTelegram) {
       }
       aiAwaiting.add(ctx.from.id);
       await ctx.reply(
-        "🤖 AI yordamchi\n\n" +
-          "Savolingizni yozing, masalan:\n" +
+        "🤖 AI yordamchi bilan suhbat boshlandi.\n\n" +
+          "Xohlagan savolingizni yozing — bot statistikasi, maslahat, yoki umuman boshqa mavzu bo'lishi mumkin. " +
+          "Masalan:\n" +
           "• Oxirgi oy to'liq hisobot\n" +
           "• Bugun nechta yangi foydalanuvchi qo'shildi\n" +
-          "• Sotuvlar qanday ketyapti\n" +
-          "• Qancha shikoyat javobsiz qoldi",
+          "• Sotuvlar qanday ketyapti\n\n" +
+          "Suhbatni davom ettiraverishingiz mumkin, tugatish uchun \"Orqaga\" tugmasini bosing.",
         cancelKeyboard()
       );
     })
@@ -1095,6 +1102,7 @@ function createAdminBot(token, mainBotTelegram) {
     requireAdmin(async (ctx) => {
       broadcastDraft.delete(ctx.from.id);
       aiAwaiting.delete(ctx.from.id);
+      aiHistory.delete(ctx.from.id);
       const complaints = await listComplaints();
       if (complaints.length === 0) {
         complaintCursor.delete(ctx.from.id);
@@ -1165,9 +1173,13 @@ function createAdminBot(token, mainBotTelegram) {
     BACK_LABEL,
     requireAdmin(async (ctx) => {
       const hadDraft = broadcastDraft.delete(ctx.from.id);
+      const hadAiChat = aiAwaiting.delete(ctx.from.id);
       complaintCursor.delete(ctx.from.id);
-      aiAwaiting.delete(ctx.from.id);
-      await ctx.reply(hadDraft ? "❌ Reklama bekor qilindi." : "Admin panel:", adminMenuKeyboard());
+      aiHistory.delete(ctx.from.id);
+      await ctx.reply(
+        hadDraft ? "❌ Reklama bekor qilindi." : hadAiChat ? "🤖 AI suhbat tugatildi." : "Admin panel:",
+        adminMenuKeyboard()
+      );
     })
   );
 
@@ -1248,25 +1260,26 @@ function createAdminBot(token, mainBotTelegram) {
       const query = ctx.message.text.trim();
       if (!query) return;
 
-      // A pending AI question takes priority over everything else below --
-      // while this admin is answering the "savolingizni yozing" prompt,
-      // this text is the question, not a search term or a complaint reply.
+      // An open AI chat takes priority over everything else below -- while
+      // this admin is inside it, every message is a question or a follow-up,
+      // not a search term or a complaint reply. Stays open (aiAwaiting is
+      // NOT cleared here) so the conversation continues without having to
+      // tap the button again; only the dedicated BACK_LABEL handler above
+      // leaves it.
       if (aiAwaiting.has(ctx.from.id)) {
-        aiAwaiting.delete(ctx.from.id);
-        if (query === BACK_LABEL) {
-          await ctx.reply("Admin panel:", adminMenuKeyboard());
-          return;
-        }
         await ctx.sendChatAction("typing");
         try {
-          const answer = await askAdminAssistant(query);
-          await ctx.reply(answer, adminMenuKeyboard());
+          const history = aiHistory.get(ctx.from.id) || [];
+          const { answer, history: updatedHistory } = await askAdminAssistant(query, history);
+          aiHistory.set(ctx.from.id, updatedHistory);
+          await ctx.reply(answer, cancelKeyboard());
         } catch (err) {
-          console.error("AI assistant failed:", err.message);
-          await ctx.reply(
-            "⚠️ AI yordamchidan javob olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.",
-            adminMenuKeyboard()
-          );
+          // The admin is the only audience for this message, so the real
+          // error (bad API key, rate limit, a model/network hiccup) is worth
+          // showing directly instead of a generic "try again" that hides
+          // what actually needs fixing.
+          console.error("AI assistant failed:", err);
+          await ctx.reply(`⚠️ AI yordamchidan javob olib bo'lmadi:\n${err.message}`, cancelKeyboard());
         }
         return;
       }
