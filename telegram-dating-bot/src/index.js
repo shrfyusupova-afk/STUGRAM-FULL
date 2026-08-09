@@ -407,6 +407,11 @@ if (webhookDomain) {
       // until someone thinks to load this page or a user complains -- worth
       // seeing at a glance, same reasoning as the two fields above it.
       alerts: ALERT_CHAT_ID ? "configured" : "NOT CONFIGURED (crashes and failures are silent)",
+      // Powers the admin panel's "AI yordamchi" button -- without it that
+      // button degrades to a message instead of failing.
+      aiAssistant: process.env.ANTHROPIC_API_KEY
+        ? "configured"
+        : "NOT CONFIGURED (admin AI assistant disabled)",
       // The failure this endpoint previously could NOT see: everything above
       // can read "ok" while Telegram has no webhook for us, so the bot is
       // running and silently receiving nothing. Updated by the periodic

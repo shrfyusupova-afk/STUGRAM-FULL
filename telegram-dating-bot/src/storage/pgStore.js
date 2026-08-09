@@ -998,8 +998,11 @@ async function bumpDeliveryAttempts(merchantTransId) {
   return rows[0] ? rows[0].delivery_attempts : 0;
 }
 
-async function getSalesRows() {
-  const { rows } = await query(`SELECT type, amount FROM click_transactions WHERE status = 'paid'`);
+async function getSalesRows(sinceIso) {
+  const { rows } = await query(
+    `SELECT type, amount FROM click_transactions WHERE status = 'paid' AND ($1::timestamptz IS NULL OR paid_at >= $1)`,
+    [sinceIso || null]
+  );
   return rows.map((r) => ({ type: r.type, amount: Number(r.amount) }));
 }
 

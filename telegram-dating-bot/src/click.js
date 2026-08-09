@@ -153,10 +153,10 @@ async function markTransaction(merchantTransId, fromStatus, toStatus, extra = {}
   return { ...order };
 }
 
-async function getSalesRows() {
-  if (txStore) return txStore.getSalesRows();
+async function getSalesRows(sinceIso) {
+  if (txStore) return txStore.getSalesRows(sinceIso);
   return Object.values(readTx())
-    .filter((tx) => tx.status === "paid")
+    .filter((tx) => tx.status === "paid" && (!sinceIso || (tx.paidAt && tx.paidAt >= sinceIso)))
     .map((tx) => ({ type: tx.type, amount: tx.amount }));
 }
 
@@ -442,8 +442,8 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   });
 }
 
-async function getSalesSummary() {
-  const paid = await getSalesRows();
+async function getSalesSummary(sinceIso) {
+  const paid = await getSalesRows(sinceIso);
   const specialTypes = ["unlock", "vipchat", "anongender"];
   const premiumPaid = paid.filter((tx) => !specialTypes.includes(tx.type));
   const unlockPaid = paid.filter((tx) => tx.type === "unlock");

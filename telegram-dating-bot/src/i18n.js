@@ -438,7 +438,7 @@ const STRINGS = {
       "💳 Наша услуга платная и стоит 7 900 сум — за каждую анкету отдельно.\n" +
       "🆓 (Если хотите бесплатно, дождитесь, пока этот человек тоже поставит вам лайк 😉)\n\n" +
       "💎 Если хотите смотреть все анкеты бесплатно и без ограничений — рекомендуем подключить Premium! ✨",
-    unlockPayButton: (price) => `🔓 Посмотреть анкету (${price} сум)`,
+    unlockPayButton: "🔓 Получить доступ к просмотру анкеты",
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
@@ -729,7 +729,7 @@ const STRINGS = {
       "💳 Our service is paid and costs 7,900 UZS — per profile.\n" +
       "🆓 (If you'd like the free way, wait for that person to like you back too 😉)\n\n" +
       "💎 If you'd like unlimited free access to every profile — we recommend subscribing to Premium! ✨",
-    unlockPayButton: (price) => `🔓 View profile (${price} UZS)`,
+    unlockPayButton: "🔓 Get access to view the profile",
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>

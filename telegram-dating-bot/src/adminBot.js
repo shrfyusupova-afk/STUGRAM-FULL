@@ -19,6 +19,7 @@ const { fetchProfileMedia, replyWithProfileMedia } = require("./adminMedia");
 const { isGoneError, retryAfterMs } = require("./telegramSafety");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { alert } = require("./alerts");
+const { isConfigured: aiConfigured, askAdminAssistant } = require("./aiAssistant");
 const {
   notifyAccountDeleted,
   notifyAccountDeactivated,
@@ -44,6 +45,7 @@ const USERS_LABEL = "👥 Foydalanuvchilar";
 const SALES_LABEL = "💰 Sotuvlar";
 const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
 const BROADCAST_LABEL = "📢 Reklama berish";
+const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
 const RESTART_LABEL = "🔄 Boshidan ko'rish";
@@ -204,7 +206,7 @@ function adminMenuKeyboard() {
   return Markup.keyboard([
     [STATS_LABEL, USERS_LABEL],
     [SALES_LABEL, COMPLAINTS_LABEL],
-    [BROADCAST_LABEL],
+    [BROADCAST_LABEL, AI_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
 }
@@ -258,12 +260,18 @@ const complaintCursor = new Map();
 // adminId -> { step: "media"|"text"|"confirm", fileId, mediaType, text }
 const broadcastDraft = new Map();
 
-// Leaving any sub-screen: a half-composed advert and a complaint cursor must
-// not survive a jump to another part of the panel, or the next thing typed
-// would be swallowed by whichever flow was left dangling.
+// Admins who tapped "AI yordamchi" and whose next text message is therefore
+// the question to send to Claude, not a search term or a complaint reply.
+const aiAwaiting = new Set();
+
+// Leaving any sub-screen: a half-composed advert, a complaint cursor, and a
+// pending AI question must not survive a jump to another part of the panel,
+// or the next thing typed would be swallowed by whichever flow was left
+// dangling.
 function leaveComposers(adminId) {
   broadcastDraft.delete(adminId);
   complaintCursor.delete(adminId);
+  aiAwaiting.delete(adminId);
 }
 
 function cancelKeyboard() {
@@ -941,6 +949,35 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
+  // --- AI assistant ---
+  //
+  // Free-form Q&A over the bot's own real numbers. The question is answered
+  // by whichever text this admin sends next (see the catch-all "text"
+  // handler below), never by parsing this button press itself.
+  bot.hears(
+    AI_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      if (!aiConfigured()) {
+        await ctx.reply(
+          "🤖 AI yordamchi hozircha sozlanmagan (ANTHROPIC_API_KEY yo'q). Server administratoriga xabar bering.",
+          adminMenuKeyboard()
+        );
+        return;
+      }
+      aiAwaiting.add(ctx.from.id);
+      await ctx.reply(
+        "🤖 AI yordamchi\n\n" +
+          "Savolingizni yozing, masalan:\n" +
+          "• Oxirgi oy to'liq hisobot\n" +
+          "• Bugun nechta yangi foydalanuvchi qo'shildi\n" +
+          "• Sotuvlar qanday ketyapti\n" +
+          "• Qancha shikoyat javobsiz qoldi",
+        cancelKeyboard()
+      );
+    })
+  );
+
   // --- Broadcast flow ---
   bot.hears(
     BROADCAST_LABEL,
@@ -1057,6 +1094,7 @@ function createAdminBot(token, mainBotTelegram) {
     COMPLAINTS_LABEL,
     requireAdmin(async (ctx) => {
       broadcastDraft.delete(ctx.from.id);
+      aiAwaiting.delete(ctx.from.id);
       const complaints = await listComplaints();
       if (complaints.length === 0) {
         complaintCursor.delete(ctx.from.id);
@@ -1128,6 +1166,7 @@ function createAdminBot(token, mainBotTelegram) {
     requireAdmin(async (ctx) => {
       const hadDraft = broadcastDraft.delete(ctx.from.id);
       complaintCursor.delete(ctx.from.id);
+      aiAwaiting.delete(ctx.from.id);
       await ctx.reply(hadDraft ? "❌ Reklama bekor qilindi." : "Admin panel:", adminMenuKeyboard());
     })
   );
@@ -1208,6 +1247,29 @@ function createAdminBot(token, mainBotTelegram) {
     requireAdmin(async (ctx) => {
       const query = ctx.message.text.trim();
       if (!query) return;
+
+      // A pending AI question takes priority over everything else below --
+      // while this admin is answering the "savolingizni yozing" prompt,
+      // this text is the question, not a search term or a complaint reply.
+      if (aiAwaiting.has(ctx.from.id)) {
+        aiAwaiting.delete(ctx.from.id);
+        if (query === BACK_LABEL) {
+          await ctx.reply("Admin panel:", adminMenuKeyboard());
+          return;
+        }
+        await ctx.sendChatAction("typing");
+        try {
+          const answer = await askAdminAssistant(query);
+          await ctx.reply(answer, adminMenuKeyboard());
+        } catch (err) {
+          console.error("AI assistant failed:", err.message);
+          await ctx.reply(
+            "⚠️ AI yordamchidan javob olib bo'lmadi. Birozdan keyin qayta urinib ko'ring.",
+            adminMenuKeyboard()
+          );
+        }
+        return;
+      }
 
       // Composing an advert takes priority: while a draft is waiting for its
       // text, that is what this message is -- not a search and not a reply.
