@@ -32,6 +32,7 @@ const { promptForComplaint, SOURCE } = require("./complaints");
 const { profileLinkHref } = require("./profileLink");
 const { REFERRALS_PER_CREDIT } = require("./referral");
 const { isRegistered } = require("./profileState");
+const { locationWithDistance } = require("./geo");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -175,10 +176,25 @@ function discoverKeyboard(lang) {
 // contactPhone is set once the viewer has actual access to this candidate
 // (paid unlock or mutual like) -- it replaces the paywall line with the
 // candidate's verified phone number, regardless of includeUnlock.
-function buildProfileCaption(lang, candidateId, profile, { includeUnlock = true, contactPhone } = {}) {
+//
+// viewerLocation turns the location line into "Mirobod (7.5 km)" -- the
+// distance is the single most useful thing about a stranger's location, and
+// it can only be worked out relative to whoever is looking. Omitting it (as
+// the self-view does, where "how far are you from yourself" is meaningless)
+// simply falls back to the plain place name.
+function buildProfileCaption(
+  lang,
+  candidateId,
+  profile,
+  { includeUnlock = true, contactPhone, viewerLocation } = {}
+) {
+  const locationLine = viewerLocation
+    ? locationWithDistance(profile.location, viewerLocation, { nearText: t(lang, "distanceNear") })
+    : profile.location;
+
   const base =
     `👤 <b>${escapeHtml(profile.name)}</b>, ${profile.age}\n` +
-    `📍 ${escapeHtml(profile.location)}\n\n` +
+    `📍 ${escapeHtml(locationLine)}\n\n` +
     `${t(lang, "bioLabel")}\n<i>${escapeHtml(profile.bio)}</i>`;
 
   if (contactPhone) {
@@ -241,7 +257,15 @@ async function canViewProfile(viewerId, candidateId) {
 async function sendProfileToChat(telegram, chatId, lang, candidateId) {
   const candidate = await getProfile(candidateId);
   if (!candidate) return;
-  const caption = buildProfileCaption(lang, candidateId, candidate, { includeUnlock: false, contactPhone: candidate.phone });
+  // chatId IS the person about to look at this card, so their own location is
+  // what the distance is measured from. One extra read, on a path that runs
+  // once per match -- not per swipe.
+  const viewer = await getProfile(chatId);
+  const caption = buildProfileCaption(lang, candidateId, candidate, {
+    includeUnlock: false,
+    contactPhone: candidate.phone,
+    viewerLocation: viewer?.location,
+  });
   const extra = { caption, parse_mode: "HTML", ...PROTECTED };
   if (candidate.mediaType === "video") {
     await telegram.sendVideo(chatId, candidate.mediaFileId, extra);
@@ -256,7 +280,12 @@ async function revealProfile(ctx, lang, candidateId) {
     await ctx.reply(t(lang, "unlockSuccessNoContact"));
     return;
   }
-  await sendCandidate(ctx, lang, candidateId, candidate, undefined, { includeUnlock: false, contactPhone: candidate.phone });
+  const viewer = await getProfile(ctx.from.id);
+  await sendCandidate(ctx, lang, candidateId, candidate, undefined, {
+    includeUnlock: false,
+    contactPhone: candidate.phone,
+    viewerLocation: viewer?.location,
+  });
 }
 
 // Shared by the discover swipe (❤️) and the "who liked me" like-back button --
@@ -446,7 +475,11 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
 // attempts are bounded so a systemic outage doesn't loop.
 const MAX_CANDIDATE_ATTEMPTS = 5;
 
-async function showNextCandidate(ctx, lang, myGender) {
+// viewerLocation is what turns each card's location line into a distance.
+// Every caller already has the viewer's profile loaded to read `gender` off
+// it, so passing the location too costs nothing extra -- no second lookup on
+// the swipe path, which is the hottest one in the app.
+async function showNextCandidate(ctx, lang, myGender, viewerLocation) {
   if (!myGender) return;
 
   for (let attempt = 0; attempt < MAX_CANDIDATE_ATTEMPTS; attempt++) {
@@ -460,7 +493,7 @@ async function showNextCandidate(ctx, lang, myGender) {
       return;
     }
     try {
-      await sendCandidate(ctx, lang, candidate.id, candidate.profile, discoverKeyboard(lang));
+      await sendCandidate(ctx, lang, candidate.id, candidate.profile, discoverKeyboard(lang), { viewerLocation });
       return;
     } catch (err) {
       console.error(`Candidate ${candidate.id} could not be shown (skipping):`, err.message);
@@ -490,7 +523,7 @@ async function openDiscovery(ctx) {
   // enforces it silently on every card (see PROTECTED), and an explanatory
   // wall of text between tapping "browse" and seeing the first person just
   // delays the thing they asked for.
-  await showNextCandidate(ctx, lang, me.gender);
+  await showNextCandidate(ctx, lang, me.gender, me.location);
 }
 
 function registerDiscoverHandlers(bot) {
@@ -507,7 +540,7 @@ function registerDiscoverHandlers(bot) {
     }
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = await getProfile(ctx.from.id);
-    await showNextCandidate(ctx, lang, me?.gender);
+    await showNextCandidate(ctx, lang, me?.gender, me?.location);
   });
 
   bot.hears(DISLIKE, async (ctx) => {
@@ -517,7 +550,7 @@ function registerDiscoverHandlers(bot) {
     }
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     const me = await getProfile(ctx.from.id);
-    await showNextCandidate(ctx, lang, me?.gender);
+    await showNextCandidate(ctx, lang, me?.gender, me?.location);
   });
 
   // Scoped to whichever screen actually shows this label: while the profile

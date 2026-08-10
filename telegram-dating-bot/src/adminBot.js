@@ -1010,13 +1010,15 @@ function createAdminBot(token, mainBotTelegram) {
           `💎 Premium obuna:\n` +
           `✅ Sotilgan: ${sales.premium.count} ta\n` +
           `💵 Jami tushum: ${sales.premium.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `🔐 Sotilgan akkauntlar (profil ko'rish, 7 900 so'm/dona):\n` +
+          // Prices come from the constants, never retyped here -- a hardcoded
+          // copy silently goes stale the moment a price changes.
+          `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona):\n` +
           `✅ Sotilgan: ${sales.unlock.count} ta\n` +
           `💵 Jami tushum: ${sales.unlock.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `📢 VIP chat (yigitlar, 59 900 so'm/dona):\n` +
+          `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona):\n` +
           `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
           `💵 Jami tushum: ${sales.vipchat.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `🕵️ Anonim chat -- jins tanlash (haftalik, 12 900 so'm):\n` +
+          `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)}):\n` +
           `✅ Sotilgan: ${sales.anongender.count} ta\n` +
           `💵 Jami tushum: ${sales.anongender.totalRevenue.toLocaleString("uz-UZ")} so'm`
       );

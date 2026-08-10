@@ -69,14 +69,14 @@ function inlineData(sent) {
   return sent.flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat()).map((b) => b.callback_data || b.url);
 }
 
-async function register(user, { gender = "male", name = "Aziz" } = {}) {
+async function register(user, { gender = "male", name = "Aziz", location = "Toshkent" } = {}) {
   await h.send(M(), h.commandUpdate("/start", user));
   await h.send(M(), h.callbackUpdate("lang:uz", user));
   await h.send(M(), h.textUpdate(name, user));
   await h.send(M(), h.textUpdate("20", user));
   await h.send(M(), h.callbackUpdate(`gender:${gender}`, user));
   await h.send(M(), h.photoUpdate(user));
-  await h.send(M(), h.textUpdate("Toshkent", user));
+  await h.send(M(), h.textUpdate(location, user));
   await h.send(M(), h.textUpdate("Salom", user));
   await h.send(M(), h.contactUpdate("+99890000000" + String(user.id).slice(-1), user));
   return h.send(M(), h.textUpdate("✅ Ha", user));
@@ -155,6 +155,54 @@ test("a slash command is never stored as profile data", async () => {
   await h.send(M(), h.textUpdate("✅ Ha", NEWBIE));
   const stored = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "profiles.json"), "utf8"));
   assert.strictEqual(stored["900009"].name, "Jahongir");
+});
+
+// A location that cannot be placed on a map used to be stored verbatim, so
+// somebody mashing a few letters ended up with that as their permanent
+// location -- and no card could ever show a distance from it.
+test("mashed letters are refused as a location, a real place is accepted", async () => {
+  const u = freshUser("Wanderer");
+  await h.send(M(), h.commandUpdate("/start", u));
+  await h.send(M(), h.callbackUpdate("lang:uz", u));
+  await h.send(M(), h.textUpdate("Wanderer", u));
+  await h.send(M(), h.textUpdate("22", u));
+  await h.send(M(), h.callbackUpdate("gender:male", u));
+  await h.send(M(), h.photoUpdate(u));
+
+  const junk = await h.send(M(), h.textUpdate("asdfgh", u));
+  assert.match(said(junk), /topa olmadim/, "junk must be refused with an explanation");
+
+  // Still on the same step -- the form did not move on.
+  const stillJunk = await h.send(M(), h.textUpdate("qwerty", u));
+  assert.match(said(stillJunk), /topa olmadim/, "a second attempt is still the location step");
+
+  // A real district, however casually spelled, gets through and is stored
+  // under its canonical name.
+  const ok = await h.send(M(), h.textUpdate("chilanzar", u));
+  assert.ok(!/topa olmadim/.test(said(ok)), "a real place must be accepted");
+
+  await h.send(M(), h.textUpdate("Salom", u));
+  await h.send(M(), h.contactUpdate("+998900007777", u));
+  await h.send(M(), h.textUpdate("✅ Ha", u));
+
+  const profiles = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "profiles.json"), "utf8"));
+  assert.strictEqual(profiles[String(u.id)].location, "Chilonzor", "stored under one canonical spelling");
+});
+
+// The distance is the most useful thing about a stranger's location, and it
+// only exists relative to whoever is looking.
+test("a profile card shows how far away that person is", async () => {
+  const viewer = freshUser("Looker");
+  const target = freshUser("Faraway");
+  await register(viewer, { gender: "male", name: "Looker", location: "Chilonzor" });
+  await register(target, { gender: "female", name: "Faraway", location: "Yunusobod" });
+
+  const card = await browseTo(viewer, "Faraway");
+  assert.match(
+    card.payload.caption,
+    /Yunusobod \(\d+(\.\d+)? km\)/,
+    `expected a distance next to the location, got: ${card.payload.caption}`
+  );
 });
 
 // --- discovery ---------------------------------------------------------------

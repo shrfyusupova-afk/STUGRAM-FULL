@@ -31,8 +31,12 @@ async function showLikers(ctx) {
   const myId = ctx.from.id;
   const likerIds = await getLikers(myId);
   // Loaded in parallel -- one sequential await per liker would be a round-trip
-  // each against a database backend.
-  const loaded = await Promise.all(likerIds.map(async (id) => ({ id, profile: await getProfile(id) })));
+  // each against a database backend. The viewer's own profile joins the same
+  // batch: its location is what every card's distance is measured from.
+  const [me, loaded] = await Promise.all([
+    getProfile(myId),
+    Promise.all(likerIds.map(async (id) => ({ id, profile: await getProfile(id) }))),
+  ]);
   const likers = loaded.filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
 
   if (likers.length === 0) {
@@ -65,8 +69,8 @@ async function showLikers(ctx) {
     const mutualMatch = (await hasLiked(myId, id)) && (await hasLiked(id, myId));
     const canSee = await canViewProfile(myId, id);
     const captionOptions = canSee
-      ? { includeUnlock: false, contactPhone: profile.phone }
-      : { includeUnlock: false };
+      ? { includeUnlock: false, contactPhone: profile.phone, viewerLocation: me?.location }
+      : { includeUnlock: false, viewerLocation: me?.location };
     const keyboard = mutualMatch ? undefined : respondKeyboard(id);
     await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
   }
@@ -99,8 +103,10 @@ function registerLikesHandlers(bot) {
     // like is by definition not that. Reading "mutual" here instead was
     // exactly how the responder kept seeing the number.
     const canSee = await canViewProfile(myId, candidateId);
+    const me = await getProfile(myId);
     const caption = buildProfileCaption(lang, candidateId, candidate, {
       includeUnlock: false,
+      viewerLocation: me?.location,
       ...(canSee ? { contactPhone: candidate.phone } : {}),
     });
 

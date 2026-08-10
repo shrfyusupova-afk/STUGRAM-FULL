@@ -84,7 +84,7 @@ function verifyCompleteSign(body, secretKey) {
 
 const PREMIUM_PRICE_SOM = 79900;
 const PREMIUM_DAYS = 30;
-const UNLOCK_PRICE_SOM = 7900;
+const UNLOCK_PRICE_SOM = 9900;
 const VIP_CHAT_PRICE_SOM = 59900;
 const ANON_GENDER_PRICE_SOM = 12900;
 const ANON_GENDER_DAYS = 7;

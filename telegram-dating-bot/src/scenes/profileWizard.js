@@ -5,6 +5,7 @@ const { sendMainMenu, mainMenuKeyboard } = require("../menu");
 const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
 const { isRegistered } = require("../profileState");
+const { resolveLocation } = require("../geo");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
@@ -71,10 +72,10 @@ const RENDERERS = {
     await ctx.reply(t(lang, "askMedia"), backKeyboard(lang));
   },
   location: async (ctx, lang) => {
-    await ctx.reply(
-      t(lang, "askLocation"),
-      backKeyboard(lang, [Markup.button.locationRequest(t(lang, "locationButton"))])
-    );
+    await ctx.reply(t(lang, "askLocation"), {
+      parse_mode: "HTML",
+      ...backKeyboard(lang, [Markup.button.locationRequest(t(lang, "locationButton"))]),
+    });
   },
   bio: async (ctx, lang) => {
     await ctx.reply(t(lang, "askBio"), backKeyboard(lang));
@@ -155,6 +156,13 @@ const HANDLERS = {
     await ctx.reply(t(lang, "errMedia"));
     return false;
   },
+  // A location is only worth storing if it can be placed on a map -- that is
+  // what lets every profile card show "how far is this from me?". Free text
+  // used to be accepted as-is, so a handful of mashed letters became somebody's
+  // permanent location and nothing downstream could do anything with it.
+  // resolveLocation both rejects that and canonicalises spelling, so
+  // "chilanzar", "Чилонзор" and "Chilonzor tumani" all end up stored
+  // identically.
   location: async (ctx, lang, profile) => {
     const loc = ctx.message?.location;
     if (loc) {
@@ -166,7 +174,12 @@ const HANDLERS = {
       await ctx.reply(t(lang, "errLocation"));
       return false;
     }
-    profile.location = text;
+    const resolved = resolveLocation(text);
+    if (!resolved) {
+      await ctx.reply(t(lang, "errLocationUnknown"), { parse_mode: "HTML" });
+      return false;
+    }
+    profile.location = resolved.label;
     return true;
   },
   bio: async (ctx, lang, profile) => {

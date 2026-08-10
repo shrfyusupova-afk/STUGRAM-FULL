@@ -26,9 +26,19 @@ const STRINGS = {
       "📸 Rasm yoki video yuboring\n\n" +
       "Iltimos, tiniq va sifatli o'zingiz tushgan rasm yuboring, aks holda anketangiz o'chirib yuborilishi mumkin.",
     errMedia: "Iltimos, rasm yoki video yuboring:",
-    askLocation: "📍 Manzilingizni kiriting (shahar/tuman) yoki pastdagi tugma orqali joylashuvingizni yuboring:",
+    askLocation:
+      "📍 Qayerdansiz?\n\n" +
+      "Shahringiz yoki tumaningiz nomini yozing — masalan: <b>Chilonzor</b>, <b>Mirobod</b>, " +
+      "<b>Samarqand</b>, <b>Namangan</b>.\n\n" +
+      "Yoki pastdagi tugma orqali joylashuvingizni yuboring 👇",
     locationButton: "📍 Lokatsiya yuborish",
     errLocation: "Iltimos, manzilingizni matn shaklida kiriting yoki joylashuvingizni yuboring:",
+    errLocationUnknown:
+      "🤔 Bunday shahar yoki tumanni topa olmadim.\n\n" +
+      "Iltimos, haqiqiy nomini yozing — masalan: <b>Chilonzor</b>, <b>Yunusobod</b>, <b>Mirobod</b>, " +
+      "<b>Sergeli</b>, <b>Samarqand</b>, <b>Buxoro</b>, <b>Farg'ona</b>, <b>Namangan</b>, <b>Andijon</b>.\n\n" +
+      "Yoki eng osoni — pastdagi 📍 tugmasini bosing, joylashuvingiz o'zi aniqlanadi 👇",
+    distanceNear: "yaqin",
     askBio: "📝 O'zingiz haqingizda qisqacha ma'lumot yozing (maks. 80 belgi):",
     errBio: "Iltimos, 80 belgidan oshmagan matn kiriting:",
     askContact: "✅ Anketani tasdiqlash uchun telefon raqamingizni ulashing (soxta anketalarning oldini olish uchun kerak):",
@@ -137,11 +147,6 @@ const STRINGS = {
       "Do'stlaringizga botni ulashing — ular ham sevgisini topadi, siz esa sovrin yutasiz! 🏆",
     discoverTemporaryProblem: "Vaqtinchalik nosozlik yuz berdi. Iltimos, biroz keyin qayta urinib ko'ring 🙏",
     unlockLinkText: "🔐 Profilni to'liq ko'rish huquqini olish",
-    unlockPaywallIntro:
-      "🔐 Bu profilni ko'rish huquqini olishni xohlaysizmi?\n\n" +
-      "💳 Xizmatimiz pullik va bu 7 900 so'mni tashkil qiladi — har bir profil uchun alohida.\n" +
-      "🆓 (Agar tekin yo'ldan foydalanmoqchi bo'lsangiz, u insonning ham sizga layk bosishini kuting 😉)\n\n" +
-      "💎 Agar barcha profillarni bepul, cheklovsiz ko'rmoqchi bo'lsangiz — Premium tarifga ulanishingizni maslahat beramiz! ✨",
     unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
     unlockPremiumButton: "👑 Premium'ga ulanish",
     unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
@@ -325,9 +330,19 @@ const STRINGS = {
       "📸 Отправьте фото или видео\n\n" +
       "Пожалуйста, отправьте чёткое и качественное фото с собой, иначе анкета может быть удалена.",
     errMedia: "Пожалуйста, отправьте фото или видео:",
-    askLocation: "📍 Введите ваш адрес (город/район) или отправьте геолокацию через кнопку ниже:",
+    askLocation:
+      "📍 Откуда вы?\n\n" +
+      "Напишите название вашего города или района — например: <b>Чиланзар</b>, <b>Мирабад</b>, " +
+      "<b>Самарканд</b>, <b>Наманган</b>.\n\n" +
+      "Или отправьте геолокацию через кнопку ниже 👇",
     locationButton: "📍 Отправить геолокацию",
     errLocation: "Пожалуйста, введите адрес текстом или отправьте геолокацию:",
+    errLocationUnknown:
+      "🤔 Не удалось найти такой город или район.\n\n" +
+      "Пожалуйста, напишите настоящее название — например: <b>Чиланзар</b>, <b>Юнусабад</b>, " +
+      "<b>Мирабад</b>, <b>Сергели</b>, <b>Самарканд</b>, <b>Бухара</b>, <b>Фергана</b>, <b>Наманган</b>.\n\n" +
+      "Или проще всего — нажмите кнопку 📍 ниже, геолокация определится сама 👇",
+    distanceNear: "рядом",
     askBio: "📝 Напишите немного о себе (макс. 80 символов):",
     errBio: "Пожалуйста, введите текст не более 80 символов:",
     askContact: "✅ Для подтверждения анкеты поделитесь номером телефона (это защита от фейковых анкет):",
@@ -433,11 +448,6 @@ const STRINGS = {
       "Поделитесь ботом с друзьями — они тоже найдут свою любовь, а вы получите приз! 🏆",
     discoverTemporaryProblem: "Произошёл временный сбой. Пожалуйста, попробуйте чуть позже 🙏",
     unlockLinkText: "🔐 Получить доступ к анкете полностью",
-    unlockPaywallIntro:
-      "🔐 Хотите получить доступ к просмотру этой анкеты?\n\n" +
-      "💳 Наша услуга платная и стоит 7 900 сум — за каждую анкету отдельно.\n" +
-      "🆓 (Если хотите бесплатно, дождитесь, пока этот человек тоже поставит вам лайк 😉)\n\n" +
-      "💎 Если хотите смотреть все анкеты бесплатно и без ограничений — рекомендуем подключить Premium! ✨",
     unlockPayButton: "🔓 Получить доступ к просмотру анкеты",
     unlockPremiumButton: "👑 Подключить Premium",
     unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
@@ -616,9 +626,19 @@ const STRINGS = {
       "📸 Send a photo or video\n\n" +
       "Please send a clear, good-quality photo of yourself, otherwise your profile may be removed.",
     errMedia: "Please send a photo or video:",
-    askLocation: "📍 Enter your location (city/district) or share it using the button below:",
+    askLocation:
+      "📍 Where are you from?\n\n" +
+      "Type your city or district — for example: <b>Chilonzor</b>, <b>Mirobod</b>, " +
+      "<b>Samarqand</b>, <b>Namangan</b>.\n\n" +
+      "Or share your location with the button below 👇",
     locationButton: "📍 Send location",
     errLocation: "Please enter your location as text or share it:",
+    errLocationUnknown:
+      "🤔 I couldn't find that city or district.\n\n" +
+      "Please type a real name — for example: <b>Chilonzor</b>, <b>Yunusobod</b>, <b>Mirobod</b>, " +
+      "<b>Sergeli</b>, <b>Samarqand</b>, <b>Buxoro</b>, <b>Farg'ona</b>, <b>Namangan</b>.\n\n" +
+      "Or easiest of all — tap the 📍 button below and your location is detected for you 👇",
+    distanceNear: "nearby",
     askBio: "📝 Write a short bio about yourself (max 80 characters):",
     errBio: "Please enter no more than 80 characters:",
     askContact: "✅ To confirm your profile, share your phone number (this helps prevent fake profiles):",
@@ -724,11 +744,6 @@ const STRINGS = {
       "Share the bot with friends -- they might find love too, and you win a prize! 🏆",
     discoverTemporaryProblem: "Something went wrong for a moment. Please try again shortly 🙏",
     unlockLinkText: "🔐 Get full access to this profile",
-    unlockPaywallIntro:
-      "🔐 Want to get access to view this profile?\n\n" +
-      "💳 Our service is paid and costs 7,900 UZS — per profile.\n" +
-      "🆓 (If you'd like the free way, wait for that person to like you back too 😉)\n\n" +
-      "💎 If you'd like unlimited free access to every profile — we recommend subscribing to Premium! ✨",
     unlockPayButton: "🔓 Get access to view the profile",
     unlockPremiumButton: "👑 Get Premium",
     unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
