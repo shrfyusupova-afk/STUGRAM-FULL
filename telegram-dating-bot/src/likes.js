@@ -1,5 +1,5 @@
 const { Markup } = require("telegraf");
-const { getProfile, getLikers, getLanguage, hasLiked } = require("./db");
+const { getProfile, getLikers, getLanguage, hasLiked, getDislikes, recordDislike } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const {
   sendCandidate,
@@ -12,32 +12,113 @@ const { safeAnswerCbQuery } = require("./telegramSafety");
 const LIKE = "❤️";
 const DISLIKE = "👎";
 
-function respondKeyboard(candidateId) {
+// Buttons under an undecided liker. The index rides along in the callback
+// data so tapping either one can move straight to the next card without
+// keeping a cursor in memory that a restart would lose.
+function respondKeyboard(candidateId, index) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback(LIKE, `likeback:like:${candidateId}`), Markup.button.callback(DISLIKE, `likeback:dislike:${candidateId}`)],
+    [
+      Markup.button.callback(LIKE, `likeback:like:${candidateId}:${index}`),
+      Markup.button.callback(DISLIKE, `likeback:dislike:${candidateId}:${index}`),
+    ],
   ]);
 }
 
-// Reuses discover.js's card renderer. Each liker gets its own inline
-// ❤️/👎 pair (not the reply-keyboard swipe buttons, which can't tell which
-// of several cards on screen they refer to) unless it's already a mutual
-// match, in which case there's nothing left to decide.
+// The only button under someone already dealt with: there is nothing left to
+// decide about them, just somewhere else to go.
+function nextKeyboard(lang, index, total) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(t(lang, "likesNextButton")(index + 2, total), `likes:at:${index + 1}`)],
+  ]);
+}
+
+// Who is actually waiting on a decision, in a stable order.
 //
+// People this viewer has already turned down are filtered out: 👎 used to
+// only delete the message off the screen, so the same person was back at the
+// top of the list the very next time it was opened, forever.
+async function loadLikerQueue(myId) {
+  const [likerIds, dislikedIds] = await Promise.all([getLikers(myId), getDislikes(myId)]);
+  const disliked = new Set(dislikedIds.map(String));
+  const pending = likerIds.filter((id) => !disliked.has(String(id)));
+
+  // Loaded in parallel -- one sequential await per liker would be a
+  // round-trip each against a database backend.
+  const loaded = await Promise.all(pending.map(async (id) => ({ id, profile: await getProfile(id) })));
+  return loaded.filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+}
+
+// ONE liker at a time. This used to loop over the whole list and fire a card
+// per person in one go, so opening it with a dozen admirers dumped a dozen
+// photos into the chat at once and there was no sense of working through
+// them -- the answer to each was buried somewhere up the scrollback.
+//
+// The position is carried in the callback data rather than held in memory,
+// so a restart mid-list costs nothing and two devices can't disagree about
+// where this person is.
+async function showLikerAt(ctx, index) {
+  const myId = ctx.from.id;
+  const lang = (await getLanguage(myId)) || DEFAULT_LANG;
+
+  // The viewer's own profile rides along: its location is what the card's
+  // distance is measured from.
+  const [me, likers] = await Promise.all([getProfile(myId), loadLikerQueue(myId)]);
+
+  if (likers.length === 0) {
+    await ctx.reply(t(lang, "noLikesYet"));
+    return;
+  }
+  // The list can shrink between rendering a button and it being tapped (the
+  // person deactivated, or was answered from another device), so an index
+  // past the end means "done", not an error.
+  if (index >= likers.length) {
+    await ctx.reply(t(lang, "likesAllSeen"));
+    return;
+  }
+
+  const { id, profile } = likers[index];
+
+  // Two different questions, deliberately answered by two different rules.
+  //
+  // Whether to show ❤️/👎 depends only on whether this is already a mutual
+  // like: using canViewProfile here would hide ❤️ from a Premium user, who
+  // could then never like a liker back and the other person would never be
+  // told about a real match.
+  //
+  // Whether to show the CONTACT is canViewProfile, because a match no
+  // longer grants it to both sides -- it goes to whoever liked first. Left
+  // on mutualMatch, this list quietly handed the number to the responder
+  // anyway, one screen away from the paywall that had just refused them.
+  const mutualMatch = (await hasLiked(myId, id)) && (await hasLiked(id, myId));
+  const canSee = await canViewProfile(myId, id);
+
+  // includeUnlock is always false here: liking back is the free path already
+  // offered right on this card via the ❤️ button, so there is nothing to
+  // pitch a paywall for.
+  const captionOptions = {
+    includeUnlock: false,
+    viewerLocation: me?.location,
+    ...(canSee ? { contactPhone: profile.phone } : {}),
+  };
+
+  // Already decided: nothing to press but "next" -- and only when there IS
+  // a next. Still undecided: ❤️/👎, either of which moves on by itself.
+  const keyboard = mutualMatch
+    ? index + 1 < likers.length
+      ? nextKeyboard(lang, index, likers.length)
+      : undefined
+    : respondKeyboard(id, index);
+
+  await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
+}
+
 // Shared by the "💌 Kimlar yoqtirdi" menu button AND the "Kim layk bosganini
 // ko'rish" button attached to a new-like notification -- both must open the
 // exact same list, not two drifting copies of it.
 async function showLikers(ctx) {
-  const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
   const myId = ctx.from.id;
-  const likerIds = await getLikers(myId);
-  // Loaded in parallel -- one sequential await per liker would be a round-trip
-  // each against a database backend. The viewer's own profile joins the same
-  // batch: its location is what every card's distance is measured from.
-  const [me, loaded] = await Promise.all([
-    getProfile(myId),
-    Promise.all(likerIds.map(async (id) => ({ id, profile: await getProfile(id) }))),
-  ]);
-  const likers = loaded.filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+  const lang = (await getLanguage(myId)) || DEFAULT_LANG;
+  const likers = await loadLikerQueue(myId);
 
   if (likers.length === 0) {
     await ctx.reply(t(lang, "noLikesYet"));
@@ -45,35 +126,7 @@ async function showLikers(ctx) {
   }
 
   await ctx.reply(t(lang, "likesIntro")(likers.length));
-  for (const { id, profile } of likers) {
-    // Whether to show ❤️/👎 vs. the contact directly depends ONLY on
-    // whether it's a genuine mutual like -- NOT on canViewProfile (which
-    // also covers Premium/paid-unlock). Otherwise a Premium user would
-    // never see the ❤️ button here at all, could never like a liker back,
-    // and the other person would never get notified of a real match.
-    // includeUnlock is always false here: liking back is the free path
-    // already offered right on this card via the ❤️ button, so there's
-    // nothing to pitch a paywall for. A mutual match reveals the contact
-    // directly on the card -- no separate "View profile" tap needed.
-    // Two different questions, deliberately answered by two different rules.
-    //
-    // Whether to show ❤️/👎 depends only on whether this is already a mutual
-    // like: using canViewProfile here would hide ❤️ from a Premium user, who
-    // could then never like a liker back and the other person would never be
-    // told about a real match.
-    //
-    // Whether to show the CONTACT is canViewProfile, because a match no
-    // longer grants it to both sides -- it goes to whoever liked first. Left
-    // on mutualMatch, this list quietly handed the number to the responder
-    // anyway, one screen away from the paywall that had just refused them.
-    const mutualMatch = (await hasLiked(myId, id)) && (await hasLiked(id, myId));
-    const canSee = await canViewProfile(myId, id);
-    const captionOptions = canSee
-      ? { includeUnlock: false, contactPhone: profile.phone, viewerLocation: me?.location }
-      : { includeUnlock: false, viewerLocation: me?.location };
-    const keyboard = mutualMatch ? undefined : respondKeyboard(id);
-    await sendCandidate(ctx, lang, id, profile, keyboard, captionOptions);
-  }
+  await showLikerAt(ctx, 0);
 }
 
 function registerLikesHandlers(bot) {
@@ -87,8 +140,18 @@ function registerLikesHandlers(bot) {
     await showLikers(ctx);
   });
 
-  bot.action(/^likeback:like:(.+)$/, async (ctx) => {
+  // Step to a given position in the list, from the "next" button.
+  bot.action(/^likes:at:(\d+)$/, async (ctx) => {
+    await safeAnswerCbQuery(ctx);
+    await showLikerAt(ctx, Number(ctx.match[1]));
+  });
+
+  // The index is optional so that ❤️/👎 buttons on cards sent before this
+  // became a one-at-a-time list still work -- they just don't auto-advance,
+  // exactly as they behaved when they were sent.
+  bot.action(/^likeback:like:([^:]+)(?::(\d+))?$/, async (ctx) => {
     const candidateId = ctx.match[1];
+    const index = ctx.match[2] === undefined ? null : Number(ctx.match[2]);
     const myId = ctx.from.id;
     const lang = await getLanguage(myId) || DEFAULT_LANG;
     await recordLikeWithMatchNotification(ctx, myId, candidateId);
@@ -118,15 +181,33 @@ function registerLikesHandlers(bot) {
     } catch (err) {
       console.error("likeback:like editMessageCaption failed (ignored):", err.message);
     }
+
+    // Answering IS the "next" tap -- one decision, one card, no extra button
+    // to find. The answered person stays in the list (they are still someone
+    // who liked you), so the position after them is index + 1.
+    if (index !== null) await showLikerAt(ctx, index + 1);
   });
 
-  bot.action(/^likeback:dislike:(.+)$/, async (ctx) => {
+  bot.action(/^likeback:dislike:([^:]+)(?::(\d+))?$/, async (ctx) => {
+    const candidateId = ctx.match[1];
+    const index = ctx.match[2] === undefined ? null : Number(ctx.match[2]);
     await safeAnswerCbQuery(ctx);
+
+    // Recorded, not just removed from the screen. Without this, "no thanks"
+    // meant nothing at all: the same person was back at the top of the list
+    // the very next time it was opened.
+    await recordDislike(ctx.from.id, candidateId);
+
     try {
       await ctx.deleteMessage();
     } catch (err) {
       console.error("likeback:dislike deleteMessage failed (ignored):", err.message);
     }
+
+    // The turned-down person has just left the queue, so the NEXT card has
+    // slid into the index they were occupying -- not index + 1, which would
+    // skip somebody.
+    if (index !== null) await showLikerAt(ctx, index);
   });
 }
 

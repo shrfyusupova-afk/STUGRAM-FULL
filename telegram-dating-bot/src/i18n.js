@@ -237,7 +237,11 @@ const STRINGS = {
       "😔 Bu anketa endi mavjud emas — egasi uni o'chirgan yoki yopgan.\n" +
       "Bepul ochish imkoniyatingiz saqlanib qoldi, uni boshqasiga ishlatishingiz mumkin.",
     noLikesYet: "😔 Hozircha sizni hech kim layk bosmagan.\nTez orada ko'payadi! 🚀✨",
-    likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍`,
+    likesIntro: (count) => `💌 Sizni ${count} kishi layk bosdi! 😍\n\nBirma-bir ko'rib chiqamiz 👇`,
+    likesNextButton: (position, total) => `➡️ Keyingisi (${position}/${total})`,
+    likesAllSeen:
+      "✅ Sizni layk bosganlarning hammasini ko'rib chiqdingiz!\n\n" +
+      "Yangi layklar kelsa, xabar beramiz 💌",
     seeWhoLikedButton: "👀 Kim layk bosganini ko'rish",
     likeMilestoneNotification: (count) =>
       `💌 <b>Sizga ${count} ta odam layk bosdi!</b>\n\n` +
@@ -533,7 +537,11 @@ const STRINGS = {
       "😔 Этой анкеты больше нет — владелец удалил или закрыл её.\n" +
       "Ваше бесплатное открытие сохранено, потратите его на другую.",
     noLikesYet: "😔 Пока никто не поставил вам лайк.\nСкоро их станет больше! 🚀✨",
-    likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍`,
+    likesIntro: (count) => `💌 Вам поставили лайк ${count} человек! 😍\n\nПосмотрим по очереди 👇`,
+    likesNextButton: (position, total) => `➡️ Следующий (${position}/${total})`,
+    likesAllSeen:
+      "✅ Вы просмотрели всех, кто поставил вам лайк!\n\n" +
+      "Как только появятся новые — сообщим 💌",
     seeWhoLikedButton: "👀 Посмотреть, кто лайкнул",
     likeMilestoneNotification: (count) =>
       `💌 <b>Вам поставили лайк ${count} человек!</b>\n\n` +
@@ -829,7 +837,11 @@ const STRINGS = {
       "😔 This profile is gone -- the owner deleted or closed it.\n" +
       "Your free unlock is untouched; spend it on someone else.",
     noLikesYet: "😔 No one has liked you yet.\nMore is coming soon! 🚀✨",
-    likesIntro: (count) => `💌 ${count} people liked you! 😍`,
+    likesIntro: (count) => `💌 ${count} people liked you! 😍\n\nLet's go through them one by one 👇`,
+    likesNextButton: (position, total) => `➡️ Next (${position}/${total})`,
+    likesAllSeen:
+      "✅ You've been through everyone who liked you!\n\n" +
+      "We'll let you know as soon as someone new comes along 💌",
     seeWhoLikedButton: "👀 See who liked me",
     likeMilestoneNotification: (count) =>
       `💌 <b>${count} people have liked you!</b>\n\n` +

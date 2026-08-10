@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/adminMedia.test.js && node test/resilience.test.js && node test/e2e.test.js && node test/referral.test.js && node test/likeMilestones.test.js && node test/match.test.js && node test/winback.test.js && node test/alerts.test.js && node test/discoverPool.test.js && node test/aiAssistant.test.js && node test/fullReport.test.js && node test/geo.test.js",
+    "test": "node test/adminMedia.test.js && node test/resilience.test.js && node test/e2e.test.js && node test/referral.test.js && node test/likeMilestones.test.js && node test/match.test.js && node test/winback.test.js && node test/alerts.test.js && node test/discoverPool.test.js && node test/aiAssistant.test.js && node test/fullReport.test.js && node test/geo.test.js && node test/likesQueue.test.js",
     "test:pg": "node test/pgMigration.test.js"
   },
   "dependencies": {
