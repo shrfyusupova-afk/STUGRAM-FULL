@@ -268,7 +268,14 @@ async function createOrder(userId, { type = "premium", targetId } = {}) {
     return existing.merchantTransId;
   }
 
-  const merchantTransId = `${type}_${userId}_${Date.now()}`;
+  // Was `${type}_${userId}_${Date.now()}`, which is guessable from a Telegram
+  // id plus a rough time, and put that id into Click's records and into every
+  // URL and log line the checkout link touches. Neither is exploitable on its
+  // own -- nothing can be done with an order id without CLICK_SECRET_KEY --
+  // but an unguessable identifier that carries no user data is the correct
+  // shape for a payment reference, and it costs nothing. The id is never
+  // parsed anywhere: orders are found by exact id, or by (user, type, target).
+  const merchantTransId = `${type}_${crypto.randomBytes(12).toString("hex")}`;
   await createTransaction(merchantTransId, {
     userId: String(userId),
     type,
@@ -299,19 +306,112 @@ function buildCheckoutUrl(merchantTransId, amountSom) {
 // onPaid(order) is called once, exactly when a transaction first transitions
 // to "paid" (guarded against Click's at-least-once delivery). order is the
 // full stored record: { userId, type, targetId?, amount, ... }.
+// --- abuse control on the public payment endpoints -------------------------
+//
+// /click/prepare and /click/complete are open to the internet by necessity --
+// Click's servers have to reach them. Everything below the signature check is
+// already unreachable without CLICK_SECRET_KEY, so the exposure is not
+// forgery; it is that an unauthenticated flood still costs an MD5 and a
+// request slot each, against one small instance.
+//
+// The signature is therefore ALWAYS checked first, and a request that passes
+// it is never throttled -- no matter how much noise shares its IP. That
+// ordering is deliberate and is what makes this safe to run on a money path
+// at all: the failure mode of a rate limiter here is a refused payment, so
+// legitimate traffic must be structurally incapable of tripping it. (An
+// earlier version checked the counter first, to skip the hash on flooded
+// requests; a test showed that this also refused a valid callback arriving
+// from a flooded IP. The hash is microseconds -- not worth that risk.)
+//
+// What this does buy: a persistent unauthenticated flood gets a 429 and stops
+// consuming the rest of the handler, and the logs stay readable.
+const CLICK_ABUSE_WINDOW_MS = 60 * 1000;
+const CLICK_MAX_BAD_SIGNS = 20;
+const badSigns = new Map(); // ip -> { count, windowStart }
+
+function tooManyBadSigns(ip) {
+  const entry = badSigns.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.windowStart > CLICK_ABUSE_WINDOW_MS) {
+    badSigns.delete(ip);
+    return false;
+  }
+  return entry.count >= CLICK_MAX_BAD_SIGNS;
+}
+
+function recordBadSign(ip) {
+  const now = Date.now();
+  const entry = badSigns.get(ip);
+  if (!entry || now - entry.windowStart > CLICK_ABUSE_WINDOW_MS) {
+    badSigns.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  entry.count++;
+}
+
+// One entry per attacking IP, and nothing removes them on its own -- the same
+// unbounded-growth shape already fixed in floodGuard.js and adminBot.js.
+const BAD_SIGN_SWEEP_MS = 10 * 60 * 1000;
+function sweepBadSigns(now = Date.now()) {
+  let removed = 0;
+  for (const [ip, entry] of badSigns) {
+    if (now - entry.windowStart > CLICK_ABUSE_WINDOW_MS) {
+      badSigns.delete(ip);
+      removed++;
+    }
+  }
+  return removed;
+}
+setInterval(sweepBadSigns, BAD_SIGN_SWEEP_MS).unref();
+
+// Click sends action=0 for Prepare and action=1 for Complete. Both are
+// covered by the signature, so this is not what stops forgery -- it stops a
+// request meant for one endpoint being accepted by the other, and it is the
+// kind of explicit protocol check a payment audit expects to see stated
+// rather than implied.
+const ACTION_PREPARE = 0;
+const ACTION_COMPLETE = 1;
+
+// Rejects a callback that is correctly signed but is not for THIS merchant's
+// service, or carries the wrong action for the endpoint it arrived at.
+//
+// Both fields are inside the signed string, so neither check is what stops
+// forgery -- an outsider cannot alter either without invalidating the
+// signature. They are defence in depth, and they make the protocol contract
+// explicit instead of implied. Both are required fields in Click's Merchant
+// API on both callbacks, so a legitimate request always carries them.
+function wrongEnvelope(body, expectedAction) {
+  const serviceId = process.env.CLICK_SERVICE_ID;
+  if (serviceId && String(body.service_id) !== String(serviceId)) return "service_id mismatch";
+  if (Number(body.action) !== expectedAction) return "unexpected action";
+  return null;
+}
+
 function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
   const middleware = bodyParser ? [bodyParser] : [];
 
   app.post("/click/prepare", ...middleware, async (req, res) => {
     const body = req.body || {};
+    const signFailed = {
+      click_trans_id: body.click_trans_id,
+      merchant_trans_id: body.merchant_trans_id,
+      error: ERROR.SIGN_FAILED,
+      error_note: "SIGN CHECK FAILED",
+    };
+
+    // Signature first, always -- a valid callback is processed even from an
+    // IP that is mid-flood. Only a request that fails it can be throttled.
     if (!secretKey || !verifyPrepareSign(body, secretKey)) {
-      return res.json({
-        click_trans_id: body.click_trans_id,
-        merchant_trans_id: body.merchant_trans_id,
-        error: ERROR.SIGN_FAILED,
-        error_note: "SIGN CHECK FAILED",
-      });
+      const overLimit = tooManyBadSigns(req.ip);
+      recordBadSign(req.ip);
+      return res.status(overLimit ? 429 : 200).json(signFailed);
+    }
+
+    const envelopeProblem = wrongEnvelope(body, ACTION_PREPARE);
+    if (envelopeProblem) {
+      console.warn(`Click prepare rejected (${envelopeProblem}) for ${body.merchant_trans_id}`);
+      return res.json(signFailed);
     }
 
     const order = await getTransaction(body.merchant_trans_id);
@@ -357,13 +457,24 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 
   app.post("/click/complete", ...middleware, async (req, res) => {
     const body = req.body || {};
+    const signFailed = {
+      click_trans_id: body.click_trans_id,
+      merchant_trans_id: body.merchant_trans_id,
+      error: ERROR.SIGN_FAILED,
+      error_note: "SIGN CHECK FAILED",
+    };
+
+    // Signature first, always -- see the note on /click/prepare above.
     if (!secretKey || !verifyCompleteSign(body, secretKey)) {
-      return res.json({
-        click_trans_id: body.click_trans_id,
-        merchant_trans_id: body.merchant_trans_id,
-        error: ERROR.SIGN_FAILED,
-        error_note: "SIGN CHECK FAILED",
-      });
+      const overLimit = tooManyBadSigns(req.ip);
+      recordBadSign(req.ip);
+      return res.status(overLimit ? 429 : 200).json(signFailed);
+    }
+
+    const envelopeProblem = wrongEnvelope(body, ACTION_COMPLETE);
+    if (envelopeProblem) {
+      console.warn(`Click complete rejected (${envelopeProblem}) for ${body.merchant_trans_id}`);
+      return res.json(signFailed);
     }
 
     const order = await getTransaction(body.merchant_trans_id);

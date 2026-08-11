@@ -393,6 +393,14 @@ bot.catch((err, ctx) => {
 if (webhookDomain) {
   const app = express();
 
+  // Render terminates TLS and forwards, so without this every request looks
+  // like it came from the proxy: req.ip would be one shared value and the
+  // per-IP abuse counter on the Click endpoints would lump every caller --
+  // including Click -- into a single bucket. One hop, not `true`: trusting
+  // the whole X-Forwarded-For chain would let a caller spoof its own IP by
+  // prepending one.
+  app.set("trust proxy", 1);
+
   // What the last webhook check found, so /health can report "the bot is
   // running but Telegram is not sending it anything" -- the one outage that
   // otherwise looks completely healthy from outside.
@@ -463,7 +471,12 @@ if (webhookDomain) {
   // Renewing while a subscription is still running must ADD to it, not reset
   // it to "days from today" -- otherwise someone who renews early silently
   // throws away every day they had left and effectively pays to lose time.
-  const clickBodyParser = express.urlencoded({ extended: true });
+  // extended:false, not true. Click's callbacks are flat form fields, so the
+  // nested-object/array syntax `extended:true` enables buys nothing here and
+  // only widens what an attacker can shape req.body into before any of our
+  // code looks at it. The size cap is likewise well above a Click callback
+  // (a few hundred bytes) and far below anything worth buffering.
+  const clickBodyParser = express.urlencoded({ extended: false, limit: "16kb" });
 
   // Named rather than inline so the retry sweep can run the exact same
   // delivery logic -- a recovered order must end up in precisely the state a
