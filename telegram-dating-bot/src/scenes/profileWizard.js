@@ -273,6 +273,16 @@ const profileWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
   async (ctx) => {
+    // While this form is open, the stage middleware routes EVERY update here
+    // -- including ones that are not a person answering anything. Blocking
+    // the bot sends a my_chat_member update, and that used to fall straight
+    // through to the current step's handler, which found no photo/text,
+    // and tried to reply "please send a photo" to someone who had just
+    // blocked us. That reply fails with 403 and the failure surfaced as a
+    // crash alert. Same shape as the /start-stored-as-a-name bug above:
+    // an update that is not an answer must not be read as one.
+    if (!ctx.message && !ctx.callbackQuery) return;
+
     const lang = ctx.wizard.state.lang;
     const idx = ctx.wizard.state.stepIndex;
     const stepKey = STEP_ORDER[idx];

@@ -19,7 +19,7 @@ const {
   registerReferralHandlers,
 } = require("./referral");
 const { startWinbackSweeper, registerWinbackHandlers } = require("./winback");
-const { safeAnswerCbQuery } = require("./telegramSafety");
+const { safeAnswerCbQuery, isGoneError } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
@@ -28,7 +28,7 @@ const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
   grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
-  backfillMatchUnlocks, touchLastSeen,
+  backfillMatchUnlocks, touchLastSeen, markBotBlocked,
 } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
@@ -372,6 +372,20 @@ bot.telegram
   .catch((err) => console.error("getMe failed:", err));
 
 bot.catch((err, ctx) => {
+  // Somebody blocking the bot is an ordinary, expected event, not a fault:
+  // every reply to them fails with 403 from that moment on. Paging the
+  // operator for each one would mean a 🚨 per person who ever walks away --
+  // hundreds on a busy day -- and real crashes would be buried under them.
+  //
+  // Recorded rather than merely swallowed, so the win-back campaign stops
+  // targeting an account that can no longer receive anything.
+  if (isGoneError(err)) {
+    const userId = ctx.from?.id;
+    console.warn(`Bot was blocked by ${userId ?? "unknown user"} (ignored, recorded).`);
+    if (userId) markBotBlocked(userId).catch(() => {});
+    return;
+  }
+
   console.error(`Bot error for update ${ctx.updateType}:`, err);
   alert(`Main bot error on ${ctx.updateType}:\n${err.stack || err.message}`).catch(() => {});
 });
