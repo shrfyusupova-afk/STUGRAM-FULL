@@ -22,7 +22,7 @@ const { startWinbackSweeper, registerWinbackHandlers } = require("./winback");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
-const { registerClickRoutes, retryUndeliveredOrders, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
+const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
@@ -449,13 +449,6 @@ if (webhookDomain) {
   // Renewing while a subscription is still running must ADD to it, not reset
   // it to "days from today" -- otherwise someone who renews early silently
   // throws away every day they had left and effectively pays to lose time.
-  function extendFrom(currentUntilIso, days) {
-    const now = Date.now();
-    const current = currentUntilIso ? new Date(currentUntilIso).getTime() : 0;
-    const base = Number.isFinite(current) && current > now ? current : now;
-    return new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
-  }
-
   const clickBodyParser = express.urlencoded({ extended: true });
 
   // Named rather than inline so the retry sweep can run the exact same

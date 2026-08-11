@@ -89,6 +89,17 @@ const VIP_CHAT_PRICE_SOM = 59900;
 const ANON_GENDER_PRICE_SOM = 12900;
 const ANON_GENDER_DAYS = 7;
 
+// Adding time to a subscription starts from whatever is LEFT on it, not from
+// today -- otherwise renewing early silently throws away every remaining day,
+// so the person effectively pays to lose time. Shared by the Click delivery
+// path and the admin panel's "gift" buttons so the two cannot drift apart.
+function extendFrom(currentUntilIso, days) {
+  const now = Date.now();
+  const current = currentUntilIso ? new Date(currentUntilIso).getTime() : 0;
+  const base = Number.isFinite(current) && current > now ? current : now;
+  return new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function priceForType(type) {
   if (type === "unlock") return UNLOCK_PRICE_SOM;
   if (type === "vipchat") return VIP_CHAT_PRICE_SOM;
@@ -462,6 +473,7 @@ module.exports = {
   buildCheckoutUrl,
   registerClickRoutes,
   getSalesSummary,
+  extendFrom,
   retryUndeliveredOrders,
   verifyPrepareSign,
   verifyCompleteSign,

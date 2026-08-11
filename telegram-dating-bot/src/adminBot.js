@@ -4,6 +4,8 @@ const {
   searchProfiles, getProfileStats, listAllProfileIds,
   getProfile, setProfileActive, deleteProfile, isAdmin, addAdmin, listAdmins, removeAdmin,
   listComplaints, getComplaint, setComplaintReply,
+  setPremiumUntil, hasPremium, grantVipChat, hasVipChat,
+  setAnonGenderFilterUntil, addUnlockCredits,
 } = require("./db");
 const {
   getSalesSummary,
@@ -11,7 +13,11 @@ const {
   UNLOCK_PRICE_SOM,
   VIP_CHAT_PRICE_SOM,
   ANON_GENDER_PRICE_SOM,
+  PREMIUM_DAYS,
+  ANON_GENDER_DAYS,
+  extendFrom,
 } = require("./click");
+const { VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { deliverAdminReply } = require("./complaints");
 const { profileLinkHref, profileLinkKind } = require("./profileLink");
 const { isRegistered } = require("./profileState");
@@ -54,6 +60,9 @@ const BACK_LABEL = "⬅️ Orqaga";
 const CONFIRM_YES_LABEL = "✅ Ha, yuborilsin";
 const CONFIRM_NO_LABEL = "❌ Yo'q, bekor qilish";
 const SKIP_MEDIA_LABEL = "⏭ Rasmsiz davom etish";
+
+// How many free profile unlocks one tap of the gift button hands over.
+const GIFT_UNLOCK_CREDITS = 5;
 
 // What the reporter was looking at when they filed, used for the one-line
 // label in the list so an admin can triage without opening each one.
@@ -716,7 +725,19 @@ async function sendUserCard(ctx, id, profile, mainBotTelegram) {
 // button on their own profile.
 async function userActionsKeyboard(id, profile, viewerId) {
   const toggleLabel = profile.active === false ? "🟢 Faollantirish" : "🔴 Faolsizlantirish";
+  const vip = await hasVipChat(id);
   const rows = [
+    // Comping a paid feature, from the same screen the person is already on.
+    // Useful well beyond the owner's own profile: settling a complaint,
+    // thanking someone who brought a crowd in, or handing a prize out.
+    [
+      Markup.button.callback("💎 Premium +30 kun", `admin:gift:premium:${id}`),
+      Markup.button.callback(vip ? "👑 VIP ✅" : "👑 VIP berish", `admin:gift:vip:${id}`),
+    ],
+    [
+      Markup.button.callback("🕵️ Anonim filtr +7 kun", `admin:gift:anon:${id}`),
+      Markup.button.callback("🎁 5 ta ochish", `admin:gift:credits:${id}`),
+    ],
     [Markup.button.callback(toggleLabel, `admin:toggle:${id}`), Markup.button.callback("🗑 O'chirish", `admin:delete:${id}`)],
   ];
   if (String(id) !== String(viewerId) && (await isAdmin(id))) {
@@ -1448,6 +1469,66 @@ function createAdminBot(token, mainBotTelegram) {
       }
 
       await sendSearchResults(ctx, query);
+    })
+  );
+
+  // Comping a paid feature to somebody -- including yourself. Everything it
+  // grants goes through the SAME storage calls a real Click payment uses, so
+  // a gifted entitlement is indistinguishable from a bought one everywhere
+  // downstream. Deliberately NOT written into the sales ledger: it was never
+  // money, and counting it as revenue would quietly corrupt every figure on
+  // the Sotuvlar and To'liq hisobot screens.
+  bot.action(
+    /^admin:gift:(premium|vip|anon|credits):(.+)$/,
+    requireAdmin(async (ctx) => {
+      const kind = ctx.match[1];
+      const targetId = ctx.match[2];
+
+      const profile = await getProfile(targetId);
+      if (!profile) {
+        await safeAnswerCbQuery(ctx, "Topilmadi");
+        return;
+      }
+
+      let toast;
+      let notice;
+      if (kind === "premium") {
+        // extendFrom, not "days from today" -- gifting to somebody who still
+        // has time left must add to it, never overwrite it.
+        await setPremiumUntil(targetId, extendFrom(profile.premiumUntil, PREMIUM_DAYS));
+        toast = `💎 Premium +${PREMIUM_DAYS} kun`;
+        notice = `🎁 Sizga sovg'a: 💎 Premium ${PREMIUM_DAYS} kunga faollashtirildi!`;
+      } else if (kind === "vip") {
+        if (await hasVipChat(targetId)) {
+          await safeAnswerCbQuery(ctx, "👑 VIP allaqachon bor");
+          return;
+        }
+        await grantVipChat(targetId);
+        toast = "👑 VIP berildi";
+        notice = `🎁 Sizga sovg'a: 👑 VIP suhbatga kirish huquqi ochildi!\n\n${VIP_CHAT_INVITE_LINK}`;
+      } else if (kind === "anon") {
+        await setAnonGenderFilterUntil(targetId, extendFrom(profile.anonGenderUntil, ANON_GENDER_DAYS));
+        toast = `🕵️ Anonim filtr +${ANON_GENDER_DAYS} kun`;
+        notice = `🎁 Sizga sovg'a: 🕵️ Anonim chatda jins tanlash ${ANON_GENDER_DAYS} kunga ochildi!`;
+      } else {
+        await addUnlockCredits(targetId, GIFT_UNLOCK_CREDITS);
+        toast = `🎁 ${GIFT_UNLOCK_CREDITS} ta ochish berildi`;
+        notice = `🎁 Sizga sovg'a: ${GIFT_UNLOCK_CREDITS} ta bepul anketa ochish imkoniyati berildi!`;
+      }
+
+      await safeAnswerCbQuery(ctx, toast);
+
+      // Telling them is the point of a gift. Best-effort: somebody who has
+      // blocked the bot must not turn granting into a failure -- the
+      // entitlement is already written either way.
+      try {
+        await mainBotTelegram.sendMessage(targetId, notice);
+      } catch (err) {
+        console.error(`gift notice to ${targetId} failed (ignored):`, err.message);
+      }
+
+      const updated = await getProfile(targetId);
+      await safeUpdateCard(ctx, userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
     })
   );
 
