@@ -256,6 +256,9 @@ const STRINGS = {
       "🕵️ Anonim chatda xohlagan jinsni (qiz yoki o'g'il) tanlab suhbatlashish huquqi — 1 oy davomida BEPUL! (odatda 12 900 so'm/hafta turadi)\n\n" +
       "💵 Narxi: 79 900 so'm / 1 oy",
     premiumPayClickButton: "💳 Click orqali to'lash",
+    // One entry per provider, named after the provider key in checkout.js.
+    payWith_click: "💳 Click orqali to'lash",
+    payWith_payme: "💳 Payme orqali to'lash",
     premiumPayClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan (Merchant ID / Service ID kutilmoqda).",
     premiumQrCaption: "📷 Yoki shu QR kodni skanerlab to'lang",
     premiumActivated: (days) => `🎉 Premium faollashtirildi! ${days} kun davomida barcha imtiyozlardan foydalanasiz.`,
@@ -556,6 +559,8 @@ const STRINGS = {
       "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n\n" +
       "💵 Цена: 79 900 сум / 1 месяц",
     premiumPayClickButton: "💳 Оплатить через Click",
+    payWith_click: "💳 Оплатить через Click",
+    payWith_payme: "💳 Оплатить через Payme",
     premiumPayClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена (ожидаются Merchant ID / Service ID).",
     premiumQrCaption: "📷 Или отсканируйте этот QR-код для оплаты",
     premiumActivated: (days) => `🎉 Премиум активирован! Все привилегии доступны в течение ${days} дней.`,
@@ -856,6 +861,8 @@ const STRINGS = {
       "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n\n" +
       "💵 Price: 79,900 UZS / month",
     premiumPayClickButton: "💳 Pay with Click",
+    payWith_click: "💳 Pay with Click",
+    payWith_payme: "💳 Pay with Payme",
     premiumPayClickNotConfigured: "💳 Click payments aren't fully set up yet (waiting on Merchant ID / Service ID).",
     premiumQrCaption: "📷 Or scan this QR code to pay",
     premiumActivated: (days) => `🎉 Premium activated! You'll have all the perks for ${days} days.`,

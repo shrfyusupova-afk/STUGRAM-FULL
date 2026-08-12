@@ -52,6 +52,18 @@ services:
       - key: CLICK_SECRET_KEY
         sync: false
 
+      # Payme (Paycom) merchant credentials -- the second payment provider.
+      # Leave blank to run with Click only; the Payme button is then simply
+      # not offered. Callback URL to register with Payme: <domain>/payme
+      - key: PAYME_MERCHANT_ID
+        sync: false
+      - key: PAYME_KEY
+        sync: false
+      # Only needed if your cash-box uses an account field other than
+      # "order_id" -- check the Payme merchant cabinet.
+      - key: PAYME_ACCOUNT_FIELD
+        sync: false
+
       # Your own Telegram user id (a number, get it from @userinfobot). Without
       # this, a crash or a broadcast failure is invisible until /health is
       # checked by hand or a user complains -- see /health's "alerts" field.

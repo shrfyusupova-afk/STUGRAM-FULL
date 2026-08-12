@@ -23,6 +23,7 @@ const { safeAnswerCbQuery, isGoneError } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
+const { registerPaymeRoutes } = require("./payme");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
@@ -429,6 +430,12 @@ if (webhookDomain) {
       // until someone thinks to load this page or a user complains -- worth
       // seeing at a glance, same reasoning as the two fields above it.
       alerts: ALERT_CHAT_ID ? "configured" : "NOT CONFIGURED (crashes and failures are silent)",
+      // Same reasoning as clickPayments above: without these, the Payme
+      // button is not offered at all and its callbacks are refused.
+      paymePayments:
+        process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY
+          ? "configured"
+          : "NOT CONFIGURED (Payme button hidden)",
       // Powers the admin panel's "AI yordamchi" button -- without it that
       // button degrades to a message instead of failing.
       aiAssistant: process.env.ANTHROPIC_API_KEY
@@ -534,6 +541,10 @@ if (webhookDomain) {
   };
 
   registerClickRoutes(app, { bodyParser: clickBodyParser, onPaid: deliverPaidOrder });
+  // Payme settles the SAME orders through the same delivery handler, so a
+  // feature bought with either provider is granted by identical code. Its
+  // callbacks are JSON-RPC rather than form-encoded, hence its own parser.
+  registerPaymeRoutes(app, { bodyParser: express.json({ limit: "16kb" }), onPaid: deliverPaidOrder });
 
   app.use(bot.webhookCallback(webhookPath, webhookSecret ? { secretToken: webhookSecret } : undefined));
 

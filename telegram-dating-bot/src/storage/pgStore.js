@@ -178,6 +178,31 @@ async function init() {
     `CREATE INDEX IF NOT EXISTS click_undelivered_idx
        ON click_transactions (status, delivered) WHERE status = 'paid' AND delivered = FALSE`
   );
+  // The order ledger is shared by every payment provider now, so it records
+  // which checkout the person was sent to. The table keeps its original name
+  // rather than being renamed under a live deployment holding real orders.
+  await query(`ALTER TABLE click_transactions ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'click'`);
+
+  // Payme tracks a transaction lifecycle of its own, by ITS id, separate from
+  // our order: created(1) -> performed(2), or cancelled(-1/-2). Kept in its
+  // own table because it is Payme's state machine, not ours -- the order row
+  // stays the single provider-neutral answer to "what was bought".
+  await query(`
+    CREATE TABLE IF NOT EXISTS payme_transactions (
+      payme_id          TEXT PRIMARY KEY,
+      merchant_trans_id TEXT NOT NULL,
+      amount_tiyin      BIGINT NOT NULL,
+      state             INTEGER NOT NULL,
+      reason            INTEGER,
+      create_time       BIGINT NOT NULL,
+      perform_time      BIGINT NOT NULL DEFAULT 0,
+      cancel_time       BIGINT NOT NULL DEFAULT 0,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+  // "Is there already a live transaction on this order?" runs on every
+  // CreateTransaction, and GetStatement scans by time.
+  await query(`CREATE INDEX IF NOT EXISTS payme_order_idx ON payme_transactions (merchant_trans_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS payme_time_idx ON payme_transactions (create_time)`);
 
   // Who invited whom. referred_id is the PRIMARY KEY, not a surrogate: a
   // person can be invited exactly once, ever, and making that a key constraint
@@ -1006,6 +1031,64 @@ async function getSalesRows(sinceIso) {
   return rows.map((r) => ({ type: r.type, amount: Number(r.amount) }));
 }
 
+// --- payme transactions ------------------------------------------------------
+
+function rowToPaymeTx(row) {
+  return {
+    paymeId: row.payme_id,
+    merchantTransId: row.merchant_trans_id,
+    amountTiyin: Number(row.amount_tiyin),
+    state: Number(row.state),
+    reason: row.reason === null ? null : Number(row.reason),
+    createTime: Number(row.create_time),
+    performTime: Number(row.perform_time),
+    cancelTime: Number(row.cancel_time),
+  };
+}
+
+async function getPaymeTransaction(paymeId) {
+  const { rows } = await query(`SELECT * FROM payme_transactions WHERE payme_id = $1`, [String(paymeId)]);
+  return rows[0] ? rowToPaymeTx(rows[0]) : null;
+}
+
+// The most recent transaction against an order -- used to refuse opening a
+// second live one while one is already waiting to be performed.
+async function getPaymeTransactionByOrder(merchantTransId) {
+  const { rows } = await query(
+    `SELECT * FROM payme_transactions WHERE merchant_trans_id = $1 ORDER BY create_time DESC LIMIT 1`,
+    [String(merchantTransId)]
+  );
+  return rows[0] ? rowToPaymeTx(rows[0]) : null;
+}
+
+async function createPaymeTransaction({ paymeId, merchantTransId, amountTiyin, state, createTime }) {
+  await query(
+    `INSERT INTO payme_transactions (payme_id, merchant_trans_id, amount_tiyin, state, create_time)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (payme_id) DO NOTHING`,
+    [String(paymeId), String(merchantTransId), amountTiyin, state, createTime]
+  );
+}
+
+async function setPaymeTransactionState(paymeId, state, { performTime, cancelTime, reason } = {}) {
+  await query(
+    `UPDATE payme_transactions
+        SET state = $2,
+            perform_time = COALESCE($3, perform_time),
+            cancel_time  = COALESCE($4, cancel_time),
+            reason       = COALESCE($5, reason)
+      WHERE payme_id = $1`,
+    [String(paymeId), state, performTime ?? null, cancelTime ?? null, reason ?? null]
+  );
+}
+
+async function listPaymeTransactions(from, to) {
+  const { rows } = await query(
+    `SELECT * FROM payme_transactions WHERE create_time >= $1 AND create_time <= $2 ORDER BY create_time`,
+    [from, to]
+  );
+  return rows.map(rowToPaymeTx);
+}
+
 async function close() {
   if (pool) {
     await pool.end();
@@ -1032,5 +1115,7 @@ module.exports = {
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
   markTransaction, getSalesRows,
+  getPaymeTransaction, getPaymeTransactionByOrder, createPaymeTransaction,
+  setPaymeTransactionState, listPaymeTransactions,
   listUndeliveredOrders, markDelivered, bumpDeliveryAttempts,
 };

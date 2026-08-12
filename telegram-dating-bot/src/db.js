@@ -101,7 +101,14 @@ module.exports = {
   removeAdmin: store.removeAdmin,
   getLanguage: store.getLanguage,
   setLanguage: store.setLanguage,
-  // Payment ledger -- Postgres only; click.js falls back to its own JSON file
+  // Payme's own transaction state machine. Unlike the order ledger below,
+  // BOTH backends implement these, so there is nothing to fall back to.
+  getPaymeTransaction: store.getPaymeTransaction,
+  getPaymeTransactionByOrder: store.getPaymeTransactionByOrder,
+  createPaymeTransaction: store.createPaymeTransaction,
+  setPaymeTransactionState: store.setPaymeTransactionState,
+  listPaymeTransactions: store.listPaymeTransactions,
+  // Payment ledger -- Postgres only; orders.js falls back to its own JSON file
   // when these are absent.
   txStore: usePostgres
     ? {

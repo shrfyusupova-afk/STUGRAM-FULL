@@ -1,42 +1,27 @@
+// Click Merchant API: signature verification and the Prepare/Complete
+// callbacks. Nothing about WHAT is being bought lives here -- that is the
+// shared order ledger in orders.js, which every provider settles against.
+//
+// See SECURITY.md for the full control set and what each one does and does
+// not protect against.
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
-// Ledger backend: present only when Postgres is active (see db.js).
-const { txStore } = require("./db");
-
-const TX_PATH = path.join(__dirname, "..", "data", "clickTransactions.json");
-
-// Null-prototype, not plain {} -- merchant_trans_id in Click's
-// Prepare/Complete requests is echoed straight back to us and used as a
-// lookup key here; a null-prototype object means a key like "__proto__"
-// just behaves like any other unknown key instead of hitting the special
-// exotic accessor that plain objects have.
-function readTx() {
-  if (!fs.existsSync(TX_PATH)) return Object.create(null);
-  try {
-    return Object.assign(Object.create(null), JSON.parse(fs.readFileSync(TX_PATH, "utf8")));
-  } catch (err) {
-    // Keep the damaged ledger so paid orders can still be reconciled by hand,
-    // rather than letting the next write silently overwrite it with nothing.
-    const backup = `${TX_PATH}.corrupt`;
-    try {
-      if (!fs.existsSync(backup)) fs.copyFileSync(TX_PATH, backup);
-    } catch (copyErr) {
-      console.error("Could not preserve corrupt transaction file:", copyErr.message);
-    }
-    console.error(`CORRUPT TRANSACTION FILE (copy kept at ${backup}):`, err.message);
-    return Object.create(null);
-  }
-}
-
-// Temp-file + rename, same as db.js's writeJson -- a torn write here would
-// corrupt the payment ledger, losing the record of who paid for what.
-function writeTx(all) {
-  fs.mkdirSync(path.dirname(TX_PATH), { recursive: true });
-  const tmpPath = `${TX_PATH}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(all, null, 2));
-  fs.renameSync(tmpPath, TX_PATH);
-}
+const {
+  createOrder,
+  getOrder,
+  markOrder,
+  deliverOrder,
+  getSalesSummary,
+  getSalesRows,
+  retryUndeliveredOrders,
+  extendFrom,
+  priceForType,
+  PREMIUM_PRICE_SOM,
+  PREMIUM_DAYS,
+  UNLOCK_PRICE_SOM,
+  VIP_CHAT_PRICE_SOM,
+  ANON_GENDER_PRICE_SOM,
+  ANON_GENDER_DAYS,
+} = require("./orders");
 
 // https://docs.click.uz/en/click-api-request/ -- Merchant API error codes.
 const ERROR = {
@@ -82,212 +67,6 @@ function verifyCompleteSign(body, secretKey) {
   return timingSafeEqualStr(expected, body.sign_string);
 }
 
-const PREMIUM_PRICE_SOM = 79900;
-const PREMIUM_DAYS = 30;
-const UNLOCK_PRICE_SOM = 9900;
-const VIP_CHAT_PRICE_SOM = 59900;
-const ANON_GENDER_PRICE_SOM = 12900;
-const ANON_GENDER_DAYS = 7;
-
-// Adding time to a subscription starts from whatever is LEFT on it, not from
-// today -- otherwise renewing early silently throws away every remaining day,
-// so the person effectively pays to lose time. Shared by the Click delivery
-// path and the admin panel's "gift" buttons so the two cannot drift apart.
-function extendFrom(currentUntilIso, days) {
-  const now = Date.now();
-  const current = currentUntilIso ? new Date(currentUntilIso).getTime() : 0;
-  const base = Number.isFinite(current) && current > now ? current : now;
-  return new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
-}
-
-function priceForType(type) {
-  if (type === "unlock") return UNLOCK_PRICE_SOM;
-  if (type === "vipchat") return VIP_CHAT_PRICE_SOM;
-  if (type === "anongender") return ANON_GENDER_PRICE_SOM;
-  return PREMIUM_PRICE_SOM;
-}
-
-// --- Ledger access, routed to whichever storage backend is active ---------
-//
-// With Postgres the ledger lives in click_transactions; otherwise it stays in
-// the original JSON file. Both paths go through these six helpers so the
-// payment logic below is written once.
-
-async function findPendingOrder(userId, type, targetId) {
-  if (txStore) return txStore.findPendingOrder(userId, type, targetId);
-  const all = readTx();
-  const id = Object.keys(all).find((key) => {
-    const tx = all[key];
-    return (
-      tx.status === "pending" &&
-      tx.userId === String(userId) &&
-      tx.type === type &&
-      (type !== "unlock" || tx.targetId === String(targetId))
-    );
-  });
-  return id ? { merchantTransId: id, ...all[id] } : null;
-}
-
-async function getTransaction(merchantTransId) {
-  if (txStore) return txStore.getTransaction(merchantTransId);
-  return readTx()[merchantTransId] || null;
-}
-
-async function createTransaction(merchantTransId, tx) {
-  if (txStore) return txStore.createTransaction(merchantTransId, tx);
-  const all = readTx();
-  all[merchantTransId] = { ...tx, createdAt: new Date().toISOString() };
-  writeTx(all);
-}
-
-async function updateTransactionAmount(merchantTransId, amount) {
-  if (txStore) return txStore.updateTransactionAmount(merchantTransId, amount);
-  const all = readTx();
-  if (!all[merchantTransId]) return;
-  all[merchantTransId].amount = amount;
-  writeTx(all);
-}
-
-// Moves a transaction from one status to another, returning the updated row
-// ONLY if it was still in `fromStatus`. That makes the transition the single
-// point of truth for idempotency: Click retries Complete, and the retry finds
-// the row already 'paid', matches nothing, and so cannot deliver twice.
-async function markTransaction(merchantTransId, fromStatus, toStatus, extra = {}) {
-  if (txStore) return txStore.markTransaction(merchantTransId, fromStatus, toStatus, extra);
-  const all = readTx();
-  const order = all[merchantTransId];
-  if (!order || order.status !== fromStatus) return null;
-  order.status = toStatus;
-  if (extra.clickTransId) order.clickTransId = extra.clickTransId;
-  if (toStatus === "paid") order.paidAt = new Date().toISOString();
-  writeTx(all);
-  return { ...order };
-}
-
-async function getSalesRows(sinceIso) {
-  if (txStore) return txStore.getSalesRows(sinceIso);
-  return Object.values(readTx())
-    .filter((tx) => tx.status === "paid" && (!sinceIso || (tx.paidAt && tx.paidAt >= sinceIso)))
-    .map((tx) => ({ type: tx.type, amount: tx.amount }));
-}
-
-// --- Delivery tracking -----------------------------------------------------
-//
-// "Paid" and "the buyer actually got what they paid for" are different facts.
-// Click is told success as soon as the money is confirmed (it must be, or it
-// keeps retrying and eventually reverses), but granting the feature can still
-// fail afterwards. Recording delivery separately is what makes that failure
-// recoverable instead of a silent loss -- Click never asks again.
-
-async function listUndeliveredOrders(limit = 50) {
-  if (txStore) return txStore.listUndeliveredOrders(limit);
-  return Object.entries(readTx())
-    .filter(([, tx]) => tx.status === "paid" && !tx.delivered)
-    .slice(0, limit)
-    .map(([merchantTransId, tx]) => ({ merchantTransId, ...tx, deliveryAttempts: tx.deliveryAttempts || 0 }));
-}
-
-async function markDelivered(merchantTransId) {
-  if (txStore) return txStore.markDelivered(merchantTransId);
-  const all = readTx();
-  if (!all[merchantTransId]) return;
-  all[merchantTransId].delivered = true;
-  writeTx(all);
-}
-
-async function bumpDeliveryAttempts(merchantTransId) {
-  if (txStore) return txStore.bumpDeliveryAttempts(merchantTransId);
-  const all = readTx();
-  if (!all[merchantTransId]) return 0;
-  all[merchantTransId].deliveryAttempts = (all[merchantTransId].deliveryAttempts || 0) + 1;
-  writeTx(all);
-  return all[merchantTransId].deliveryAttempts;
-}
-
-// Give up eventually rather than retrying a permanently broken order forever
-// (a deleted account, say). The order stays flagged undelivered so it can
-// still be found and settled by hand.
-const MAX_DELIVERY_ATTEMPTS = 10;
-
-// Runs the pending deliveries. Called right after startup and then on a timer,
-// so a purchase that failed to land during an outage is completed as soon as
-// the bot is healthy again.
-async function retryUndeliveredOrders(onPaid) {
-  if (!onPaid) return { retried: 0, delivered: 0 };
-  let delivered = 0;
-  let retried = 0;
-  let orders;
-  try {
-    orders = await listUndeliveredOrders();
-  } catch (err) {
-    console.error("Could not list undelivered orders:", err.message);
-    return { retried: 0, delivered: 0 };
-  }
-
-  for (const order of orders) {
-    if ((order.deliveryAttempts || 0) >= MAX_DELIVERY_ATTEMPTS) continue;
-    retried++;
-    try {
-      await onPaid(order);
-      await markDelivered(order.merchantTransId);
-      delivered++;
-      console.log(`Recovered undelivered order ${order.merchantTransId} (${order.type}, user ${order.userId})`);
-    } catch (err) {
-      const attempts = await bumpDeliveryAttempts(order.merchantTransId);
-      console.error(
-        `Delivery retry ${attempts}/${MAX_DELIVERY_ATTEMPTS} failed for ${order.merchantTransId}:`,
-        err.message
-      );
-    }
-  }
-  if (retried) console.log(`Delivery sweep: ${delivered}/${retried} recovered.`);
-  return { retried, delivered };
-}
-
-// type: "premium" (subscription), "unlock" (pay once to view a single
-// candidate's contact), "vipchat" (pay once to join the VIP chat group, men
-// only -- women join free), or "anongender" (weekly subscription to pick a
-// specific gender in anonymous chat instead of random). targetId is only
-// meaningful for "unlock" -- it's the candidate profile the payment grants
-// access to.
-async function createOrder(userId, { type = "premium", targetId } = {}) {
-  const amount = priceForType(type);
-
-  // Reopening the same paywall without paying (e.g. tapping the paywall link
-  // again) reuses the still-pending order instead of piling up an abandoned
-  // row every time -- the ledger would otherwise grow forever.
-  const existing = await findPendingOrder(userId, type, targetId);
-  if (existing) {
-    // The checkout URL is always built from the CURRENT price constant, but a
-    // reused pending order still carries whatever the price was when it was
-    // first opened. If a price ever changes between those two moments, Click
-    // sends the new amount while Prepare compares against the old stored one
-    // and rejects the whole payment with AMOUNT_MISMATCH. Re-sync it here so
-    // a price change can never strand someone mid-checkout.
-    if (existing.amount !== amount) await updateTransactionAmount(existing.merchantTransId, amount);
-    return existing.merchantTransId;
-  }
-
-  // Was `${type}_${userId}_${Date.now()}`, which is guessable from a Telegram
-  // id plus a rough time, and put that id into Click's records and into every
-  // URL and log line the checkout link touches. Neither is exploitable on its
-  // own -- nothing can be done with an order id without CLICK_SECRET_KEY --
-  // but an unguessable identifier that carries no user data is the correct
-  // shape for a payment reference, and it costs nothing. The id is never
-  // parsed anywhere: orders are found by exact id, or by (user, type, target).
-  const merchantTransId = `${type}_${crypto.randomBytes(12).toString("hex")}`;
-  await createTransaction(merchantTransId, {
-    userId: String(userId),
-    type,
-    ...(targetId ? { targetId: String(targetId) } : {}),
-    amount,
-    status: "pending",
-  });
-  return merchantTransId;
-}
-
-// Returns null when CLICK_MERCHANT_ID/CLICK_SERVICE_ID aren't configured yet --
-// callers should fall back to a "not set up yet" message in that case.
 function buildCheckoutUrl(merchantTransId, amountSom) {
   const merchantId = process.env.CLICK_MERCHANT_ID;
   const serviceId = process.env.CLICK_SERVICE_ID;
@@ -302,10 +81,6 @@ function buildCheckoutUrl(merchantTransId, amountSom) {
   return `https://my.click.uz/services/pay?${params.toString()}`;
 }
 
-// Registers Click's two merchant webhook actions on an existing Express app.
-// onPaid(order) is called once, exactly when a transaction first transitions
-// to "paid" (guarded against Click's at-least-once delivery). order is the
-// full stored record: { userId, type, targetId?, amount, ... }.
 // --- abuse control on the public payment endpoints -------------------------
 //
 // /click/prepare and /click/complete are open to the internet by necessity --
@@ -364,11 +139,7 @@ function sweepBadSigns(now = Date.now()) {
 }
 setInterval(sweepBadSigns, BAD_SIGN_SWEEP_MS).unref();
 
-// Click sends action=0 for Prepare and action=1 for Complete. Both are
-// covered by the signature, so this is not what stops forgery -- it stops a
-// request meant for one endpoint being accepted by the other, and it is the
-// kind of explicit protocol check a payment audit expects to see stated
-// rather than implied.
+// Click sends action=0 for Prepare and action=1 for Complete.
 const ACTION_PREPARE = 0;
 const ACTION_COMPLETE = 1;
 
@@ -414,7 +185,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       return res.json(signFailed);
     }
 
-    const order = await getTransaction(body.merchant_trans_id);
+    const order = await getOrder(body.merchant_trans_id);
     if (!order) {
       return res.json({
         click_trans_id: body.click_trans_id,
@@ -442,7 +213,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 
     // 'prepared' can be re-sent by Click; only the pending -> prepared move
     // needs to actually happen, and a repeat is still a success for Click.
-    await markTransaction(body.merchant_trans_id, "pending", "prepared", {
+    await markOrder(body.merchant_trans_id, "pending", "prepared", {
       clickTransId: body.click_trans_id,
     });
 
@@ -477,7 +248,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       return res.json(signFailed);
     }
 
-    const order = await getTransaction(body.merchant_trans_id);
+    const order = await getOrder(body.merchant_trans_id);
     if (!order) {
       return res.json({
         click_trans_id: body.click_trans_id,
@@ -508,7 +279,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       });
     }
     if (Number(body.error) < 0) {
-      await markTransaction(body.merchant_trans_id, order.status, "cancelled");
+      await markOrder(body.merchant_trans_id, order.status, "cancelled");
       return res.json({
         click_trans_id: body.click_trans_id,
         merchant_trans_id: body.merchant_trans_id,
@@ -520,7 +291,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
     // The status transition is what guards against double delivery: if two
     // Completes arrive at once, only one of them moves the row off its
     // current status, and only that one gets a row back to hand to onPaid.
-    const paidOrder = await markTransaction(body.merchant_trans_id, order.status, "paid", {
+    const paidOrder = await markOrder(body.merchant_trans_id, order.status, "paid", {
       clickTransId: body.click_trans_id,
     });
     if (!paidOrder) {
@@ -537,22 +308,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
     // was taken, and telling it otherwise would make it reverse the payment.
     // A failure here only means the feature hasn't been handed over YET: the
     // order stays flagged undelivered and the retry sweep finishes the job.
-    if (onPaid) {
-      try {
-        await onPaid({ merchantTransId: body.merchant_trans_id, ...paidOrder });
-        await markDelivered(body.merchant_trans_id);
-      } catch (err) {
-        await bumpDeliveryAttempts(body.merchant_trans_id).catch(() => {});
-        console.error(
-          `Click onPaid failed for ${body.merchant_trans_id} -- order kept for retry:`,
-          err.message
-        );
-      }
-    } else {
-      // No handler configured at all; nothing to deliver, so don't leave the
-      // order looking like it's owed something.
-      await markDelivered(body.merchant_trans_id);
-    }
+    await deliverOrder(body.merchant_trans_id, paidOrder, onPaid);
 
     return res.json({
       click_trans_id: body.click_trans_id,
@@ -564,30 +320,20 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   });
 }
 
-async function getSalesSummary(sinceIso) {
-  const paid = await getSalesRows(sinceIso);
-  const specialTypes = ["unlock", "vipchat", "anongender"];
-  const premiumPaid = paid.filter((tx) => !specialTypes.includes(tx.type));
-  const unlockPaid = paid.filter((tx) => tx.type === "unlock");
-  const vipchatPaid = paid.filter((tx) => tx.type === "vipchat");
-  const anongenderPaid = paid.filter((tx) => tx.type === "anongender");
-  return {
-    premium: { count: premiumPaid.length, totalRevenue: premiumPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    unlock: { count: unlockPaid.length, totalRevenue: unlockPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    vipchat: { count: vipchatPaid.length, totalRevenue: vipchatPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    anongender: { count: anongenderPaid.length, totalRevenue: anongenderPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-  };
-}
-
 module.exports = {
-  createOrder,
-  buildCheckoutUrl,
   registerClickRoutes,
-  getSalesSummary,
-  extendFrom,
-  retryUndeliveredOrders,
+  buildCheckoutUrl,
   verifyPrepareSign,
   verifyCompleteSign,
+  // Re-exported from orders.js so the many existing `require("./click")`
+  // call sites around the app keep working unchanged. orders.js is the
+  // single definition; these are just the door they already knock on.
+  createOrder,
+  getSalesSummary,
+  getSalesRows,
+  retryUndeliveredOrders,
+  extendFrom,
+  priceForType,
   PREMIUM_PRICE_SOM,
   PREMIUM_DAYS,
   UNLOCK_PRICE_SOM,

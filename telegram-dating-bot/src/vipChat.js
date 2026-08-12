@@ -1,7 +1,8 @@
 const { Markup } = require("telegraf");
 const { getProfile, getLanguage, hasVipChat } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
-const { createOrder, buildCheckoutUrl, VIP_CHAT_PRICE_SOM } = require("./click");
+const { VIP_CHAT_PRICE_SOM } = require("./orders");
+const { buildPaymentOptions, paymentRows } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
 // Telegram invite links can be revoked/regenerated later -- if that ever
@@ -45,20 +46,23 @@ function registerVipChatHandlers(bot) {
     await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
   });
 
-  // Click is the only payment provider wired into the codebase -- no
-  // second option to choose between, so this goes straight to the
-  // checkout button instead of showing a payment-method picker.
+  // One button per configured provider -- the person picks how to pay, and
+  // whichever they choose settles the same order.
   bot.action("vip:pay:choose", async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
-    const orderId = await createOrder(ctx.from.id, { type: "vipchat" });
-    const clickUrl = buildCheckoutUrl(orderId, VIP_CHAT_PRICE_SOM);
+    const { options, configured } = await buildPaymentOptions(ctx.from.id, {
+      type: "vipchat",
+      amountSom: VIP_CHAT_PRICE_SOM,
+      lang,
+      t,
+    });
 
-    const clickButton = clickUrl
-      ? Markup.button.url(t(lang, "vipClickButton"), clickUrl)
-      : Markup.button.callback(t(lang, "vipClickButton"), "vip:pay:click:noop");
+    const rows = configured
+      ? paymentRows(options)
+      : [[Markup.button.callback(t(lang, "vipClickButton"), "vip:pay:click:noop")]];
 
-    await ctx.reply(t(lang, "vipPayIntro"), Markup.inlineKeyboard([[clickButton]]));
+    await ctx.reply(t(lang, "vipPayIntro"), Markup.inlineKeyboard(rows));
   });
 
   bot.action("vip:pay:click:noop", async (ctx) => {

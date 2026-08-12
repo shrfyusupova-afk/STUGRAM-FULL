@@ -2,7 +2,8 @@ const QRCode = require("qrcode");
 const { Markup } = require("telegraf");
 const { getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
-const { createOrder, buildCheckoutUrl, PREMIUM_PRICE_SOM } = require("./click");
+const { PREMIUM_PRICE_SOM } = require("./orders");
+const { buildPaymentOptions, paymentRows } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
 // Shared by the "💎 Premium" menu button and the "👑 Premium'ga ulanish"
@@ -10,19 +11,28 @@ const { safeAnswerCbQuery } = require("./telegramSafety");
 // the exact same checkout, not two slightly different copies of it.
 async function sendPremiumOffer(ctx) {
   const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-  const orderId = await createOrder(ctx.from.id, { type: "premium" });
-  const clickUrl = buildCheckoutUrl(orderId, PREMIUM_PRICE_SOM);
+  const { options, configured } = await buildPaymentOptions(ctx.from.id, {
+    type: "premium",
+    amountSom: PREMIUM_PRICE_SOM,
+    lang,
+    t,
+  });
 
-  const button = clickUrl
-    ? Markup.button.url(t(lang, "premiumPayClickButton"), clickUrl)
-    : Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop");
-
-  await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard([[button]]));
-
-  if (clickUrl) {
-    const qrBuffer = await QRCode.toBuffer(clickUrl, { width: 400, margin: 2 });
-    await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
+  if (!configured) {
+    await ctx.reply(
+      t(lang, "premiumDetails"),
+      Markup.inlineKeyboard([[Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop")]])
+    );
+    return;
   }
+
+  await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard(paymentRows(options)));
+
+  // The QR is for the FIRST configured provider only: one code per screen,
+  // since a phone camera cannot be pointed at two at once and a second one
+  // would just be a thing to scan by mistake.
+  const qrBuffer = await QRCode.toBuffer(options[0].url, { width: 400, margin: 2 });
+  await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
 }
 
 function registerPremiumHandlers(bot) {

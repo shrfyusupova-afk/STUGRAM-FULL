@@ -11,6 +11,7 @@ const DISCOVER_STATE_PATH = path.join(__dirname, "..", "..", "data", "discoverSt
 const VIP_CHAT_PATH = path.join(__dirname, "..", "..", "data", "vipChatAccess.json");
 const COMPLAINTS_PATH = path.join(__dirname, "..", "..", "data", "complaints.json");
 const REFERRALS_PATH = path.join(__dirname, "..", "..", "data", "referrals.json");
+const PAYME_PATH = path.join(__dirname, "..", "..", "data", "paymeTransactions.json");
 
 // Null-prototype objects, not plain {} -- every ID here (candidateId,
 // targetId) can originate from callback_data or a /start deep-link payload,
@@ -667,7 +668,65 @@ async function setLanguage(userId, lang) {
   writeJson(LANG_DB_PATH, all);
 }
 
+// --- payme transactions ------------------------------------------------------
+//
+// Payme's own state machine, keyed by ITS transaction id. Mirrors the
+// Postgres table exactly so nothing above this layer can tell them apart.
+
+async function getPaymeTransaction(paymeId) {
+  return readJson(PAYME_PATH)[String(paymeId)] || null;
+}
+
+async function getPaymeTransactionByOrder(merchantTransId) {
+  const all = Object.values(readJson(PAYME_PATH)).filter(
+    (tx) => tx.merchantTransId === String(merchantTransId)
+  );
+  if (all.length === 0) return null;
+  return all.sort((a, b) => Number(b.createTime) - Number(a.createTime))[0];
+}
+
+async function createPaymeTransaction({ paymeId, merchantTransId, amountTiyin, state, createTime }) {
+  const all = readJson(PAYME_PATH);
+  const key = String(paymeId);
+  // Matches the Postgres ON CONFLICT DO NOTHING: a retried CreateTransaction
+  // must not overwrite the record it is retrying.
+  if (all[key]) return;
+  all[key] = {
+    paymeId: key,
+    merchantTransId: String(merchantTransId),
+    amountTiyin,
+    state,
+    reason: null,
+    createTime,
+    performTime: 0,
+    cancelTime: 0,
+  };
+  writeJson(PAYME_PATH, all);
+}
+
+async function setPaymeTransactionState(paymeId, state, { performTime, cancelTime, reason } = {}) {
+  const all = readJson(PAYME_PATH);
+  const key = String(paymeId);
+  if (!all[key]) return;
+  all[key].state = state;
+  if (performTime !== undefined && performTime !== null) all[key].performTime = performTime;
+  if (cancelTime !== undefined && cancelTime !== null) all[key].cancelTime = cancelTime;
+  if (reason !== undefined && reason !== null) all[key].reason = reason;
+  writeJson(PAYME_PATH, all);
+}
+
+async function listPaymeTransactions(from, to) {
+  return Object.values(readJson(PAYME_PATH))
+    .filter((tx) => Number(tx.createTime) >= from && Number(tx.createTime) <= to)
+    .sort((a, b) => Number(a.createTime) - Number(b.createTime));
+}
+
 module.exports = {
+  getPaymeTransaction,
+  getPaymeTransactionByOrder,
+  createPaymeTransaction,
+  setPaymeTransactionState,
+  listPaymeTransactions,
   getProfile,
   saveProfile,
   setTelegramUsername,

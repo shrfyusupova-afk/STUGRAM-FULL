@@ -1,17 +1,28 @@
 # Security overview — ForOne Telegram bot
 
-This document describes the security controls around the **Click Merchant API
-integration** and the surrounding application. It is written to be read by a
+This document describes the security controls around the **payment
+integrations** and the surrounding application. It is written to be read by a
 payment provider's security reviewer.
 
-- Integration type: Click Merchant API (Prepare / Complete callbacks)
+- Integrations: **Click** Merchant API (Prepare / Complete callbacks) and
+  **Payme (Paycom)** Merchant API (JSON-RPC)
 - Runtime: Node.js, single service, TLS terminated by the host
 - Storage: PostgreSQL (parameterised queries only)
-- Payment code: [`src/click.js`](src/click.js)
-- Automated tests for the controls below:
-  [`test/clickSecurity.test.js`](test/clickSecurity.test.js) — every control
-  is covered by a test, and each test has been verified to FAIL when the
-  control it covers is deliberately removed.
+- Code:
+  - shared order ledger — [`src/orders.js`](src/orders.js)
+  - Click protocol — [`src/click.js`](src/click.js)
+  - Payme protocol — [`src/payme.js`](src/payme.js)
+- Automated tests: [`test/clickSecurity.test.js`](test/clickSecurity.test.js)
+  and [`test/paymeSecurity.test.js`](test/paymeSecurity.test.js) — every
+  control is covered by a test, and each test has been verified to FAIL when
+  the control it covers is deliberately removed.
+
+**Design note.** What is being bought, by whom, and for how much lives in one
+provider-neutral order ledger; each provider owns only its own protocol. That
+is deliberate: the amount check, the paid/unpaid state and the delivery
+guarantee are then literally the same code for every provider, so the two
+cannot drift apart on the part that decides what gets granted. An order
+settled by one provider is closed to the other — covered by a test.
 
 ---
 
@@ -135,12 +146,14 @@ key.
 
 ## 9. Secret management
 
-- `CLICK_SECRET_KEY`, `CLICK_MERCHANT_ID` and `CLICK_SERVICE_ID` are supplied
-  as environment variables and are **not present in the repository**. The
+- `CLICK_SECRET_KEY`, `CLICK_MERCHANT_ID`, `CLICK_SERVICE_ID`, `PAYME_KEY`
+  and `PAYME_MERCHANT_ID` are supplied as environment variables and are **not
+  present in the repository**. The
   deployment blueprint (`render.yaml`) declares them with `sync: false`, so
   they are entered in the hosting UI and never enter version control.
-- The secret is used only inside the signature computation. It is never
-  logged, never included in a response, and never returned by any endpoint.
+- Each secret is used only inside its own verification step — the Click
+  signature computation, the Payme Basic-auth comparison. Neither is ever
+  logged, included in a response, or returned by any endpoint.
 - The health endpoint reports only *whether* payment credentials are
   configured, never their values.
 
@@ -188,13 +201,57 @@ Stated plainly rather than omitted:
 
 ---
 
+## 13. Payme (Paycom) specifics
+
+Everything in §§3–5 applies unchanged — Payme settles the same orders through
+the same ledger and the same delivery path. What differs is the protocol:
+
+| Area | Click | Payme |
+|---|---|---|
+| Transport | two form-encoded endpoints | one JSON-RPC 2.0 endpoint (`/payme`) |
+| Authentication | per-request MD5 signature | HTTP Basic, password = merchant key |
+| Amount unit | so'm | **tiyin** (1 so'm = 100 tiyin) |
+| Lifecycle | prepare → complete | created(1) → performed(2), or cancelled(−1/−2) |
+
+**Authentication.** Every call must carry `Authorization: Basic` with the
+merchant key. It is compared with `crypto.timingSafeEqual` behind a length
+pre-check, and is checked **before the request is looked at at all** — an
+unauthenticated caller cannot even learn whether a given order exists, which a
+test asserts directly.
+
+**Amount.** `params.amount` arrives in tiyin and is compared against the
+server-side so'm price converted *up* (`price × 100`). The request value is
+never divided down, because a fractional amount could then round into a match.
+A test sends the so'm figure where tiyin is expected — the classic
+factor-of-100 error — and asserts it is refused.
+
+**Idempotency.** Payme retries every method, so every method is idempotent:
+`CreateTransaction` returns the original transaction and its original
+`create_time`; `PerformTransaction` repeats the first `perform_time` without
+delivering again; `CancelTransaction` repeats the first `cancel_time`. Only
+one live transaction may exist per order, so two checkouts cannot both be
+performed against a single purchase. All four are covered by tests.
+
+**Reversals.** A `CancelTransaction` after a successful perform is recorded as
+state −2 and the order is returned to unpaid, but access already granted is
+**not** silently clawed back — withdrawing something a person is using is a
+business decision, not something a callback should do unattended. The reversal
+is logged loudly and is visible in the admin panel.
+
+**Errors.** An unexpected internal failure returns a well-formed JSON-RPC
+error rather than an HTTP 500 or a stack trace: a malformed reply would make
+Payme retry indefinitely, and internal details must never reach a provider.
+
+---
+
 ## Verifying these claims
 
 ```bash
-npm test                      # full suite, includes the payment security tests
-node test/clickSecurity.test.js   # payment controls only
+npm test                           # full suite (148 tests)
+node test/clickSecurity.test.js    # Click payment controls only
+node test/paymeSecurity.test.js    # Payme payment controls only
 ```
 
-Each control in §§1–7 has a corresponding test that has been confirmed to
-fail when that control is removed — the tests demonstrate the protections,
+Each control in §§1–7 and §13 has a corresponding test that has been confirmed
+to fail when that control is removed — the tests demonstrate the protections,
 rather than merely accompanying them.

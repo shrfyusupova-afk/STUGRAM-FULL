@@ -25,7 +25,8 @@ const {
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu, mainMenuKeyboard } = require("./menu");
-const { createOrder, buildCheckoutUrl, UNLOCK_PRICE_SOM } = require("./click");
+const { UNLOCK_PRICE_SOM } = require("./orders");
+const { buildPaymentOptions, paymentRows } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
 const { promptForComplaint, SOURCE } = require("./complaints");
@@ -673,11 +674,14 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
     return;
   }
 
-  const orderId = candidateId ? await createOrder(buyerId, { type: "unlock", targetId: candidateId }) : null;
-  const clickUrl = orderId ? buildCheckoutUrl(orderId, UNLOCK_PRICE_SOM) : null;
-  const payButton = clickUrl
-    ? Markup.button.url(t(lang, "unlockPayButton"), clickUrl)
-    : Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop");
+  // One row per configured provider. Whichever the person picks settles the
+  // same single order, so paying with either grants exactly the same thing.
+  const payment = candidateId
+    ? await buildPaymentOptions(buyerId, { type: "unlock", targetId: candidateId, amountSom: UNLOCK_PRICE_SOM, lang, t })
+    : { options: [], configured: false };
+  const payRows = payment.configured
+    ? paymentRows(payment.options)
+    : [[Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop")]];
 
   const credits = await getUnlockCredits(buyerId);
 
@@ -685,7 +689,7 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
     await ctx.reply(t(lang, "unlockPaywallWithCredits")({ price: priceLabel(), credits }), {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([
-        [payButton],
+        ...payRows,
         [Markup.button.callback(t(lang, "unlockUseCreditButton")(credits), `unlock:credit:${candidateId}`)],
       ]),
     });
@@ -700,7 +704,7 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
     {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([
-        [payButton],
+        ...payRows,
         [Markup.button.callback(t(lang, "unlockInviteFriendsButton"), "referral:show")],
       ]),
     }

@@ -4,6 +4,7 @@ data/profiles.json
 data/languages.json
 data/likes.json
 data/clickTransactions.json
+data/paymeTransactions.json
 data/admins.json
 data/unlocks.json
 data/dislikes.json
@@ -12,3 +13,4 @@ data/vipChatAccess.json
 data/*.tmp
 data/*.corrupt
 data/complaints.json
+data/referrals.json

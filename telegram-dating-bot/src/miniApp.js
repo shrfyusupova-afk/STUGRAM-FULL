@@ -3,14 +3,14 @@ const {
   getProfile, hasPremium, hasAnonGenderFilter, hasVipChat, getLanguage,
 } = require("./db");
 const {
-  createOrder, buildCheckoutUrl,
   PREMIUM_PRICE_SOM, PREMIUM_DAYS, VIP_CHAT_PRICE_SOM,
   ANON_GENDER_PRICE_SOM, ANON_GENDER_DAYS,
-} = require("./click");
+} = require("./orders");
+const { buildPaymentOptions, PROVIDERS } = require("./checkout");
 const { VIP_CHAT_INVITE_LINK } = require("./vipChat");
 const { pendingLikerCount } = require("./discover");
 const { isRegistered } = require("./profileState");
-const { DEFAULT_LANG } = require("./i18n");
+const { DEFAULT_LANG, t } = require("./i18n");
 
 // --- Who is actually asking -------------------------------------------------
 //
@@ -139,7 +139,7 @@ async function buildState(userId) {
       vip: { active: vip, price: VIP_CHAT_PRICE_SOM, freeForMe: profile?.gender === "female" },
     },
     vipLink: vip || profile?.gender === "female" ? VIP_CHAT_INVITE_LINK : null,
-    paymentsConfigured: !!buildCheckoutUrl("probe", 1),
+    paymentsConfigured: PROVIDERS.some((p) => !!p.build("probe", 1)),
   };
 }
 
@@ -204,15 +204,26 @@ function registerMiniApp(app, { botToken, telegram }) {
           return;
         }
       }
-      const orderId = await createOrder(userId, { type });
       const amount =
         type === "premium" ? PREMIUM_PRICE_SOM : type === "vipchat" ? VIP_CHAT_PRICE_SOM : ANON_GENDER_PRICE_SOM;
-      const url = buildCheckoutUrl(orderId, amount);
-      if (!url) {
+      // Every configured provider is returned, so the Mini App can offer the
+      // same choice the chat paywalls do rather than silently picking one.
+      const { options, configured } = await buildPaymentOptions(userId, {
+        type,
+        amountSom: amount,
+        lang: DEFAULT_LANG,
+        t,
+      });
+      if (!configured) {
         res.json({ configured: false });
         return;
       }
-      res.json({ configured: true, url });
+      res.json({
+        configured: true,
+        // `url` kept for any client build that predates the provider list.
+        url: options[0].url,
+        providers: options.map((o) => ({ key: o.key, url: o.url })),
+      });
     } catch (err) {
       console.error("mini app order failed:", err.message);
       res.status(500).json({ error: "order_failed" });
