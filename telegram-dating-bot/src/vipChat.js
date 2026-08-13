@@ -13,6 +13,16 @@ function payButtonKeyboard(lang) {
   return Markup.inlineKeyboard([[Markup.button.callback(t(lang, "vipPayButton"), "vip:pay:choose")]]);
 }
 
+// The price is passed in rather than typed into the text, so it can never go
+// stale against the constant -- and the intro is HTML, for the bold emphasis
+// on "this is the lowest price it will ever be".
+async function sendVipIntro(ctx, lang, keyboard) {
+  await ctx.reply(t(lang, "vipIntro")(VIP_CHAT_PRICE_SOM.toLocaleString("uz-UZ")), {
+    parse_mode: "HTML",
+    ...keyboard,
+  });
+}
+
 function registerVipChatHandlers(bot) {
   const vipLabels = Object.values(STRINGS).map((dict) => dict.menu.vip);
 
@@ -30,7 +40,7 @@ function registerVipChatHandlers(bot) {
     const button = isFemale
       ? Markup.button.callback(t(lang, "vipJoinFreeButton"), "vip:join:free")
       : Markup.button.callback(t(lang, "vipPayButton"), "vip:pay:choose");
-    await ctx.reply(t(lang, "vipIntro"), Markup.inlineKeyboard([[button]]));
+    await sendVipIntro(ctx, lang, Markup.inlineKeyboard([[button]]));
   });
 
   // Re-checks gender server-side rather than trusting that only women ever
@@ -40,7 +50,7 @@ function registerVipChatHandlers(bot) {
     await safeAnswerCbQuery(ctx);
     const profile = await getProfile(ctx.from.id);
     if (profile?.gender !== "female") {
-      await ctx.reply(t(lang, "vipIntro"), payButtonKeyboard(lang));
+      await sendVipIntro(ctx, lang, payButtonKeyboard(lang));
       return;
     }
     await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));

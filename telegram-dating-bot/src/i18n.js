@@ -120,15 +120,25 @@ const STRINGS = {
     anonAlreadySearching: "🔍 Siz allaqachon qidiruvda turibsiz, biroz kuting...",
     anonAlreadyInChat: "💬 Siz hozir anonim suhbatdasiz. Suhbatni tugatish uchun 🛑 Suhbatni to'xtatish tugmasini bosing.",
     anonStopButton: "🛑 Suhbatni to'xtatish",
-    vipIntro:
+    // The price is a parameter, never typed in here: a hardcoded copy goes
+    // stale the moment the constant changes, and this text is the one place
+    // a user reads it before paying.
+    vipIntro: (price) =>
       "👑 VIP Chat — bu yerda sizni nimalar kutmoqda?\n\n" +
       "🎉 Yangi do'stlar orttirasiz\n" +
       "🎲 Mafiya o'yinini o'ynab, ajoyib hordiq chiqarasiz\n" +
       "💃 Kundan-kunga ko'payib borayotgan qizlar bilan tanishasiz\n" +
       "💍 Omadingiz kelsa — hayotingizning yarim bo'lagini shu yerda topishingiz mumkin!\n\n" +
-      "⏳ Hoziroq ulgurib qoling — qizlar ko'paygani sari, kirish narxi ham oshib boradi!\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "⏳ <b>NIMAGA AYNAN HOZIR?</b>\n\n" +
+      "Guruhga har kuni yangi qizlar qo'shilmoqda. Va qizlar qancha ko'p bo'lsa — " +
+      "kirish shuncha qimmatlashadi 📈\n\n" +
+      `Bugungi narx — <b>${price} so'm</b>. Bu <b>eng arzon narx</b>, ` +
+      "va u boshqa hech qachon bunchalik past bo'lmaydi.\n\n" +
+      "🔥 Bir marta to'laysiz — <b>umrbod</b> qolasiz. Ertaga kirganlar ko'proq to'laydi.\n" +
+      "━━━━━━━━━━━━━━\n\n" +
       "💵 Narxi:\n" +
-      "👦 Yigitlar uchun — 59 900 so'm\n" +
+      `👦 Yigitlar uchun — <b>${price} so'm</b> (hozircha)\n` +
       "👧 Qizlar uchun — 🆓 Mutlaqo bepul\n\n" +
       "😉 Va'da beraman — bu yerda zerikishga vaqtingiz bo'lmaydi!",
     vipPayButton: "💳 To'lov qilmoqchiman",
@@ -449,15 +459,22 @@ const STRINGS = {
     anonAlreadySearching: "🔍 Вы уже в поиске, немного подождите...",
     anonAlreadyInChat: "💬 Вы сейчас в анонимном чате. Чтобы завершить его, нажмите 🛑 Завершить чат.",
     anonStopButton: "🛑 Завершить чат",
-    vipIntro:
+    vipIntro: (price) =>
       "👑 VIP Chat — что вас здесь ждёт?\n\n" +
       "🎉 Заведёте новых друзей\n" +
       "🎲 Сыграете в Мафию и отлично отдохнёте\n" +
       "💃 Познакомитесь с девушками, которых с каждым днём становится всё больше\n" +
       "💍 Если повезёт — найдёте свою вторую половинку прямо здесь!\n\n" +
-      "⏳ Успейте сейчас — чем больше девушек, тем выше становится цена входа!\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "⏳ <b>ПОЧЕМУ ИМЕННО СЕЙЧАС?</b>\n\n" +
+      "Каждый день в группу приходят новые девушки. И чем больше девушек — " +
+      "тем дороже вход 📈\n\n" +
+      `Сегодняшняя цена — <b>${price} сум</b>. Это <b>самая низкая цена</b>, ` +
+      "и такой она больше не будет.\n\n" +
+      "🔥 Платите один раз — остаётесь <b>навсегда</b>. Кто придёт завтра, заплатит больше.\n" +
+      "━━━━━━━━━━━━━━\n\n" +
       "💵 Цена:\n" +
-      "👦 Для парней — 59 900 сум\n" +
+      `👦 Для парней — <b>${price} сум</b> (пока что)\n` +
       "👧 Для девушек — 🆓 Совершенно бесплатно\n\n" +
       "😉 Обещаю — скучать здесь не придётся!",
     vipPayButton: "💳 Хочу оплатить",
@@ -772,15 +789,21 @@ const STRINGS = {
     anonAlreadySearching: "🔍 You're already searching, hang on...",
     anonAlreadyInChat: "💬 You're currently in an anonymous chat. Tap 🛑 Stop the chat to end it.",
     anonStopButton: "🛑 Stop the chat",
-    vipIntro:
+    vipIntro: (price) =>
       "👑 VIP Chat — what's waiting for you here?\n\n" +
       "🎉 Make new friends\n" +
       "🎲 Play Mafia and have a great time\n" +
       "💃 Meet girls — and there are more of them every day\n" +
       "💍 If you're lucky, you might just find your other half right here!\n\n" +
-      "⏳ Join now — the price goes up as more girls join!\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "⏳ <b>WHY RIGHT NOW?</b>\n\n" +
+      "New girls join the group every day. And the more girls there are, " +
+      "the higher the entry price goes 📈\n\n" +
+      `Today's price — <b>${price} UZS</b>. This is the <b>lowest it will ever be</b>.\n\n` +
+      "🔥 Pay once, stay <b>forever</b>. Whoever joins tomorrow pays more.\n" +
+      "━━━━━━━━━━━━━━\n\n" +
       "💵 Price:\n" +
-      "👦 For guys — 59,900 UZS\n" +
+      `👦 For guys — <b>${price} UZS</b> (for now)\n` +
       "👧 For girls — 🆓 Completely free\n\n" +
       "😉 I promise — you won't be bored here!",
     vipPayButton: "💳 I want to pay",

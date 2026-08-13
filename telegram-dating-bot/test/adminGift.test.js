@@ -67,7 +67,7 @@ test("the owner can give themselves VIP, and it really opens the chat", async ()
   assert.strictEqual(await db.hasVipChat(admin.id), true, "the gift is recorded");
 
   // The real test: the MAIN bot must now let them through, exactly as it
-  // would for somebody who paid 59,900.
+  // would for somebody who paid the VIP price.
   const opened = await h.send(M(), h.textUpdate("👑 VIP suhbat", admin));
   const text = opened.map((c) => c.payload.text || "").join("\n");
   assert.match(text, /t\.me\//, `VIP must hand over the invite link, got: ${text.slice(0, 160)}`);

@@ -205,6 +205,23 @@ test("a profile card shows how far away that person is", async () => {
   );
 });
 
+// A price typed into the copy rather than read from the constant goes stale
+// the moment the constant changes -- and this is the number a person reads
+// immediately before deciding to pay.
+test("the VIP screen quotes the real price, not a copy of it", async () => {
+  const { VIP_CHAT_PRICE_SOM } = require("../src/orders");
+  const u = freshUser("VipLooker");
+  await register(u, { gender: "male", name: "VipLooker" });
+
+  const shown = await h.send(M(), h.textUpdate("👑 VIP suhbat", u));
+  const text = said(shown);
+  assert.ok(
+    text.includes(VIP_CHAT_PRICE_SOM.toLocaleString("uz-UZ")),
+    `the VIP intro must quote ${VIP_CHAT_PRICE_SOM}, got: ${text.slice(0, 300)}`
+  );
+  assert.match(text, /oshib boradi|qimmatlashadi/, "and must carry the join-now-before-it-rises pitch");
+});
+
 // --- discovery ---------------------------------------------------------------
 // Notifications are now milestone-based: nobody is pinged for a single like.
 // The dedup rule this case was written for is unchanged and still checked --
