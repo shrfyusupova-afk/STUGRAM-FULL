@@ -98,8 +98,6 @@ const STRINGS = {
       "📅 Ushbu tarif faollashtirilgan kundan boshlab 7 kun davomida amal qiladi — shu muddat ichida xohlagan jinsni tanlab, cheklovsiz suhbatlashishingiz mumkin.\n\n" +
       "💎 (Premium obunangiz bo'lsa, bu funksiya sizga avtomatik ravishda BEPUL!)\n\n" +
       "To'lov qilmoqchimisiz? 😊",
-    anonPayButton: "💳 To'lov qilish",
-    anonNotConfigured: "💳 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     anonSubscriptionActivated: (days, until) =>
       "🎉 <b>Tabriklaymiz! Obunangiz faollashtirildi.</b>\n\n" +
       `📅 Amal qilish muddati: <b>${until}</b> gacha (${days} kun)\n\n` +
@@ -144,8 +142,6 @@ const STRINGS = {
     vipPayButton: "💳 To'lov qilmoqchiman",
     vipJoinFreeButton: "🔗 Bepul qo'shilish",
     vipPayIntro: "💳 To'lovni amalga oshirish uchun quyidagi tugmani bosing:",
-    vipClickButton: "💳 Click orqali to'lash",
-    vipClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     vipJoinMessage: (link) => `🎉 Xush kelibsiz! Guruhga qo'shilish uchun havola:\n${link}`,
     discoverNoCandidates:
       "🌱 Siz bizdagi barcha mos nomzodlarni ko'rib chiqdingiz!\n\n" +
@@ -157,9 +153,7 @@ const STRINGS = {
       "Do'stlaringizga botni ulashing — ular ham sevgisini topadi, siz esa sovrin yutasiz! 🏆",
     discoverTemporaryProblem: "Vaqtinchalik nosozlik yuz berdi. Iltimos, biroz keyin qayta urinib ko'ring 🙏",
     unlockLinkText: "🔐 Profilni to'liq ko'rish huquqini olish",
-    unlockPayButton: "🔓 Profilni ko'rish huquqini olish",
     unlockPremiumButton: "👑 Premium'ga ulanish",
-    unlockNotConfigured: "🔐 To'lov tizimi hali to'liq sozlanmagan. Tez orada ishga tushadi! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
       "🎁 <b>Do'stlaringizni taklif qiling</b>\n\n" +
       "Har bir do'stingiz shu yerda o'z sevgisini topishi mumkin — " +
@@ -265,7 +259,6 @@ const STRINGS = {
       "🔥 Profilingiz boshqalarga ko'proq va tez-tez ko'rsatiladi\n" +
       "🕵️ Anonim chatda xohlagan jinsni (qiz yoki o'g'il) tanlab suhbatlashish huquqi — 1 oy davomida BEPUL! (odatda 12 900 so'm/hafta turadi)\n\n" +
       "💵 Narxi: 79 900 so'm / 1 oy",
-    premiumPayClickButton: "💳 Click orqali to'lash",
     // One entry per provider, named after the provider key in checkout.js.
     // --- ForOne kanali ---
     channelGateText:
@@ -288,10 +281,14 @@ const STRINGS = {
       "✨ Yangi funksiyalar haqida birinchi xabar\n" +
       "💡 Tanishuvda haqiqatan ishlaydigan maslahatlar\n\n" +
       "Bir tugma — va hech narsani o'tkazib yubormaysiz 👇",
+    // Shown only when NO payment provider is configured. Deliberately names
+    // both, so an operator reading a user's screenshot knows what is missing.
+    payButtonGeneric: "💳 To'lov qilish",
+    paymentsNotConfigured:
+      "💳 To'lov tizimi hali sozlanmagan (Click va Payme kutilmoqda).\n\nTez orada ishga tushadi! 🚧",
+    qrCaptionFor: (provider) => `📷 QR kodni skaner qilib, ${provider} orqali to'lang`,
     payWith_click: "💳 Click orqali to'lash",
     payWith_payme: "💳 Payme orqali to'lash",
-    premiumPayClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan (Merchant ID / Service ID kutilmoqda).",
-    premiumQrCaption: "📷 Yoki shu QR kodni skanerlab to'lang",
     premiumActivated: (days) => `🎉 Premium faollashtirildi! ${days} kun davomida barcha imtiyozlardan foydalanasiz.`,
     profileSettingsIntro: "⚙️ Anketa sozlamalari:",
     profileSettingsEdit: "✏️ Anketani tahrirlash",
@@ -437,8 +434,6 @@ const STRINGS = {
       "📅 Этот тариф действует 7 дней с момента активации — в течение этого времени вы можете выбирать пол собеседника без ограничений.\n\n" +
       "💎 (Если у вас есть Premium, эта функция уже БЕСПЛАТНА для вас!)\n\n" +
       "Хотите оплатить? 😊",
-    anonPayButton: "💳 Оплатить",
-    anonNotConfigured: "💳 Оплата ещё не полностью настроена. Скоро заработает! 🚧",
     anonSubscriptionActivated: (days, until) =>
       "🎉 <b>Поздравляем! Подписка активирована.</b>\n\n" +
       `📅 Действует до: <b>${until}</b> (${days} дней)\n\n` +
@@ -480,8 +475,6 @@ const STRINGS = {
     vipPayButton: "💳 Хочу оплатить",
     vipJoinFreeButton: "🔗 Присоединиться бесплатно",
     vipPayIntro: "💳 Нажмите кнопку ниже, чтобы оплатить:",
-    vipClickButton: "💳 Оплатить через Click",
-    vipClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена. Скоро заработает! 🚧",
     vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
     discoverNoCandidates:
       "🌱 Вы просмотрели все подходящие анкеты!\n\n" +
@@ -493,9 +486,7 @@ const STRINGS = {
       "Поделитесь ботом с друзьями — они тоже найдут свою любовь, а вы получите приз! 🏆",
     discoverTemporaryProblem: "Произошёл временный сбой. Пожалуйста, попробуйте чуть позже 🙏",
     unlockLinkText: "🔐 Получить доступ к анкете полностью",
-    unlockPayButton: "🔓 Получить доступ к просмотру анкеты",
     unlockPremiumButton: "👑 Подключить Premium",
-    unlockNotConfigured: "🔐 Оплата пока не полностью настроена. Скоро заработает! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
       "🎁 <b>Пригласите друзей</b>\n\n" +
       "Каждый ваш друг может найти здесь свою любовь — " +
@@ -596,7 +587,6 @@ const STRINGS = {
       "🔥 Ваш профиль показывается другим пользователям чаще и заметнее\n" +
       "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n\n" +
       "💵 Цена: 79 900 сум / 1 месяц",
-    premiumPayClickButton: "💳 Оплатить через Click",
     // --- Канал ForOne ---
     channelGateText:
       "📣 <b>Официальный канал ForOne</b>\n\n" +
@@ -618,10 +608,12 @@ const STRINGS = {
       "✨ Первыми узнаете о новых функциях\n" +
       "💡 Советы, которые реально работают\n\n" +
       "Одна кнопка — и вы ничего не пропустите 👇",
+    payButtonGeneric: "💳 Оплатить",
+    paymentsNotConfigured:
+      "💳 Приём оплаты ещё не настроен (ожидаются Click и Payme).\n\nСкоро заработает! 🚧",
+    qrCaptionFor: (provider) => `📷 Отсканируйте QR-код и оплатите через ${provider}`,
     payWith_click: "💳 Оплатить через Click",
     payWith_payme: "💳 Оплатить через Payme",
-    premiumPayClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена (ожидаются Merchant ID / Service ID).",
-    premiumQrCaption: "📷 Или отсканируйте этот QR-код для оплаты",
     premiumActivated: (days) => `🎉 Премиум активирован! Все привилегии доступны в течение ${days} дней.`,
     profileSettingsIntro: "⚙️ Настройки анкеты:",
     profileSettingsEdit: "✏️ Редактировать анкету",
@@ -767,8 +759,6 @@ const STRINGS = {
       "📅 This plan lasts 7 days from activation — during that time you can pick either gender with no limits.\n\n" +
       "💎 (If you have Premium, this feature is already FREE for you!)\n\n" +
       "Would you like to pay? 😊",
-    anonPayButton: "💳 Pay",
-    anonNotConfigured: "💳 Payments aren't fully set up yet. Coming soon! 🚧",
     anonSubscriptionActivated: (days, until) =>
       "🎉 <b>Congrats! Your subscription is active.</b>\n\n" +
       `📅 Valid until: <b>${until}</b> (${days} days)\n\n` +
@@ -809,8 +799,6 @@ const STRINGS = {
     vipPayButton: "💳 I want to pay",
     vipJoinFreeButton: "🔗 Join for free",
     vipPayIntro: "💳 Tap the button below to pay:",
-    vipClickButton: "💳 Pay with Click",
-    vipClickNotConfigured: "💳 Click payments aren't fully set up yet. Coming soon! 🚧",
     vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
     discoverNoCandidates:
       "🌱 You've seen everyone who matches right now!\n\n" +
@@ -822,9 +810,7 @@ const STRINGS = {
       "Share the bot with friends -- they might find love too, and you win a prize! 🏆",
     discoverTemporaryProblem: "Something went wrong for a moment. Please try again shortly 🙏",
     unlockLinkText: "🔐 Get full access to this profile",
-    unlockPayButton: "🔓 Get access to view the profile",
     unlockPremiumButton: "👑 Get Premium",
-    unlockNotConfigured: "🔐 Payments aren't fully set up yet. Coming soon! 🚧",
     referralScreen: ({ link, invited, credits, perCredit, remaining }) =>
       "🎁 <b>Invite your friends</b>\n\n" +
       "Every friend you bring can find their person here — " +
@@ -925,7 +911,6 @@ const STRINGS = {
       "🔥 Your profile is shown to other users more often and more prominently\n" +
       "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n\n" +
       "💵 Price: 79,900 UZS / month",
-    premiumPayClickButton: "💳 Pay with Click",
     // --- ForOne channel ---
     channelGateText:
       "📣 <b>The official ForOne channel</b>\n\n" +
@@ -947,10 +932,12 @@ const STRINGS = {
       "✨ Be the first to hear about new features\n" +
       "💡 Dating advice that actually works\n\n" +
       "One tap and you won't miss a thing 👇",
+    payButtonGeneric: "💳 Pay",
+    paymentsNotConfigured:
+      "💳 Payments aren't set up yet (waiting on Click and Payme).\n\nComing soon! 🚧",
+    qrCaptionFor: (provider) => `📷 Scan the QR code and pay with ${provider}`,
     payWith_click: "💳 Pay with Click",
     payWith_payme: "💳 Pay with Payme",
-    premiumPayClickNotConfigured: "💳 Click payments aren't fully set up yet (waiting on Merchant ID / Service ID).",
-    premiumQrCaption: "📷 Or scan this QR code to pay",
     premiumActivated: (days) => `🎉 Premium activated! You'll have all the perks for ${days} days.`,
     profileSettingsIntro: "⚙️ Profile settings:",
     profileSettingsEdit: "✏️ Edit profile",

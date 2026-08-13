@@ -70,16 +70,11 @@ function registerVipChatHandlers(bot) {
 
     const rows = configured
       ? paymentRows(options)
-      : [[Markup.button.callback(t(lang, "vipClickButton"), "vip:pay:click:noop")]];
+      : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
 
     await ctx.reply(t(lang, "vipPayIntro"), Markup.inlineKeyboard(rows));
   });
 
-  bot.action("vip:pay:click:noop", async (ctx) => {
-    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
-    await ctx.reply(t(lang, "vipClickNotConfigured"));
-  });
 }
 
 module.exports = { registerVipChatHandlers, VIP_CHAT_INVITE_LINK };

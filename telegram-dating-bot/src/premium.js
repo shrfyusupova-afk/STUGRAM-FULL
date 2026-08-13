@@ -3,7 +3,7 @@ const { Markup } = require("telegraf");
 const { getLanguage } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { PREMIUM_PRICE_SOM } = require("./orders");
-const { buildPaymentOptions, paymentRows } = require("./checkout");
+const { buildPaymentOptions, paymentRows, PROVIDER_LABELS } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
 // Shared by the "💎 Premium" menu button and the "👑 Premium'ga ulanish"
@@ -21,18 +21,21 @@ async function sendPremiumOffer(ctx) {
   if (!configured) {
     await ctx.reply(
       t(lang, "premiumDetails"),
-      Markup.inlineKeyboard([[Markup.button.callback(t(lang, "premiumPayClickButton"), "premium:pay:click:noop")]])
+      Markup.inlineKeyboard([[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]])
     );
     return;
   }
 
   await ctx.reply(t(lang, "premiumDetails"), Markup.inlineKeyboard(paymentRows(options)));
 
-  // The QR is for the FIRST configured provider only: one code per screen,
-  // since a phone camera cannot be pointed at two at once and a second one
-  // would just be a thing to scan by mistake.
+  // One QR per screen -- a phone camera cannot be pointed at two at once, and
+  // a second code would only be something to scan by mistake. Which provider
+  // it belongs to is named in the caption, so nobody opens the wrong app.
   const qrBuffer = await QRCode.toBuffer(options[0].url, { width: 400, margin: 2 });
-  await ctx.replyWithPhoto({ source: qrBuffer }, { caption: t(lang, "premiumQrCaption") });
+  await ctx.replyWithPhoto(
+    { source: qrBuffer },
+    { caption: t(lang, "qrCaptionFor")(PROVIDER_LABELS[options[0].key] || options[0].key) }
+  );
 }
 
 function registerPremiumHandlers(bot) {
@@ -45,11 +48,6 @@ function registerPremiumHandlers(bot) {
     await sendPremiumOffer(ctx);
   });
 
-  bot.action("premium:pay:click:noop", async (ctx) => {
-    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
-    await ctx.reply(t(lang, "premiumPayClickNotConfigured"));
-  });
 }
 
 module.exports = { registerPremiumHandlers, sendPremiumOffer };

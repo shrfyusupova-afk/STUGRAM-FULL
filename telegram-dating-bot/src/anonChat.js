@@ -205,7 +205,7 @@ async function showGenderPaywall(ctx, lang) {
   });
   const rows = configured
     ? paymentRows(options)
-    : [[Markup.button.callback(t(lang, "anonPayButton"), "anon:pay:click:noop")]];
+    : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
   await ctx.reply(t(lang, "anonGenderPaywallIntro"), Markup.inlineKeyboard(rows));
 }
 
@@ -303,11 +303,6 @@ function registerAnonChatHandlers(bot) {
     await attemptJoin(ctx, "any");
   });
 
-  bot.action("anon:pay:click:noop", async (ctx) => {
-    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
-    await ctx.reply(t(lang, "anonNotConfigured"));
-  });
 }
 
 // attemptJoin is exported so the channel gate can resume the search the

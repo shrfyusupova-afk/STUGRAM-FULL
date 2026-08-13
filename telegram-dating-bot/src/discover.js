@@ -593,12 +593,6 @@ function registerDiscoverHandlers(bot) {
     await promptForComplaint(ctx, lang, { targetId: state.currentId, source: SOURCE.DISCOVER });
   });
 
-  bot.action("unlock:noop", async (ctx) => {
-    const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
-    await ctx.reply(t(lang, "unlockNotConfigured"));
-  });
-
   // Spending a referral credit on this profile.
   //
   // The order of operations here is the whole point. A person can tap this
@@ -689,7 +683,7 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
     : { options: [], configured: false };
   const payRows = payment.configured
     ? paymentRows(payment.options)
-    : [[Markup.button.callback(t(lang, "unlockPayButton"), "unlock:noop")]];
+    : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
 
   const credits = await getUnlockCredits(buyerId);
 

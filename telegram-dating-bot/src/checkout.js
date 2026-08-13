@@ -9,6 +9,10 @@ const { createOrder } = require("./orders");
 const clickProvider = require("./click");
 const paymeProvider = require("./payme");
 
+// How each provider is named to a user, for the places a label is needed
+// outside a button (the QR caption). Not translated: these are brand names.
+const PROVIDER_LABELS = { click: "Click", payme: "Payme" };
+
 // Order matters only in that it is the order the buttons appear in.
 const PROVIDERS = [
   { key: "click", label: "click", build: clickProvider.buildCheckoutUrl },
@@ -46,4 +50,16 @@ function paymentRows(options) {
   return options.map((option) => [option.button]);
 }
 
-module.exports = { buildPaymentOptions, paymentRows, PROVIDERS };
+// Every paywall falls back to the same button when NO provider is
+// configured, so there is one place that answers "why can't I pay?" -- and
+// it names both providers rather than whichever one happened to be wired
+// first, which is what a Click-only message would imply.
+function registerCheckoutHandlers(bot, { getLanguage, t, DEFAULT_LANG, safeAnswerCbQuery }) {
+  bot.action("payments:noop", async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await safeAnswerCbQuery(ctx);
+    await ctx.reply(t(lang, "paymentsNotConfigured"));
+  });
+}
+
+module.exports = { buildPaymentOptions, paymentRows, registerCheckoutHandlers, PROVIDERS, PROVIDER_LABELS };

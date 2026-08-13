@@ -25,6 +25,7 @@ const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
 const { registerChannelGate } = require("./channelGate");
+const { registerCheckoutHandlers } = require("./checkout");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
@@ -362,6 +363,7 @@ registerAccountNoticeHandlers(bot, { startNewProfile, safeAnswerCbQuery });
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
+registerCheckoutHandlers(bot, { getLanguage, t, DEFAULT_LANG, safeAnswerCbQuery });
 
 // What to resume once somebody actually subscribes. Registered here rather
 // than inside each feature so the gate has one place that knows how to hand
