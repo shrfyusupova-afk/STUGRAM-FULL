@@ -78,6 +78,10 @@ process.on("uncaughtException", (err) => {
     .finally(() => process.exit(1));
 });
 
+// Off unless explicitly switched on. See the note at setChatMenuButton below
+// for why disabling it also has to put the Telegram menu button back.
+const MINI_APP_ENABLED = process.env.MINI_APP_ENABLED === "true";
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
   console.error("TELEGRAM_BOT_TOKEN is not set. Copy .env.example to .env and fill it in.");
@@ -455,6 +459,7 @@ if (webhookDomain) {
         process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY
           ? "configured"
           : "NOT CONFIGURED (Payme button hidden)",
+      miniApp: MINI_APP_ENABLED ? "enabled" : "disabled",
       // Powers the admin panel's "AI yordamchi" button -- without it that
       // button degrades to a message instead of failing.
       aiAssistant: process.env.ANTHROPIC_API_KEY
@@ -484,7 +489,9 @@ if (webhookDomain) {
   // The Mini App page and its API. Mounted here, on the same Express app that
   // already serves /policy, so it inherits the public HTTPS domain Telegram
   // requires for a web_app button -- no second service to deploy.
-  registerMiniApp(app, { botToken: token, telegram: bot.telegram });
+  // The Mini App is off by default. Its code is kept (nothing is deleted), so
+  // turning it back on is one environment variable rather than a revert.
+  if (MINI_APP_ENABLED) registerMiniApp(app, { botToken: token, telegram: bot.telegram });
 
   // Click's Prepare/Complete callbacks are form-encoded POST requests, but
   // this parser MUST be scoped to only those two routes (not app.use()'d
@@ -723,14 +730,23 @@ if (webhookDomain) {
         );
       }
 
-      // Replaces the default "Menu"/"/" button next to the input box with one
-      // that opens the Mini App. Set once at startup rather than per chat, so
-      // it is there for everyone including people who never open the menu.
+      // The menu button is a setting stored on TELEGRAM's side, not ours: it
+      // stays on every existing chat until it is actively changed. So turning
+      // the Mini App off means putting the button back, not merely stopping
+      // serving the page -- otherwise everyone who already has the button
+      // keeps a "Kabinet" that opens a dead URL.
+      const menuButton = MINI_APP_ENABLED
+        ? { type: "web_app", text: "Kabinet", web_app: { url: `${webhookDomain}/app` } }
+        : { type: "commands" };
       bot.telegram
-        .setChatMenuButton({
-          menuButton: { type: "web_app", text: "Kabinet", web_app: { url: `${webhookDomain}/app` } },
-        })
-        .then(() => console.log(`Mini App menu button -> ${webhookDomain}/app`))
+        .setChatMenuButton({ menuButton })
+        .then(() =>
+          console.log(
+            MINI_APP_ENABLED
+              ? `Mini App menu button -> ${webhookDomain}/app`
+              : "Mini App disabled -- menu button reset to the default commands button."
+          )
+        )
         .catch((err) => console.error("setChatMenuButton failed (ignored):", err.message));
     })
     .catch((err) => {

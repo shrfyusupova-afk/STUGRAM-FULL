@@ -14,6 +14,12 @@ process.env.ADMIN_PIN_CODE = "13579";
 process.env.WEBHOOK_DOMAIN = "https://e2e.invalid";
 process.env.PORT = "45999";
 process.env.KEEP_AWAKE = "false";
+// The Mini App is OFF in production (MINI_APP_ENABLED unset). It is switched
+// on here so its code -- initData verification, server-side pricing -- stays
+// covered by tests, since the code is kept for re-enabling rather than
+// deleted. What production actually does with the flag off is verified
+// separately; see the "disabled" check below this file's consumers.
+process.env.MINI_APP_ENABLED = "true";
 delete process.env.DATABASE_URL;
 
 const telegraf = require(path.join(ROOT, "node_modules/telegraf"));
