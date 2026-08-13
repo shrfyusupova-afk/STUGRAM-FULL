@@ -34,6 +34,7 @@ const { profileLinkHref } = require("./profileLink");
 const { REFERRALS_PER_CREDIT } = require("./referral");
 const { isRegistered } = require("./profileState");
 const { locationWithDistance } = require("./geo");
+const { passesGate } = require("./channelGate");
 
 function isPremiumProfile(profile) {
   return !!profile?.premiumUntil && new Date(profile.premiumUntil) > new Date();
@@ -540,6 +541,13 @@ function registerDiscoverHandlers(bot) {
       await recordLikeWithMatchNotification(ctx, ctx.from.id, state.currentId);
     }
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
+
+    // The like itself is ALWAYS recorded above before the gate is consulted:
+    // asking somebody to subscribe must never cost them the decision they
+    // just made. The gate only stands between them and the NEXT profile, and
+    // only until they subscribe -- after that it never appears again.
+    if (!(await passesGate(ctx, lang, "discover"))) return;
+
     const me = await getProfile(ctx.from.id);
     await showNextCandidate(ctx, lang, me?.gender, me?.location);
   });

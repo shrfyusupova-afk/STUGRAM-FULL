@@ -257,6 +257,27 @@ const STRINGS = {
       "💵 Narxi: 79 900 so'm / 1 oy",
     premiumPayClickButton: "💳 Click orqali to'lash",
     // One entry per provider, named after the provider key in checkout.js.
+    // --- ForOne kanali ---
+    channelGateText:
+      "📣 <b>ForOne rasmiy kanali</b>\n\n" +
+      "Davom etishdan oldin kanalimizga obuna bo'ling 💛\n\n" +
+      "Kanalda nima bor:\n" +
+      "🎁 Faqat obunachilar uchun sovg'alar va bepul imkoniyatlar\n" +
+      "✨ Yangi funksiyalar — birinchi bo'lib siz bilasiz\n" +
+      "💡 Tanishuvda ishlaydigan maslahatlar\n" +
+      "🏆 Konkurslar va sovrinlar\n\n" +
+      "Obuna bo'ling va pastdagi tugmani bosing 👇",
+    channelJoinButton: "📣 Kanalga obuna bo'lish",
+    channelCheckButton: "✅ Obunani tekshirish",
+    channelJoinedToast: "✅ Rahmat! Davom etamiz 💛",
+    channelNotJoinedToast: "❌ Obuna topilmadi.\n\nAvval kanalga kiring va \"Obuna bo'lish\" tugmasini bosing, keyin qaytadan tekshiring.",
+    channelWelcomeInvite:
+      "📣 <b>Bizning kanalga qo'shiling!</b>\n\n" +
+      "ForOne kanalida sizni kutmoqda:\n" +
+      "🎁 Obunachilar uchun sovg'alar\n" +
+      "✨ Yangi funksiyalar haqida birinchi xabar\n" +
+      "💡 Tanishuvda haqiqatan ishlaydigan maslahatlar\n\n" +
+      "Bir tugma — va hech narsani o'tkazib yubormaysiz 👇",
     payWith_click: "💳 Click orqali to'lash",
     payWith_payme: "💳 Payme orqali to'lash",
     premiumPayClickNotConfigured: "💳 Click to'lovi hali to'liq sozlanmagan (Merchant ID / Service ID kutilmoqda).",
@@ -559,6 +580,27 @@ const STRINGS = {
       "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n\n" +
       "💵 Цена: 79 900 сум / 1 месяц",
     premiumPayClickButton: "💳 Оплатить через Click",
+    // --- Канал ForOne ---
+    channelGateText:
+      "📣 <b>Официальный канал ForOne</b>\n\n" +
+      "Прежде чем продолжить, подпишитесь на наш канал 💛\n\n" +
+      "Что вас там ждёт:\n" +
+      "🎁 Подарки и бесплатные возможности только для подписчиков\n" +
+      "✨ Новые функции — вы узнаете первыми\n" +
+      "💡 Советы, которые реально работают в знакомствах\n" +
+      "🏆 Конкурсы и призы\n\n" +
+      "Подпишитесь и нажмите кнопку ниже 👇",
+    channelJoinButton: "📣 Подписаться на канал",
+    channelCheckButton: "✅ Проверить подписку",
+    channelJoinedToast: "✅ Спасибо! Продолжаем 💛",
+    channelNotJoinedToast: "❌ Подписка не найдена.\n\nСначала зайдите в канал и нажмите \"Подписаться\", затем проверьте снова.",
+    channelWelcomeInvite:
+      "📣 <b>Присоединяйтесь к нашему каналу!</b>\n\n" +
+      "В канале ForOne вас ждёт:\n" +
+      "🎁 Подарки для подписчиков\n" +
+      "✨ Первыми узнаете о новых функциях\n" +
+      "💡 Советы, которые реально работают\n\n" +
+      "Одна кнопка — и вы ничего не пропустите 👇",
     payWith_click: "💳 Оплатить через Click",
     payWith_payme: "💳 Оплатить через Payme",
     premiumPayClickNotConfigured: "💳 Оплата через Click ещё не полностью настроена (ожидаются Merchant ID / Service ID).",
@@ -861,6 +903,27 @@ const STRINGS = {
       "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n\n" +
       "💵 Price: 79,900 UZS / month",
     premiumPayClickButton: "💳 Pay with Click",
+    // --- ForOne channel ---
+    channelGateText:
+      "📣 <b>The official ForOne channel</b>\n\n" +
+      "Before you continue, join our channel 💛\n\n" +
+      "What's waiting there:\n" +
+      "🎁 Gifts and free perks for subscribers only\n" +
+      "✨ New features — you'll hear first\n" +
+      "💡 Dating advice that actually works\n" +
+      "🏆 Contests and prizes\n\n" +
+      "Join, then tap the button below 👇",
+    channelJoinButton: "📣 Join the channel",
+    channelCheckButton: "✅ Check my subscription",
+    channelJoinedToast: "✅ Thank you! Let's continue 💛",
+    channelNotJoinedToast: "❌ Subscription not found.\n\nOpen the channel, tap \"Join\", then check again.",
+    channelWelcomeInvite:
+      "📣 <b>Join our channel!</b>\n\n" +
+      "Waiting for you on the ForOne channel:\n" +
+      "🎁 Gifts for subscribers\n" +
+      "✨ Be the first to hear about new features\n" +
+      "💡 Dating advice that actually works\n\n" +
+      "One tap and you won't miss a thing 👇",
     payWith_click: "💳 Pay with Click",
     payWith_payme: "💳 Pay with Payme",
     premiumPayClickNotConfigured: "💳 Click payments aren't fully set up yet (waiting on Merchant ID / Service ID).",

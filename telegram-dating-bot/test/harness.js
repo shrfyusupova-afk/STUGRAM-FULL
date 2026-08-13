@@ -21,6 +21,7 @@ const Orig = telegraf.Telegraf;
 
 const bots = [];
 const calls = []; // { bot, method, payload }
+const notSubscribed = new Set(); // user ids the channel gate should block
 
 function fakeMessage(payload) {
   const msg = { message_id: Math.floor(Math.random() * 1e6), date: 0, chat: { id: payload.chat_id } };
@@ -40,6 +41,13 @@ Telegram.prototype.callApi = async function (method, payload = {}) {
   if (method === "getMe") return { id: 111, is_bot: true, first_name: label, username: `${label}_bot` };
   if (method === "getFile") return { file_id: payload.file_id, file_path: "photos/x.jpg" };
   if (method === "getWebhookInfo") return { url: "" };
+  // Channel membership, so the subscribe-gate can be driven from a test.
+  // Everyone counts as subscribed by default, which keeps every test written
+  // before the gate existed behaving exactly as it did; a test that wants to
+  // exercise the gate adds the id to `notSubscribed`.
+  if (method === "getChatMember") {
+    return { status: notSubscribed.has(String(payload.user_id)) ? "left" : "member" };
+  }
   if (/^send(Message|Photo|Video|Document|Animation|ChatAction)$/.test(method)) return fakeMessage(payload);
   if (method === "copyMessage") return { message_id: 1 };
   if (method === "getFileLink") return "https://e2e.invalid/file.jpg";
@@ -160,6 +168,7 @@ function callbackData(sent) {
 module.exports = {
   bots,
   calls,
+  notSubscribed,
   mainBot,
   adminBot,
   send,

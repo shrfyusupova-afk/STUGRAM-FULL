@@ -9,7 +9,7 @@ const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
-const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard } = require("./anonChat");
+const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard, attemptJoin } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { registerMiniApp } = require("./miniApp");
@@ -24,6 +24,7 @@ const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
+const { registerChannelGate } = require("./channelGate");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
 const {
@@ -361,6 +362,22 @@ registerAccountNoticeHandlers(bot, { startNewProfile, safeAnswerCbQuery });
 registerMenuHandlers(bot);
 registerDiscoverHandlers(bot);
 registerLikesHandlers(bot);
+
+// What to resume once somebody actually subscribes. Registered here rather
+// than inside each feature so the gate has one place that knows how to hand
+// control back -- the person taps "check", and the thing they were doing
+// simply continues, with no button to press again.
+registerChannelGate(bot, {
+  // openDiscovery re-reads language and profile itself, so this resumes the
+  // browse exactly as tapping the menu button would -- the next candidate
+  // simply appears and swiping carries on.
+  discover: async (ctx) => {
+    await openDiscovery(ctx);
+  },
+  anon: async (ctx) => {
+    await attemptJoin(ctx, "any");
+  },
+});
 registerProfileSettingsHandlers(bot);
 registerPremiumHandlers(bot);
 registerVipChatHandlers(bot);

@@ -3,6 +3,7 @@ const { getProfile, getLanguage, hasAnonGenderFilter } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { ANON_GENDER_PRICE_SOM } = require("./orders");
 const { buildPaymentOptions, paymentRows } = require("./checkout");
+const { passesGate } = require("./channelGate");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { mainMenuKeyboard } = require("./menu");
 
@@ -295,6 +296,10 @@ function registerAnonChatHandlers(bot) {
 
   // Always free, always genuinely random -- no gender is ever favored here.
   bot.hears(randomLabels, async (ctx) => {
+    // Checked BEFORE the search starts, so nobody is put into the queue and
+    // then interrupted -- and skipped entirely for anyone already subscribed.
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    if (!(await passesGate(ctx, lang, "anon"))) return;
     await attemptJoin(ctx, "any");
   });
 
@@ -305,4 +310,6 @@ function registerAnonChatHandlers(bot) {
   });
 }
 
-module.exports = { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard };
+// attemptJoin is exported so the channel gate can resume the search the
+// moment somebody subscribes, instead of making them tap the button again.
+module.exports = { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard, attemptJoin };

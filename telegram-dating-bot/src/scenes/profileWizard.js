@@ -6,6 +6,7 @@ const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
 const { isRegistered } = require("../profileState");
 const { resolveLocation } = require("../geo");
+const { isSubscribed, isEnabled, CHANNEL_URL } = require("../channelGate");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
@@ -239,6 +240,22 @@ async function finish(ctx, lang, profile) {
   // just saved rather than hear the same pitch again.
   const confirmationText = wasAlreadyRegistered ? t(lang, "profileSaved")(saved) : t(lang, "welcomeAfterRegistration")(saved);
   await ctx.reply(confirmationText, mainMenuKeyboard(lang));
+
+  // A soft invitation, not a gate: a brand-new user has just finished a long
+  // form, and blocking them here would be the worst possible first moment to
+  // ask for anything. Skipped entirely for somebody already subscribed, and
+  // for an edit (they have seen it before).
+  if (!wasAlreadyRegistered && isEnabled() && !(await isSubscribed(ctx.telegram, ctx.from.id))) {
+    try {
+      await ctx.reply(t(lang, "channelWelcomeInvite"), {
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...Markup.inlineKeyboard([[Markup.button.url(t(lang, "channelJoinButton"), CHANNEL_URL)]]),
+      });
+    } catch (err) {
+      console.error("channel invite after registration failed (ignored):", err.message);
+    }
+  }
 
   // The one moment an invitation is worth anything: this person now has a
   // complete anketa, phone number included. Paying on the /start click
