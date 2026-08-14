@@ -1,14 +1,15 @@
 // Who gets the contact when two people match.
 //
-// The rule: the person who liked FIRST gets it. The one who answers does not
-// -- they already knew somebody was interested, so for them the contact is
-// something to pay for, or to earn with invites, or to be given when the
-// other person writes first.
+// The rule: BOTH of them. Two people chose each other, so neither is asked
+// for money before they can reach the other -- a match that only one side can
+// act on is half a match, and charging the one who said yes reads as a
+// penalty for saying yes.
 //
-// This is worth its own file because it is a rule about MONEY that is easy to
-// leak by accident. The contact can escape through three different screens --
-// the match message, the likes list, and the card that is rewritten when you
-// like somebody back -- and each of those used to decide it separately.
+// That makes this a file about a boundary rather than a payout: the paywall
+// still has to stand everywhere there is no mutual interest. So most of these
+// cases check the OTHER side of the line -- one-sided likes, strangers, the
+// likes list before anyone has answered -- because "a match opens both" is
+// only safe if "a like opens nothing" still holds.
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -64,70 +65,111 @@ async function likeFrom(liker, targetName, limit = 30) {
 
 const to = (sent, u) => sent.filter((c) => String(c.payload.chat_id) === String(u.id));
 const textOf = (calls) => calls.map((c) => c.payload.text || c.payload.caption || "").join("\n");
+const gotContact = (calls) => calls.some((c) => /📞/.test(c.payload.caption || "") || /📞/.test(c.payload.text || ""));
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
 // --- the core rule -----------------------------------------------------------
-test("on a match only the FIRST liker is given the contact", async () => {
+test("a match gives BOTH of them the contact", async () => {
   const first = user("First");
   const second = user("Second");
   await register(first, { gender: "male", name: "First" });
   await register(second, { gender: "female", name: "Second" });
 
-  // First likes Second. Not mutual yet, so nothing is granted either way.
+  // First likes Second. Not mutual yet, so nothing is granted either way --
+  // this is the half that must keep working, or a single like would buy
+  // access to a stranger.
   await likeFrom(first, "Second");
-  assert.strictEqual(await db.hasUnlocked(first.id, second.id), false, "not a match yet");
+  assert.strictEqual(await db.hasUnlocked(first.id, second.id), false, "a one-sided like grants nothing");
   assert.strictEqual(await db.hasUnlocked(second.id, first.id), false);
 
   // Second answers -> match.
   const sent = await likeFrom(second, "First");
 
-  assert.strictEqual(await db.hasUnlocked(first.id, second.id), true, "the first liker gets access");
-  assert.strictEqual(await db.hasUnlocked(second.id, first.id), false, "the responder does not");
+  assert.strictEqual(await db.hasUnlocked(first.id, second.id), true, "the one who liked first gets access");
+  assert.strictEqual(await db.hasUnlocked(second.id, first.id), true, "and so does the one who answered");
 
-  // What each of them was actually shown.
-  const toFirst = textOf(to(sent, first));
-  assert.match(toFirst, /mos tushdingiz/, "the first liker is told");
+  // What each of them was actually shown -- the grant is only half the point;
+  // neither should have to go looking for it.
+  const toFirst = to(sent, first);
+  assert.match(textOf(toFirst), /mos tushdingiz/, "the first liker is told");
   assert.ok(
-    to(sent, first).some((c) => c.method === "sendPhoto" && /📞/.test(c.payload.caption || "")),
+    toFirst.some((c) => c.method === "sendPhoto" && /📞/.test(c.payload.caption || "")),
     "and receives the card with the phone number on it"
   );
 
-  const toSecond = textOf(to(sent, second));
-  assert.match(toSecond, /mos tushdingiz/, "the responder is told too");
-  assert.match(toSecond, /birinchi bo'lib yozishi mumkin/, "and told what that means for them");
+  const toSecond = to(sent, second);
+  assert.match(textOf(toSecond), /mos tushdingiz/, "the responder is told too");
   assert.ok(
-    !to(sent, second).some((c) => /📞/.test(c.payload.caption || "") || /📞/.test(c.payload.text || "")),
-    "but is NOT shown the number"
+    toSecond.some((c) => c.method === "sendPhoto" && /📞/.test(c.payload.caption || "")),
+    "and receives the same card, with the number on it"
   );
-  assert.match(toSecond, /Bu funksiya pullik/, "they are offered the unlock instead");
+  assert.ok(!/Bu funksiya pullik/.test(textOf(toSecond)), "and is never sent to a paywall for it");
 });
 
-// --- the likes list must not leak it ------------------------------------------
-test("the likes list does not hand the responder the number either", async () => {
+// --- the likes list shows what each side actually has -------------------------
+test("after a match, both likes lists show the contact", async () => {
   const first = user("Alpha");
   const second = user("Beta");
   await register(first, { gender: "male", name: "Alpha" });
   await register(second, { gender: "female", name: "Beta" });
 
   await likeFrom(first, "Beta");
-  await likeFrom(second, "Alpha"); // match; Beta is the responder
+  await likeFrom(second, "Alpha"); // match
 
-  // Beta opens her likes list. Alpha is in it, and they are a mutual match --
-  // which used to be enough to print his phone number right on the card.
-  const list = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", second));
-  const shown = textOf(to(list, second));
-  assert.ok(!/📞/.test(shown), `the list leaked a contact: ${shown.slice(0, 200)}`);
-
-  // Alpha's own list, on the other hand, may show it -- he earned it.
+  const hers = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", second));
   const hisList = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", first));
-  const hisShown = textOf(to(hisList, first));
-  if (hisShown.length) assert.match(hisShown, /📞|hech kim/, "the first liker keeps his access");
+
+  // Both lists may be empty of pending likers (each has answered the other),
+  // so this asserts only that neither is refused access when a card is drawn.
+  const hersText = textOf(to(hers, second));
+  const hisText = textOf(to(hisList, first));
+  assert.ok(!/Bu funksiya pullik/.test(hersText), "the responder is not paywalled on a matched profile");
+  assert.ok(!/Bu funksiya pullik/.test(hisText), "and neither is the first liker");
+});
+
+// The line the whole change depends on: answering a like opens that person,
+// and ONLY that person. A stranger nobody has matched with stays shut.
+test("a match opens only the person matched with, not everyone", async () => {
+  const me = user("Mine");
+  const partner = user("Partner");
+  const stranger = user("Stranger");
+  await register(me, { gender: "male", name: "Mine" });
+  await register(partner, { gender: "female", name: "Partner" });
+  await register(stranger, { gender: "female", name: "Stranger" });
+
+  await likeFrom(partner, "Mine");
+  await likeFrom(me, "Partner"); // match
+
+  assert.strictEqual(await db.hasUnlocked(me.id, partner.id), true, "the match is open");
+  assert.strictEqual(await db.hasUnlocked(me.id, stranger.id), false, "the stranger is not");
+
+  const sent = await h.send(M(), h.commandUpdate(`/start unlock_${stranger.id}`, me));
+  assert.ok(!gotContact(to(sent, me)), "opening a stranger must still cost");
+  assert.match(textOf(to(sent, me)), /Bu funksiya pullik/, "and must still say so");
+});
+
+// Somebody who liked you but has NOT been answered is not a match, so their
+// contact stays behind the paywall. This is the case most easily broken by a
+// change that grants "both directions" too early.
+test("being liked by somebody is not a match and opens nothing", async () => {
+  const admired = user("Admired");
+  const admirer = user("Admirer");
+  await register(admired, { gender: "female", name: "Admired" });
+  await register(admirer, { gender: "male", name: "Admirer" });
+
+  await likeFrom(admirer, "Admired");
+
+  assert.strictEqual(await db.hasUnlocked(admired.id, admirer.id), false, "she has not answered");
+  assert.strictEqual(await db.hasUnlocked(admirer.id, admired.id), false, "and he is not owed her contact");
+
+  const sent = await h.send(M(), h.commandUpdate(`/start unlock_${admirer.id}`, admired));
+  assert.ok(!gotContact(to(sent, admired)), "his number is not hers for free yet");
 });
 
 // --- liking back from the list is the same path -------------------------------
-test("answering from the likes list does not reveal the number", async () => {
+test("answering from the likes list opens the contact in place", async () => {
   const first = user("Gamma");
   const second = user("Delta");
   await register(first, { gender: "male", name: "Gamma" });
@@ -141,31 +183,15 @@ test("answering from the likes list does not reveal the number", async () => {
 
   const edited = sent.filter((c) => c.method === "editMessageCaption");
   assert.ok(edited.length > 0, "the card is rewritten in place");
-  assert.ok(!/📞/.test(textOf(edited)), "and must not gain a phone number");
+  assert.ok(/📞/.test(textOf(edited)), "and gains the phone number, since this is now a match");
 
-  assert.strictEqual(await db.hasUnlocked(first.id, second.id), true, "Gamma liked first, so Gamma gets it");
-  assert.strictEqual(await db.hasUnlocked(second.id, first.id), false);
-});
+  assert.strictEqual(await db.hasUnlocked(first.id, second.id), true);
+  assert.strictEqual(await db.hasUnlocked(second.id, first.id), true, "answering opens it for her too");
 
-// --- the responder can still get there ----------------------------------------
-test("the responder can unlock with a referral credit", async () => {
-  const first = user("Eps");
-  const second = user("Zeta");
-  await register(first, { gender: "male", name: "Eps" });
-  await register(second, { gender: "female", name: "Zeta" });
-
-  await likeFrom(first, "Zeta");
-  await likeFrom(second, "Eps");
-  assert.strictEqual(await db.hasUnlocked(second.id, first.id), false);
-
-  await db.addUnlockCredits(second.id, 1);
-  const used = await h.send(M(), h.callbackUpdate(`unlock:credit:${first.id}`, second));
-  assert.ok(
-    to(used, second).some((c) => c.method === "sendPhoto" && /📞/.test(c.payload.caption || "")),
-    "spending a credit shows the contact"
-  );
-  assert.strictEqual(await db.hasUnlocked(second.id, first.id), true);
-  assert.strictEqual(await db.getUnlockCredits(second.id), 0);
+  // The card was rewritten in place, so a second copy of the same profile
+  // pushed underneath it would be pure noise.
+  const cards = to(sent, second).filter((c) => c.method === "sendPhoto");
+  assert.strictEqual(cards.length, 0, "no duplicate profile card on top of the rewritten one");
 });
 
 test("Premium still sees everyone, match or not", async () => {
@@ -183,14 +209,14 @@ test("Premium still sees everyone, match or not", async () => {
 });
 
 // --- nobody loses what they already had ----------------------------------------
-test("pairs that matched under the old rule keep their access", async () => {
+test("pairs that matched before this change get both sides too", async () => {
   const a = user("OldA");
   const b = user("OldB");
   await register(a, { gender: "male", name: "OldA" });
   await register(b, { gender: "female", name: "OldB" });
 
-  // Recreate the old state directly: mutual likes, no unlock rows at all --
-  // exactly what a pair that matched before this change looks like on disk.
+  // Mutual likes, no unlock rows at all -- what a pair that matched under the
+  // old one-sided rule can look like on disk.
   await db.recordLike(a.id, b.id);
   await db.recordLike(b.id, a.id);
   assert.strictEqual(await db.hasUnlocked(a.id, b.id), false);
@@ -198,7 +224,7 @@ test("pairs that matched under the old rule keep their access", async () => {
 
   const granted = await db.backfillMatchUnlocks();
   assert.ok(granted >= 2, `expected both sides granted, got ${granted}`);
-  assert.strictEqual(await db.hasUnlocked(a.id, b.id), true, "both keep what they had");
+  assert.strictEqual(await db.hasUnlocked(a.id, b.id), true, "both sides open");
   assert.strictEqual(await db.hasUnlocked(b.id, a.id), true);
 
   // Running it again must change nothing.
