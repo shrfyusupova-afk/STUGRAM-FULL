@@ -22,9 +22,16 @@ const STRINGS = {
     genderMaleValue: "Erkak",
     genderFemaleValue: "Ayol",
     errGenderButtons: "Iltimos, yuqoridagi tugmalardan birini tanlang.",
+    // The old wording here threatened deletion. It read as a warning to
+    // somebody who had not done anything yet, at the one step people are
+    // already most self-conscious about -- so it was the likeliest place to
+    // lose a good user. The reason is the same either way, so it is simply
+    // explained instead: a face is what makes an anketa trustworthy.
     askMedia:
       "📸 Rasm yoki video yuboring\n\n" +
-      "Iltimos, tiniq va sifatli o'zingiz tushgan rasm yuboring, aks holda anketangiz o'chirib yuborilishi mumkin.",
+      "Iloji bo'lsa, yuzingiz aniq ko'rinib turgan tiniq rasm tanlang 🙂\n\n" +
+      "Yuzi ko'rinmagan anketalar boshqalarda shubha uyg'otadi va kamroq javob oladi — " +
+      "ochiq rasm esa ishonch beradi va tanishuv ehtimolini sezilarli oshiradi 💛",
     errMedia: "Iltimos, rasm yoki video yuboring:",
     askLocation:
       "📍 Qayerdansiz?\n\n" +
@@ -396,7 +403,9 @@ const STRINGS = {
     errGenderButtons: "Пожалуйста, выберите один из вариантов выше.",
     askMedia:
       "📸 Отправьте фото или видео\n\n" +
-      "Пожалуйста, отправьте чёткое и качественное фото с собой, иначе анкета может быть удалена.",
+      "По возможности выберите чёткое фото, где хорошо видно ваше лицо 🙂\n\n" +
+      "Анкеты без лица вызывают у других сомнения и получают меньше откликов — " +
+      "открытое фото вызывает доверие и заметно повышает шансы на знакомство 💛",
     errMedia: "Пожалуйста, отправьте фото или видео:",
     askLocation:
       "📍 Откуда вы?\n\n" +
@@ -750,7 +759,9 @@ const STRINGS = {
     errGenderButtons: "Please choose one of the buttons above.",
     askMedia:
       "📸 Send a photo or video\n\n" +
-      "Please send a clear, good-quality photo of yourself, otherwise your profile may be removed.",
+      "If you can, pick a clear photo where your face is easy to see 🙂\n\n" +
+      "Profiles without a visible face make people hesitate and get fewer replies — " +
+      "an open photo builds trust and noticeably improves your chances 💛",
     errMedia: "Please send a photo or video:",
     askLocation:
       "📍 Where are you from?\n\n" +
