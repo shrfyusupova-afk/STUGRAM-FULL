@@ -774,21 +774,20 @@ async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = nul
 // is the same whether the table holds a hundred rows or a million -- the
 // admin panel must not get slower as the bot succeeds.
 //
-// `rewarded` is the subset that actually paid out a free unlock (an invite
-// only counts once the invitee FINISHES their anketa), so a large gap between
-// the two is somebody whose invitees keep abandoning the form.
+// Counts only invitees who FINISHED their anketa (`rewarded`), because a
+// click on a link is not a user. Somebody whose invitees all abandoned the
+// form has brought in nobody and does not appear here at all.
 async function topReferrers(limit = 10) {
   const { rows } = await query(
-    `SELECT referrer_id,
-            COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE rewarded)::int AS rewarded
+    `SELECT referrer_id, COUNT(*)::int AS rewarded
        FROM referrals
+      WHERE rewarded
       GROUP BY referrer_id
-      ORDER BY total DESC, referrer_id ASC
+      ORDER BY rewarded DESC, referrer_id ASC
       LIMIT $1`,
     [limit]
   );
-  return rows.map((r) => ({ referrerId: r.referrer_id, total: r.total, rewarded: r.rewarded }));
+  return rows.map((r) => ({ referrerId: r.referrer_id, rewarded: r.rewarded }));
 }
 
 // --- unlock credits ----------------------------------------------------------

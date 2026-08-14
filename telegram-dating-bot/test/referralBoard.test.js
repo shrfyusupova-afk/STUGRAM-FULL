@@ -6,9 +6,11 @@
 // the reward logic itself uses, or the board becomes a place where somebody
 // farming credits looks ordinary.
 //
-// The distinction the whole file turns on: a CLICK on the link is not an
-// invite. Only a finished anketa pays out. The board shows both so the gap is
-// visible instead of averaged away.
+// The distinction the whole file turns on: a CLICK on the link is not a
+// user. Only a finished anketa counts, on the board and on the card -- so
+// somebody who sent a link to a hundred people who all walked away ranks
+// below somebody who brought in ten who stayed, and appears nowhere at all
+// if none of them finished.
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -87,7 +89,7 @@ test("setup: an admin exists and is logged in", async () => {
 // The very first thing an admin sees after this ships is an empty board. It
 // has to say so plainly rather than render a headed table with nothing under
 // it, which reads as broken.
-test("with nobody invited yet the board says so instead of showing an empty table", () => {
+test("with nobody registered yet the board says so instead of showing an empty table", () => {
   const text = formatReferralBoard([]);
   assert.match(text, /Hozircha hech kim/, "an empty board must explain itself");
   assert.ok(!/🥇/.test(text), "and must not draw a podium with nothing on it");
@@ -100,10 +102,10 @@ test("with nobody invited yet the board says so instead of showing an empty tabl
 // checked without staging thirty registrations.
 test("the board is ordered most-invites-first and marks the podium", () => {
   const rows = [
-    { referrerId: "1", name: "<b>Alpha</b>", total: 12, rewarded: 9 },
-    { referrerId: "2", name: "<b>Beta</b>", total: 7, rewarded: 7 },
-    { referrerId: "3", name: "<b>Gamma</b>", total: 3, rewarded: 0 },
-    { referrerId: "4", name: "<b>Delta</b>", total: 1, rewarded: 1 },
+    { referrerId: "1", name: "<b>Alpha</b>", rewarded: 12 },
+    { referrerId: "2", name: "<b>Beta</b>", rewarded: 7 },
+    { referrerId: "3", name: "<b>Gamma</b>", rewarded: 3 },
+    { referrerId: "4", name: "<b>Delta</b>", rewarded: 1 },
   ];
   const text = formatReferralBoard(rows);
 
@@ -118,34 +120,31 @@ test("the board is ordered most-invites-first and marks the podium", () => {
 
   // The totals line has to add up, or it is worse than not being there.
   assert.match(text, /jami <b>23<\/b> ta/, "12+7+3+1");
-  assert.match(text, /17 tasi anketani to'ldirgan/, "9+7+0+1");
 });
 
-// A click is not an invite. Somebody with 30 clicks and 2 finished anketas is
-// a completely different situation from somebody with 30 of each -- possibly
-// a broken funnel, possibly someone farming the reward -- and collapsing them
-// into one number hides exactly the case worth looking at.
-test("the board separates people who clicked from people who finished", () => {
-  const text = formatReferralBoard([{ referrerId: "9", name: "<b>Funnel</b>", total: 30, rewarded: 2 }]);
-  assert.match(text, /<b>30<\/b> ta/, "the headline is everyone who came through the link");
-  assert.match(text, /✅ 2 ta ro'yxatdan o'tgan/, "but the finished count is shown next to it");
-  assert.match(text, /⏳ 28 ta tugatmagan/, "and so is the shortfall");
+// The number on the board is the one that means something. Somebody with 30
+// clicks and 2 finished anketas has brought in two people, and showing 30
+// anywhere on this screen would rank them like somebody who brought thirty.
+test("the board shows the registered count and nothing else", () => {
+  const text = formatReferralBoard([{ referrerId: "9", name: "<b>Funnel</b>", rewarded: 2 }]);
+  assert.match(text, /<b>2<\/b> ta/, "the number is the people who actually registered");
+  assert.ok(!/30/.test(text), "the click count must not appear at all");
+  assert.ok(!/tugatmagan/.test(text), "and neither must the shortfall");
 });
 
 // Somebody can bring in a crowd without ever finishing their own anketa. The
 // board must still name them rather than crashing on a missing profile.
 test("a referrer with no anketa of their own still appears", () => {
-  const text = formatReferralBoard([{ referrerId: "77", name: "<i>(anketasiz)</i>", total: 4, rewarded: 4 }]);
+  const text = formatReferralBoard([{ referrerId: "77", name: "<i>(anketasiz)</i>", rewarded: 4 }]);
   assert.match(text, /anketasiz/, "they are labelled, not dropped");
   assert.match(text, /<code>77<\/code>/, "and their id is there so the admin can search it");
 });
 
 // --- against the real database -----------------------------------------------
 
-test("the board reflects real invites, in the right order", async () => {
+test("the board counts only invitees who finished, in the right order", async () => {
   // Two referrers, deliberately uneven: the busier one also has an invitee
-  // who abandoned the form, so total and rewarded must diverge for them and
-  // agree for the other.
+  // who abandoned the form, and that one must not be counted anywhere.
   const busy = user("Busy");
   const quiet = user("Quiet");
   await register(busy, { gender: "male", name: "Busy" });
@@ -160,9 +159,8 @@ test("the board reflects real invites, in the right order", async () => {
   const top = await db.topReferrers(REFERRAL_TOP_N);
   const byId = new Map(top.map((r) => [String(r.referrerId), r]));
 
-  assert.strictEqual(byId.get(String(busy.id))?.total, 4, "3 finished + 1 abandoned all came through the link");
-  assert.strictEqual(byId.get(String(busy.id))?.rewarded, 3, "but only the finished ones paid out");
-  assert.strictEqual(byId.get(String(quiet.id))?.total, 1);
+  assert.strictEqual(byId.get(String(busy.id))?.rewarded, 3, "the abandoned one does not count");
+  assert.strictEqual(byId.get(String(quiet.id))?.rewarded, 1);
 
   const rank = top.map((r) => String(r.referrerId));
   assert.ok(
@@ -176,6 +174,29 @@ test("the board reflects real invites, in the right order", async () => {
   assert.match(text, /Takliflar statistikasi/, "the board should open");
   assert.match(text, /Busy/, "and name the top referrer");
   assert.ok(text.indexOf("Busy") < text.indexOf("Quiet"), "in the right order");
+});
+
+// Somebody who sends their link to a crowd that all walk away has brought in
+// nobody. Ranking them by clicks would put them above people who actually
+// grew the bot, so they are not on the board at all.
+test("a referrer whose invitees all abandoned the form does not appear", async () => {
+  const noisy = user("Noisy");
+  await register(noisy, { gender: "male", name: "Noisy" });
+  for (let i = 1; i <= 5; i++) await abandonHalfway(noisy.id, `NF${i}`);
+
+  // The clicks were recorded -- this is not "the referral was lost".
+  assert.strictEqual(await db.countReferrals(noisy.id), 5, "five people did open the link");
+  assert.strictEqual(await db.countReferrals(noisy.id, { rewardedOnly: true }), 0, "and none finished");
+
+  const top = await db.topReferrers(REFERRAL_TOP_N);
+  assert.ok(
+    !top.some((r) => String(r.referrerId) === String(noisy.id)),
+    "five clicks and no registrations is not a place on the board"
+  );
+
+  // And their card says so plainly rather than showing five.
+  const card = await h.send(A(), h.textUpdate(`/u_${noisy.id}`, admin));
+  assert.match(said(card), /Taklif qilgan: yo'q/, "the card counts registrations too");
 });
 
 // The board is a list of who is worth talking to, so it must be capped --
@@ -207,8 +228,8 @@ test("opening someone's card shows how many people they invited", async () => {
 
   const card = await h.send(A(), h.textUpdate(`/u_${inviter.id}`, admin));
   const text = said(card);
-  assert.match(text, /Taklif qilgan: <b>3<\/b> ta/, "everyone who came through the link");
-  assert.match(text, /2 tasi anketani to'ldirgan/, "with the finished count beside it");
+  assert.match(text, /Taklif qilgan: <b>2<\/b> ta/, "only the two who finished registering");
+  assert.ok(!/<b>3<\/b> ta/.test(text), "the one who abandoned the form must not be counted");
 });
 
 test("someone who has invited nobody says so, rather than showing nothing", async () => {

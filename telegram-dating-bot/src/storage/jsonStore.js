@@ -500,21 +500,20 @@ async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = nul
   return n;
 }
 
-// Who brought the most people in. `total` is everyone who signed up through
-// their link; `rewarded` is the subset that actually paid out a free unlock
-// (an invite only counts once the invitee FINISHES their anketa), so a large
-// gap between the two is somebody whose invitees keep abandoning the form --
-// which is worth seeing rather than averaging away.
+// Who brought the most people in. Counts only invitees who FINISHED their
+// anketa (`rewarded`), because a click on a link is not a user. Somebody
+// whose invitees all abandoned the form has brought in nobody and does not
+// appear here at all.
 async function topReferrers(limit = 10) {
   const tally = new Map();
   for (const entry of Object.values(readJson(REFERRALS_PATH))) {
-    const row = tally.get(entry.referrerId) || { referrerId: entry.referrerId, total: 0, rewarded: 0 };
-    row.total++;
-    if (entry.rewarded) row.rewarded++;
+    if (!entry.rewarded) continue;
+    const row = tally.get(entry.referrerId) || { referrerId: entry.referrerId, rewarded: 0 };
+    row.rewarded++;
     tally.set(entry.referrerId, row);
   }
   return [...tally.values()]
-    .sort((a, b) => b.total - a.total || String(a.referrerId).localeCompare(String(b.referrerId)))
+    .sort((a, b) => b.rewarded - a.rewarded || String(a.referrerId).localeCompare(String(b.referrerId)))
     .slice(0, limit);
 }
 

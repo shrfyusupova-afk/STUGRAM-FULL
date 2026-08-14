@@ -544,26 +544,22 @@ function dateOnly(iso) {
 // the admin was actually looking for without further digging.
 // How many people this person brought in, ready to drop into a card.
 //
-// Counted rather than guessed from the reward balance: unlock credits get
-// spent, so a balance of zero says nothing about whether somebody invited
-// thirty people. Both numbers are shown for the same reason as on the
-// leaderboard -- the gap between "clicked the link" and "finished the anketa"
-// is the part worth seeing. A failure here degrades to no line at all: a
-// referral count is not worth failing to open somebody's profile over.
+// Same number as the leaderboard: invitees who FINISHED registering, not
+// people who merely opened the link. Counted rather than guessed from the
+// reward balance -- unlock credits get spent, so a balance of zero says
+// nothing about whether somebody invited thirty people. A failure here
+// degrades to no line at all: a referral count is not worth failing to open
+// somebody's profile over.
 async function referralLine(id) {
-  let total = 0;
-  let rewarded = 0;
+  let registered = 0;
   try {
-    [total, rewarded] = await Promise.all([
-      countReferrals(id),
-      countReferrals(id, { rewardedOnly: true }),
-    ]);
+    registered = await countReferrals(id, { rewardedOnly: true });
   } catch (err) {
     console.error(`Could not count referrals for ${id}:`, err.message);
     return "";
   }
-  if (total === 0) return `🎁 Taklif qilgan: yo'q`;
-  return `🎁 Taklif qilgan: <b>${total}</b> ta` + (rewarded < total ? ` (${rewarded} tasi anketani to'ldirgan)` : "");
+  if (registered === 0) return `🎁 Taklif qilgan: yo'q`;
+  return `🎁 Taklif qilgan: <b>${registered}</b> ta (ro'yxatdan o'tgan)`;
 }
 
 // The two numbers behind "why didn't this person get the 'N people liked you'
@@ -642,40 +638,33 @@ function referrerName(id, profile) {
   return `<b>${escapeHtml(profile.name)}</b>`;
 }
 
-// The leaderboard. `total` counts everyone who signed up through the link;
-// `rewarded` counts only those who FINISHED their anketa, which is what
-// actually pays out a free unlock. Both are shown because the gap is the
-// interesting part: a big total with a small rewarded number means the
-// invites arrive but the people don't stay.
+// The leaderboard. One number per person: how many of their invitees actually
+// FINISHED registering. A click on a link is not a user -- counting those
+// would rank somebody who sent a link to a hundred people who all walked away
+// above somebody who brought in ten who stayed.
 function formatReferralBoard(rows) {
   if (rows.length === 0) {
     return (
       "🏆 Takliflar statistikasi\n\n" +
-      "Hozircha hech kim taklif havolasi orqali qo'shilmagan.\n\n" +
+      "Hozircha hech kim taklif havolasi orqali ro'yxatdan o'tmagan.\n\n" +
       "Foydalanuvchilar «🎁 Do'stlarni taklif qilish» orqali havola olishadi — " +
-      "birinchi taklif kelishi bilan bu ro'yxat to'lib boradi."
+      "birinchi odam anketani to'ldirishi bilan bu ro'yxat to'lib boradi."
     );
   }
 
-  const lines = rows.map((row, i) => {
-    const abandoned = row.total - row.rewarded;
-    return (
-      `${rankMark(i)} ${row.name} — <b>${row.total}</b> ta\n` +
-      `      🆔 <code>${escapeHtml(row.referrerId)}</code>` +
-      `  •  ✅ ${row.rewarded} ta ro'yxatdan o'tgan` +
-      (abandoned > 0 ? `  •  ⏳ ${abandoned} ta tugatmagan` : "")
-    );
-  });
+  const lines = rows.map(
+    (row, i) =>
+      `${rankMark(i)} ${row.name} — <b>${row.rewarded}</b> ta\n` +
+      `      🆔 <code>${escapeHtml(row.referrerId)}</code>`
+  );
 
-  const total = rows.reduce((sum, r) => sum + r.total, 0);
   const rewarded = rows.reduce((sum, r) => sum + r.rewarded, 0);
 
   return (
     `🏆 Takliflar statistikasi — TOP ${rows.length}\n\n` +
     `${lines.join("\n\n")}\n\n` +
     `━━━━━━━━━━━━━━\n` +
-    `📊 Shu ${rows.length} kishi jami <b>${total}</b> ta odam olib kelgan ` +
-    `(${rewarded} tasi anketani to'ldirgan).\n\n` +
+    `📊 Shu ${rows.length} kishi jami <b>${rewarded}</b> ta ro'yxatdan o'tgan odam olib kelgan.\n\n` +
     `👆 Kimnidir yaqindan ko'rish uchun 🆔 sini nusxalab, «${USERS_LABEL}» orqali qidiring.`
   );
 }
