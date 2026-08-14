@@ -67,6 +67,25 @@ function verifyCompleteSign(body, secretKey) {
   return timingSafeEqualStr(expected, body.sign_string);
 }
 
+// Click's merchant_id and service_id are numeric identifiers. A value that
+// is not is always a copy-paste mistake -- the cabinet shows the id next to
+// the merchant's phone number, and pasting "63267_998909453305" instead of
+// "63267" produces a checkout page that loads, then says "Поставщик не
+// найден" and closes. That failure is invisible from here: the URL builds
+// fine, the bot looks healthy, and only the first person who actually tries
+// to pay finds out. So it is checked at startup and surfaced on /health.
+function clickConfigProblem() {
+  const merchantId = process.env.CLICK_MERCHANT_ID;
+  const serviceId = process.env.CLICK_SERVICE_ID;
+  if (merchantId && !/^\d+$/.test(merchantId.trim())) {
+    return `CLICK_MERCHANT_ID must be digits only, got "${merchantId}"`;
+  }
+  if (serviceId && !/^\d+$/.test(serviceId.trim())) {
+    return `CLICK_SERVICE_ID must be digits only, got "${serviceId}"`;
+  }
+  return null;
+}
+
 function buildCheckoutUrl(merchantTransId, amountSom) {
   const merchantId = process.env.CLICK_MERCHANT_ID;
   const serviceId = process.env.CLICK_SERVICE_ID;
@@ -321,6 +340,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 }
 
 module.exports = {
+  clickConfigProblem,
   registerClickRoutes,
   buildCheckoutUrl,
   verifyPrepareSign,

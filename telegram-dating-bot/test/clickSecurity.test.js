@@ -319,6 +319,28 @@ test("a stranger cannot settle an order by guessing its id", async () => {
   assert.strictEqual(await db.hasPremium(u.id), false, "knowing the order id alone buys nothing");
 });
 
+// --- 7. configuration mistakes are caught at startup, not at first payment ----
+
+test("a merchant id with anything but digits is reported, not silently shipped", () => {
+  const { clickConfigProblem } = require("../src/click");
+  const before = process.env.CLICK_MERCHANT_ID;
+  try {
+    // The real mistake this catches: the Click cabinet shows the merchant id
+    // next to the merchant's phone, and pasting both produces a checkout that
+    // loads and then says "Postavshchik ne nayden" -- invisible from the bot,
+    // found only by the first person who tries to pay.
+    process.env.CLICK_MERCHANT_ID = "63267_998909453305";
+    const problem = clickConfigProblem();
+    assert.ok(problem, "a non-numeric merchant id must be reported");
+    assert.match(problem, /CLICK_MERCHANT_ID/);
+
+    process.env.CLICK_MERCHANT_ID = "63267";
+    assert.strictEqual(clickConfigProblem(), null, "a clean numeric id is fine");
+  } finally {
+    process.env.CLICK_MERCHANT_ID = before;
+  }
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;

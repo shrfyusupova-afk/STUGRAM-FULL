@@ -22,7 +22,7 @@ const { startWinbackSweeper, registerWinbackHandlers } = require("./winback");
 const { safeAnswerCbQuery, isGoneError } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
-const { registerClickRoutes, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
+const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
 const { registerChannelGate } = require("./channelGate");
 const { registerCheckoutHandlers } = require("./checkout");
@@ -447,7 +447,7 @@ if (webhookDomain) {
       // at a glance rather than discovering it from a user complaint.
       clickPayments:
         process.env.CLICK_MERCHANT_ID && process.env.CLICK_SERVICE_ID && process.env.CLICK_SECRET_KEY
-          ? "configured"
+          ? clickConfigProblem() || "configured"
           : "NOT CONFIGURED (no payments possible)",
       // Without ALERT_CHAT_ID, a crash or a broadcast failure is invisible
       // until someone thinks to load this page or a user complains -- worth
