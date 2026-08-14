@@ -6,6 +6,7 @@ const {
   listComplaints, getComplaint, setComplaintReply,
   setPremiumUntil, hasPremium, grantVipChat, hasVipChat,
   setAnonGenderFilterUntil, addUnlockCredits,
+  topReferrers, countReferrals,
 } = require("./db");
 const {
   getSalesSummary,
@@ -52,6 +53,7 @@ const SALES_LABEL = "💰 Sotuvlar";
 const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
 const BROADCAST_LABEL = "📢 Reklama berish";
 const REPORT_LABEL = "📈 To'liq hisobot";
+const REFERRALS_LABEL = "🏆 Takliflar statistikasi";
 const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
@@ -217,6 +219,7 @@ function adminMenuKeyboard() {
     [STATS_LABEL, USERS_LABEL],
     [SALES_LABEL, COMPLAINTS_LABEL],
     [REPORT_LABEL, AI_LABEL],
+    [REFERRALS_LABEL],
     [BROADCAST_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
@@ -538,7 +541,32 @@ function dateOnly(iso) {
 
 // Everything stored about this person, so a search result answers whatever
 // the admin was actually looking for without further digging.
-function userCard(id, profile) {
+// How many people this person brought in, ready to drop into a card.
+//
+// Counted rather than guessed from the reward balance: unlock credits get
+// spent, so a balance of zero says nothing about whether somebody invited
+// thirty people. Both numbers are shown for the same reason as on the
+// leaderboard -- the gap between "clicked the link" and "finished the anketa"
+// is the part worth seeing. A failure here degrades to no line at all: a
+// referral count is not worth failing to open somebody's profile over.
+async function referralLine(id) {
+  let total = 0;
+  let rewarded = 0;
+  try {
+    [total, rewarded] = await Promise.all([
+      countReferrals(id),
+      countReferrals(id, { rewardedOnly: true }),
+    ]);
+  } catch (err) {
+    console.error(`Could not count referrals for ${id}:`, err.message);
+    return "";
+  }
+  if (total === 0) return `🎁 Taklif qilgan: yo'q`;
+  return `🎁 Taklif qilgan: <b>${total}</b> ta` + (rewarded < total ? ` (${rewarded} tasi anketani to'ldirgan)` : "");
+}
+
+async function userCard(id, profile) {
+  const invites = await referralLine(id);
   const premiumUntil = dateOnly(profile.premiumUntil);
   const premiumActive = profile.premiumUntil && new Date(profile.premiumUntil) > new Date();
   const anonUntil = dateOnly(profile.anonGenderUntil);
@@ -550,6 +578,7 @@ function userCard(id, profile) {
       `🆔 <code>${escapeHtml(id)}</code>\n` +
       (premiumUntil ? `💎 Premium: ${premiumActive ? "faol" : "tugagan"} (${premiumUntil})\n` : "") +
       (anonUntil ? `🕵️ Anonim jins filtri: ${anonActive ? "faol" : "tugagan"} (${anonUntil})\n` : "") +
+      (invites ? `${invites}\n` : "") +
       contactLine(id, profile)
     );
   }
@@ -564,8 +593,64 @@ function userCard(id, profile) {
     `Holat: ${profile.active === false ? "🔴 Faolsiz" : "🟢 Faol"}\n` +
     `💎 Premium: ${premiumActive ? `faol (${premiumUntil} gacha)` : premiumUntil ? `tugagan (${premiumUntil})` : "yo'q"}\n` +
     `🕵️ Anonim jins filtri: ${anonActive ? `faol (${anonUntil} gacha)` : anonUntil ? `tugagan (${anonUntil})` : "yo'q"}\n` +
+    (invites ? `${invites}\n` : "") +
     (profile.updatedAt ? `🕒 Oxirgi yangilanish: ${escapeHtml(dateOnly(profile.updatedAt))}\n` : "") +
     `\n${contactLine(id, profile)}`
+  );
+}
+
+// --- referral leaderboard ----------------------------------------------------
+
+const REFERRAL_TOP_N = 10;
+// Gold, silver, bronze, then plain numbers -- the top three are the ones an
+// admin is usually looking for.
+const RANK_MARKS = ["🥇", "🥈", "🥉"];
+const rankMark = (i) => RANK_MARKS[i] || `${i + 1}.`;
+
+// Who a referrer IS, from whatever we hold. Someone can bring in a crowd and
+// still have no anketa of their own (they joined, invited, never finished the
+// form), so this must never assume a profile exists -- an id alone is still a
+// usable answer, and the admin can search it.
+function referrerName(id, profile) {
+  if (!profile || !isRegistered(profile)) return `<i>(anketasiz)</i>`;
+  return `<b>${escapeHtml(profile.name)}</b>`;
+}
+
+// The leaderboard. `total` counts everyone who signed up through the link;
+// `rewarded` counts only those who FINISHED their anketa, which is what
+// actually pays out a free unlock. Both are shown because the gap is the
+// interesting part: a big total with a small rewarded number means the
+// invites arrive but the people don't stay.
+function formatReferralBoard(rows) {
+  if (rows.length === 0) {
+    return (
+      "🏆 Takliflar statistikasi\n\n" +
+      "Hozircha hech kim taklif havolasi orqali qo'shilmagan.\n\n" +
+      "Foydalanuvchilar «🎁 Do'stlarni taklif qilish» orqali havola olishadi — " +
+      "birinchi taklif kelishi bilan bu ro'yxat to'lib boradi."
+    );
+  }
+
+  const lines = rows.map((row, i) => {
+    const abandoned = row.total - row.rewarded;
+    return (
+      `${rankMark(i)} ${row.name} — <b>${row.total}</b> ta\n` +
+      `      🆔 <code>${escapeHtml(row.referrerId)}</code>` +
+      `  •  ✅ ${row.rewarded} ta ro'yxatdan o'tgan` +
+      (abandoned > 0 ? `  •  ⏳ ${abandoned} ta tugatmagan` : "")
+    );
+  });
+
+  const total = rows.reduce((sum, r) => sum + r.total, 0);
+  const rewarded = rows.reduce((sum, r) => sum + r.rewarded, 0);
+
+  return (
+    `🏆 Takliflar statistikasi — TOP ${rows.length}\n\n` +
+    `${lines.join("\n\n")}\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `📊 Shu ${rows.length} kishi jami <b>${total}</b> ta odam olib kelgan ` +
+    `(${rewarded} tasi anketani to'ldirgan).\n\n` +
+    `👆 Kimnidir yaqindan ko'rish uchun 🆔 sini nusxalab, «${USERS_LABEL}» orqali qidiring.`
   );
 }
 
@@ -679,7 +764,7 @@ async function sendSearchResults(ctx, query) {
 // silently dropping it is what made "is it a photo or a video? nothing shows"
 // impossible to diagnose.
 async function sendUserCard(ctx, id, profile, mainBotTelegram) {
-  const caption = userCard(id, profile);
+  const caption = await userCard(id, profile);
   const keyboard = await userActionsKeyboard(id, profile, ctx.from.id);
 
   if (profile.mediaFileId) {
@@ -1057,6 +1142,32 @@ function createAdminBot(token, mainBotTelegram) {
       leaveComposers(ctx.from.id);
       const snapshot = await buildDataSnapshot();
       await ctx.reply(formatFullReport(snapshot), adminMenuKeyboard());
+    })
+  );
+
+  // Who is actually growing the bot. The referral reward pays out real money
+  // (a free profile unlock costs 9 900 so'm), so this is both a thank-you
+  // list and the place an abuse pattern would show up first -- one id sitting
+  // far above everyone else with almost nothing rewarded.
+  bot.hears(
+    REFERRALS_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      // Aggregated in the store (one GROUP BY on Postgres), then at most ten
+      // profile lookups for the names -- not a scan over every referral row
+      // here, which would get slower exactly as the bot got more successful.
+      const top = await topReferrers(REFERRAL_TOP_N);
+      const rows = await Promise.all(
+        top.map(async (row) => ({
+          ...row,
+          name: referrerName(row.referrerId, await getProfile(row.referrerId)),
+        }))
+      );
+      await ctx.reply(formatReferralBoard(rows), {
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...adminMenuKeyboard(),
+      });
     })
   );
 
@@ -1528,7 +1639,7 @@ function createAdminBot(token, mainBotTelegram) {
       }
 
       const updated = await getProfile(targetId);
-      await safeUpdateCard(ctx, userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
+      await safeUpdateCard(ctx, await userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
     })
   );
 
@@ -1544,7 +1655,7 @@ function createAdminBot(token, mainBotTelegram) {
       const newActive = profile.active === false;
       const updated = await setProfileActive(targetId, newActive);
       await safeAnswerCbQuery(ctx, newActive ? "Faollashtirildi" : "Faolsizlantirildi");
-      await safeUpdateCard(ctx, userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
+      await safeUpdateCard(ctx, await userCard(targetId, updated), await userActionsKeyboard(targetId, updated, ctx.from.id));
 
       // Someone whose anketa was hidden could otherwise keep swiping for days
       // without ever learning that nobody can see them any more.
@@ -1616,7 +1727,7 @@ function createAdminBot(token, mainBotTelegram) {
       await safeAnswerCbQuery(ctx, "Admin huquqi bekor qilindi");
       const profile = await getProfile(targetId);
       if (profile) {
-        await safeUpdateCard(ctx, userCard(targetId, profile), await userActionsKeyboard(targetId, profile, ctx.from.id));
+        await safeUpdateCard(ctx, await userCard(targetId, profile), await userActionsKeyboard(targetId, profile, ctx.from.id));
       }
       try {
         await mainBotTelegram.sendMessage(targetId, "ℹ️ Sizning admin panelga kirish huquqingiz bekor qilindi.");
@@ -1644,5 +1755,7 @@ module.exports = {
     failedAttempts,
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
     formatFullReport,
+    formatReferralBoard,
+    REFERRAL_TOP_N,
   },
 };

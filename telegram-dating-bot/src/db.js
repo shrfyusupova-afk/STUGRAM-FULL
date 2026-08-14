@@ -63,6 +63,7 @@ module.exports = {
   getReferral: store.getReferral,
   markReferralRewarded: store.markReferralRewarded,
   countReferrals: store.countReferrals,
+  topReferrers: store.topReferrers,
   getUnlockCredits: store.getUnlockCredits,
   addUnlockCredits: store.addUnlockCredits,
   consumeUnlockCredit: store.consumeUnlockCredit,

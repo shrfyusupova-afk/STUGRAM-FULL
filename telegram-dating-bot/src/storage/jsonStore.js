@@ -500,6 +500,24 @@ async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = nul
   return n;
 }
 
+// Who brought the most people in. `total` is everyone who signed up through
+// their link; `rewarded` is the subset that actually paid out a free unlock
+// (an invite only counts once the invitee FINISHES their anketa), so a large
+// gap between the two is somebody whose invitees keep abandoning the form --
+// which is worth seeing rather than averaging away.
+async function topReferrers(limit = 10) {
+  const tally = new Map();
+  for (const entry of Object.values(readJson(REFERRALS_PATH))) {
+    const row = tally.get(entry.referrerId) || { referrerId: entry.referrerId, total: 0, rewarded: 0 };
+    row.total++;
+    if (entry.rewarded) row.rewarded++;
+    tally.set(entry.referrerId, row);
+  }
+  return [...tally.values()]
+    .sort((a, b) => b.total - a.total || String(a.referrerId).localeCompare(String(b.referrerId)))
+    .slice(0, limit);
+}
+
 // --- unlock credits ----------------------------------------------------------
 
 async function getUnlockCredits(userId) {
@@ -758,6 +776,7 @@ module.exports = {
   getReferral,
   markReferralRewarded,
   countReferrals,
+  topReferrers,
   getUnlockCredits,
   addUnlockCredits,
   consumeUnlockCredit,

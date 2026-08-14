@@ -770,6 +770,27 @@ async function countReferrals(referrerId, { rewardedOnly = false, sinceIso = nul
   return rows[0].n;
 }
 
+// Who brought the most people in. Aggregated in SQL and LIMITed, so the cost
+// is the same whether the table holds a hundred rows or a million -- the
+// admin panel must not get slower as the bot succeeds.
+//
+// `rewarded` is the subset that actually paid out a free unlock (an invite
+// only counts once the invitee FINISHES their anketa), so a large gap between
+// the two is somebody whose invitees keep abandoning the form.
+async function topReferrers(limit = 10) {
+  const { rows } = await query(
+    `SELECT referrer_id,
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE rewarded)::int AS rewarded
+       FROM referrals
+      GROUP BY referrer_id
+      ORDER BY total DESC, referrer_id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map((r) => ({ referrerId: r.referrer_id, total: r.total, rewarded: r.rewarded }));
+}
+
 // --- unlock credits ----------------------------------------------------------
 
 async function getUnlockCredits(userId) {
@@ -1104,7 +1125,7 @@ module.exports = {
   setPremiumUntil, hasPremium, setAnonGenderFilterUntil, hasAnonGenderFilter,
   grantVipChat, hasVipChat, isAdmin, addAdmin, listAdmins, removeAdmin, getLanguage, setLanguage,
   recordLike, getLikers, hasLiked, getMyLikes, hasUnlocked, grantUnlock,
-  createReferral, getReferral, markReferralRewarded, countReferrals,
+  createReferral, getReferral, markReferralRewarded, countReferrals, topReferrers,
   getUnlockCredits, addUnlockCredits, consumeUnlockCredit,
   getLikeNoticeAt, setLikeNoticeAt,
   countPendingLikers,
