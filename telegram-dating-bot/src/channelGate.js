@@ -142,9 +142,36 @@ async function probeChannel(telegram) {
       `Fix: add the bot as an administrator of the channel.`;
   }
 
-  if (gateStatus.startsWith("INACTIVE")) console.warn(`Channel gate: ${gateStatus}`);
-  else console.log(`Channel gate: ${gateStatus}`);
+  // Only on a change. Re-probing on a timer would otherwise print the same
+  // line every quarter of an hour forever, which is how a log stops being
+  // read -- and this is a line that matters on the day it changes.
+  if (gateStatus !== previousStatus) {
+    if (gateStatus.startsWith("INACTIVE")) console.warn(`Channel gate: ${gateStatus}`);
+    else console.log(`Channel gate: ${gateStatus}`);
+    previousStatus = gateStatus;
+  }
   return gateStatus;
+}
+
+// Re-probed on a timer, not just at boot.
+//
+// Making the bot a channel admin is done in Telegram, not here, so the fix
+// for an INACTIVE gate happens entirely outside this process -- and with a
+// boot-only probe the only way to see that it worked was to restart the
+// service. That is a redeploy to confirm a two-tap change, which is exactly
+// the kind of friction that leaves a misconfiguration in place for weeks.
+//
+// The gate ITSELF already self-heals: a failed membership check is never
+// cached, so the first check after the bot becomes an admin succeeds. Only
+// the reported status was stale, and now it is not.
+const PROBE_INTERVAL_MS = 15 * 60 * 1000;
+let previousStatus = null;
+
+function startChannelProbe(telegram, intervalMs = PROBE_INTERVAL_MS) {
+  const run = () => probeChannel(telegram).catch((err) => console.error("channel gate probe failed:", err.message));
+  run();
+  // unref: a diagnostic timer must never be the reason the process stays up.
+  return setInterval(run, intervalMs).unref();
 }
 
 function channelGateStatus() {
@@ -215,6 +242,7 @@ module.exports = {
   isEnabled,
   forget,
   probeChannel,
+  startChannelProbe,
   channelGateStatus,
   CHANNEL_URL,
   CHANNEL_USERNAME,

@@ -296,6 +296,36 @@ test("the probe never throws, even when Telegram does", async () => {
   assert.match(result, /^INACTIVE/, "an unanswerable probe is reported, not thrown");
 });
 
+// The fix for an INACTIVE gate -- making the bot a channel admin -- happens
+// in Telegram, not in this process. With a boot-only probe the only way to
+// confirm it worked was to restart the service, so the status had to be able
+// to change on its own.
+test("the probe re-runs on a timer, so the status recovers without a restart", async () => {
+  let isAdminNow = false;
+  const telegram = {
+    getMe: async () => ({ id: 111 }),
+    getChatMember: async () => {
+      if (!isAdminNow) throw new Error("member list is inaccessible");
+      return { status: "administrator" };
+    },
+  };
+
+  const timer = gate.startChannelProbe(telegram, 20);
+  try {
+    // The first probe runs immediately, not only after the first interval --
+    // otherwise /health reads "not probed yet" for the whole window.
+    await new Promise((r) => setTimeout(r, 30));
+    assert.match(gate.channelGateStatus(), /^INACTIVE/, "starts out broken, as configured");
+
+    // The operator adds the bot as an admin. Nothing in here is restarted.
+    isAdminNow = true;
+    await new Promise((r) => setTimeout(r, 60));
+    assert.match(gate.channelGateStatus(), /^active/, "the status must recover by itself");
+  } finally {
+    clearInterval(timer);
+  }
+});
+
 test("the membership cache hands its memory back", async () => {
   const { cache, sweepCache } = gate.__test;
   cache.set(111, { subscribed: true, expiresAt: Date.now() - 1000 });

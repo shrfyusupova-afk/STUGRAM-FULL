@@ -24,7 +24,7 @@ const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
-const { registerChannelGate, probeChannel, channelGateStatus } = require("./channelGate");
+const { registerChannelGate, startChannelProbe, channelGateStatus } = require("./channelGate");
 const { registerCheckoutHandlers } = require("./checkout");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
@@ -396,9 +396,10 @@ bot.telegram
   .catch((err) => console.error("getMe failed:", err));
 
 // The channel gate fails OPEN by design, so a misconfiguration looks exactly
-// like "nobody needed the gate today". Probed once at startup and surfaced on
-// /health, because that is the only way to tell those two apart.
-probeChannel(bot.telegram).catch((err) => console.error("channel gate probe failed:", err.message));
+// like "nobody needed the gate today". Probed at startup and every 15 minutes
+// after, and surfaced on /health -- the fix (making the bot a channel admin)
+// happens in Telegram, so /health has to notice it without a redeploy.
+startChannelProbe(bot.telegram);
 
 bot.catch((err, ctx) => {
   // Somebody blocking the bot is an ordinary, expected event, not a fault:
