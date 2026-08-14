@@ -24,7 +24,7 @@ const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
-const { registerChannelGate } = require("./channelGate");
+const { registerChannelGate, probeChannel, channelGateStatus } = require("./channelGate");
 const { registerCheckoutHandlers } = require("./checkout");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
@@ -395,6 +395,11 @@ bot.telegram
   .then((me) => setUsername(me.username))
   .catch((err) => console.error("getMe failed:", err));
 
+// The channel gate fails OPEN by design, so a misconfiguration looks exactly
+// like "nobody needed the gate today". Probed once at startup and surfaced on
+// /health, because that is the only way to tell those two apart.
+probeChannel(bot.telegram).catch((err) => console.error("channel gate probe failed:", err.message));
+
 bot.catch((err, ctx) => {
   // Somebody blocking the bot is an ordinary, expected event, not a fault:
   // every reply to them fails with 403 from that moment on. Paging the
@@ -460,6 +465,11 @@ if (webhookDomain) {
           ? "configured"
           : "NOT CONFIGURED (Payme button hidden)",
       miniApp: MINI_APP_ENABLED ? "enabled" : "disabled",
+      // Reads "active" only when the bot is genuinely an admin of the
+      // channel. Anything else means the gate is letting everybody through --
+      // which is deliberate (see channelGate.js rule 1) but invisible from
+      // inside the bot, so it has to be visible from here.
+      channelGate: channelGateStatus(),
       // Powers the admin panel's "AI yordamchi" button -- without it that
       // button degrades to a message instead of failing.
       aiAssistant: process.env.ANTHROPIC_API_KEY

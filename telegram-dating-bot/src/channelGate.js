@@ -105,6 +105,52 @@ function forget(userId) {
   cache.delete(userId);
 }
 
+// --- is the gate actually working? -------------------------------------------
+//
+// One configuration mistake silently disables everything in this file:
+// getChatMember on a channel only answers for a bot that is an ADMIN of that
+// channel. Without that, every check throws, rule 1 lets everybody through,
+// and the gate looks exactly as if it had never been installed -- no error
+// screen, no failed message, nothing a person using the bot would report.
+//
+// So it gets probed explicitly at startup and reported on /health, because
+// "the feature is off" is otherwise indistinguishable from "the feature is on
+// and everybody happens to be subscribed".
+let gateStatus = "unknown (not probed yet)";
+
+async function probeChannel(telegram) {
+  if (!CHANNEL_CHAT_ID) {
+    gateStatus = "disabled (no CHANNEL_USERNAME)";
+    return gateStatus;
+  }
+  try {
+    const me = await telegram.getMe();
+    const member = await telegram.getChatMember(CHANNEL_CHAT_ID, me.id);
+    const status = member?.status;
+    if (status === "administrator" || status === "creator") {
+      gateStatus = `active (@${CHANNEL_USERNAME})`;
+    } else {
+      gateStatus =
+        `INACTIVE -- the bot is "${status}" in @${CHANNEL_USERNAME}, not an admin, ` +
+        `so membership cannot be read and EVERYONE is being let through. ` +
+        `Fix: add the bot as an administrator of the channel.`;
+    }
+  } catch (err) {
+    gateStatus =
+      `INACTIVE -- cannot read @${CHANNEL_USERNAME} (${err.message}), ` +
+      `so EVERYONE is being let through. ` +
+      `Fix: add the bot as an administrator of the channel.`;
+  }
+
+  if (gateStatus.startsWith("INACTIVE")) console.warn(`Channel gate: ${gateStatus}`);
+  else console.log(`Channel gate: ${gateStatus}`);
+  return gateStatus;
+}
+
+function channelGateStatus() {
+  return gateStatus;
+}
+
 // --- the gate screen ---------------------------------------------------------
 
 // `action` is carried in the callback data so the "I subscribed" button knows
@@ -168,6 +214,8 @@ module.exports = {
   isSubscribed,
   isEnabled,
   forget,
+  probeChannel,
+  channelGateStatus,
   CHANNEL_URL,
   CHANNEL_USERNAME,
   __test: { normaliseUsername, cache, sweepCache },

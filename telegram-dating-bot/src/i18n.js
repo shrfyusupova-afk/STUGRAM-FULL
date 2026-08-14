@@ -270,7 +270,7 @@ const STRINGS = {
       "🏆 Konkurslar va sovrinlar\n\n" +
       "Obuna bo'ling va pastdagi tugmani bosing 👇",
     channelJoinButton: "📣 Kanalga obuna bo'lish",
-    channelCheckButton: "✅ Obunani tekshirish",
+    channelCheckButton: "✅ Obuna bo'ldim",
     channelJoinedToast: "✅ Rahmat! Davom etamiz 💛",
     channelNotJoinedToast: "❌ Obuna topilmadi.\n\nAvval kanalga kiring va \"Obuna bo'lish\" tugmasini bosing, keyin qaytadan tekshiring.",
     channelWelcomeInvite:
@@ -634,7 +634,7 @@ const STRINGS = {
       "🏆 Конкурсы и призы\n\n" +
       "Подпишитесь и нажмите кнопку ниже 👇",
     channelJoinButton: "📣 Подписаться на канал",
-    channelCheckButton: "✅ Проверить подписку",
+    channelCheckButton: "✅ Я подписался",
     channelJoinedToast: "✅ Спасибо! Продолжаем 💛",
     channelNotJoinedToast: "❌ Подписка не найдена.\n\nСначала зайдите в канал и нажмите \"Подписаться\", затем проверьте снова.",
     channelWelcomeInvite:
@@ -991,7 +991,7 @@ const STRINGS = {
       "🏆 Contests and prizes\n\n" +
       "Join, then tap the button below 👇",
     channelJoinButton: "📣 Join the channel",
-    channelCheckButton: "✅ Check my subscription",
+    channelCheckButton: "✅ I subscribed",
     channelJoinedToast: "✅ Thank you! Let's continue 💛",
     channelNotJoinedToast: "❌ Subscription not found.\n\nOpen the channel, tap \"Join\", then check again.",
     channelWelcomeInvite:

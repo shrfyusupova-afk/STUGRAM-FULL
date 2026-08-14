@@ -237,6 +237,65 @@ test("the channel name is understood however it is written", async () => {
   assert.strictEqual(normaliseUsername("a b c"), null);
 });
 
+// --- the probe ------------------------------------------------------------------
+//
+// The gate fails OPEN on purpose, which means a misconfigured gate and a gate
+// nobody needed today look identical from inside the bot: no error, no failed
+// message, nothing to report. The probe is the only thing that tells them
+// apart, so what it SAYS is the feature -- a probe that reported "fine" for a
+// broken gate would be worse than not having one.
+
+test("the probe says active only when the bot is really a channel admin", async () => {
+  for (const status of ["administrator", "creator"]) {
+    const telegram = {
+      getMe: async () => ({ id: 111 }),
+      getChatMember: async () => ({ status }),
+    };
+    const result = await gate.probeChannel(telegram);
+    assert.match(result, /^active/, `"${status}" should read as active`);
+    assert.strictEqual(gate.channelGateStatus(), result, "/health must see the same answer");
+  }
+});
+
+// The exact production mistake this exists to catch: the bot was added to the
+// channel but not made an admin, so getChatMember cannot answer and every
+// user sails past a gate that appears to be installed.
+test("the probe says INACTIVE when the bot is in the channel but not an admin", async () => {
+  const telegram = {
+    getMe: async () => ({ id: 111 }),
+    getChatMember: async () => ({ status: "member" }),
+  };
+  const result = await gate.probeChannel(telegram);
+  assert.match(result, /^INACTIVE/, "a non-admin bot cannot read membership");
+  assert.match(result, /EVERYONE is being let through/, "and it must say what that means for users");
+  assert.match(result, /administrator/, "and how to fix it");
+});
+
+test("the probe says INACTIVE when the channel cannot be read at all", async () => {
+  const telegram = {
+    getMe: async () => ({ id: 111 }),
+    getChatMember: async () => {
+      throw new Error("Bad Request: chat not found");
+    },
+  };
+  const result = await gate.probeChannel(telegram);
+  assert.match(result, /^INACTIVE/);
+  assert.match(result, /chat not found/, "the underlying reason must survive into the report");
+});
+
+// A probe that threw would take the startup path down with it, over a
+// diagnostic. It has to answer, whatever happens.
+test("the probe never throws, even when Telegram does", async () => {
+  const telegram = {
+    getMe: async () => {
+      throw new Error("network down");
+    },
+    getChatMember: async () => ({ status: "administrator" }),
+  };
+  const result = await gate.probeChannel(telegram);
+  assert.match(result, /^INACTIVE/, "an unanswerable probe is reported, not thrown");
+});
+
 test("the membership cache hands its memory back", async () => {
   const { cache, sweepCache } = gate.__test;
   cache.set(111, { subscribed: true, expiresAt: Date.now() - 1000 });
