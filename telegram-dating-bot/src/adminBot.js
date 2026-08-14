@@ -7,6 +7,7 @@ const {
   setPremiumUntil, hasPremium, grantVipChat, hasVipChat,
   setAnonGenderFilterUntil, addUnlockCredits,
   topReferrers, countReferrals,
+  countPendingLikers, getLikeNoticeAt,
 } = require("./db");
 const {
   getSalesSummary,
@@ -565,8 +566,32 @@ async function referralLine(id) {
   return `🎁 Taklif qilgan: <b>${total}</b> ta` + (rewarded < total ? ` (${rewarded} tasi anketani to'ldirgan)` : "");
 }
 
+// The two numbers behind "why didn't this person get the 'N people liked you'
+// message?".
+//
+// `pending` is not the raw like count -- it is how many likers are still
+// WAITING on an answer. Someone who has already liked all three of their
+// admirers back has a pending count of zero and is correctly told nothing
+// (those became matches instead), which is the single most common reason the
+// milestone message appears not to work. `announced` is the last milestone
+// already sent, so the next message is due at the next multiple of three
+// above it. Both are unreadable from inside the bot; here they are one tap.
+async function likesLine(id) {
+  try {
+    const [pending, announced] = await Promise.all([countPendingLikers(id), getLikeNoticeAt(id)]);
+    return (
+      `💛 Javob kutayotgan layklar: <b>${pending}</b>` +
+      `  •  oxirgi xabar: ${announced || "yo'q"}`
+    );
+  } catch (err) {
+    console.error(`Could not read like state for ${id}:`, err.message);
+    return "";
+  }
+}
+
 async function userCard(id, profile) {
   const invites = await referralLine(id);
+  const likes = await likesLine(id);
   const premiumUntil = dateOnly(profile.premiumUntil);
   const premiumActive = profile.premiumUntil && new Date(profile.premiumUntil) > new Date();
   const anonUntil = dateOnly(profile.anonGenderUntil);
@@ -594,6 +619,7 @@ async function userCard(id, profile) {
     `💎 Premium: ${premiumActive ? `faol (${premiumUntil} gacha)` : premiumUntil ? `tugagan (${premiumUntil})` : "yo'q"}\n` +
     `🕵️ Anonim jins filtri: ${anonActive ? `faol (${anonUntil} gacha)` : anonUntil ? `tugagan (${anonUntil})` : "yo'q"}\n` +
     (invites ? `${invites}\n` : "") +
+    (likes ? `${likes}\n` : "") +
     (profile.updatedAt ? `🕒 Oxirgi yangilanish: ${escapeHtml(dateOnly(profile.updatedAt))}\n` : "") +
     `\n${contactLine(id, profile)}`
   );

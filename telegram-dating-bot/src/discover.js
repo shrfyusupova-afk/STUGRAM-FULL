@@ -354,22 +354,14 @@ function queueNotification(chatKey, task) {
   return chain;
 }
 
-// A message per like is how a bot gets muted. People are told at milestones
-// instead: at 3, at 5, at 10, and then every ten after that. Each one is a
-// reason to come back ("three people are waiting") rather than a nudge about
-// one stranger.
-const LIKE_MILESTONES = [3, 5, 10];
-const LIKE_MILESTONE_STEP = 10;
+// A message per like is how a bot gets muted. People are told every third
+// like instead -- 3, 6, 9, 12 and on -- so each message is a real reason to
+// come back ("three more people are waiting") rather than a nudge about one
+// stranger.
+const LIKE_MILESTONE_STEP = 3;
 
 // The largest milestone this count has reached, or 0 below the first one.
 function milestoneFor(count) {
-  if (count < LIKE_MILESTONES[0]) return 0;
-  const last = LIKE_MILESTONES[LIKE_MILESTONES.length - 1];
-  if (count < last) {
-    let best = 0;
-    for (const m of LIKE_MILESTONES) if (count >= m) best = m;
-    return best;
-  }
   return Math.floor(count / LIKE_MILESTONE_STEP) * LIKE_MILESTONE_STEP;
 }
 
@@ -387,6 +379,15 @@ async function notifyNewLike(telegram, likedId) {
     const count = await pendingLikerCount(likedId);
     const reached = milestoneFor(count);
     const announced = await getLikeNoticeAt(likedId);
+
+    // "Why didn't I get a message when three people liked me?" is otherwise
+    // unanswerable after the fact: the count here is not "how many likes" but
+    // "how many likers still WAITING on an answer", so somebody who already
+    // liked those three back has a pending count of zero and correctly hears
+    // nothing. Logging the numbers turns that from a mystery into a lookup.
+    console.log(
+      `like milestone for ${likedId}: pending=${count} reached=${reached} announced=${announced}`
+    );
 
     if (reached === announced) return false;
 
@@ -739,7 +740,6 @@ module.exports = {
     pickCandidate,
     MAX_SHOWN_MEMORY,
     milestoneFor,
-    LIKE_MILESTONES,
     LIKE_MILESTONE_STEP,
     // Notifications are paced, so they finish AFTER the update that caused
     // them. A test that asserts on them has to wait for the queue rather than

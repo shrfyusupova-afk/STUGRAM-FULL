@@ -16,7 +16,7 @@ for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync
 const h = require("./harness");
 const db = require("../src/db");
 const { __test } = require("../src/discover");
-const { milestoneFor, LIKE_MILESTONES, LIKE_MILESTONE_STEP, pendingNotifications } = __test;
+const { milestoneFor, LIKE_MILESTONE_STEP, pendingNotifications } = __test;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const M = () => h.mainBot();
@@ -73,20 +73,31 @@ const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
 // --- the ladder, on its own --------------------------------------------------
-test("the milestone ladder is 3, 5, 10, then every ten", () => {
-  assert.deepStrictEqual(LIKE_MILESTONES, [3, 5, 10]);
-  assert.strictEqual(LIKE_MILESTONE_STEP, 10);
+test("the milestone ladder is every third like: 3, 6, 9, 12 ...", () => {
+  assert.strictEqual(LIKE_MILESTONE_STEP, 3);
 
   for (const [count, want] of [
     [0, 0], [1, 0], [2, 0],
-    [3, 3], [4, 3],
-    [5, 5], [6, 5], [9, 5],
-    [10, 10], [11, 10], [19, 10],
-    [20, 20], [29, 20],
-    [30, 30], [99, 90], [100, 100], [137, 130],
+    [3, 3], [4, 3], [5, 3],
+    [6, 6], [7, 6], [8, 6],
+    [9, 9], [11, 9],
+    [12, 12], [30, 30], [31, 30], [100, 99],
   ]) {
     assert.strictEqual(milestoneFor(count), want, `milestoneFor(${count})`);
   }
+
+  // Every step really is three apart, with no gaps and no repeats -- the
+  // property the ladder exists for, checked rather than assumed from the
+  // handful of cases above.
+  const crossings = [];
+  for (let n = 1; n <= 60; n++) {
+    if (milestoneFor(n) !== milestoneFor(n - 1)) crossings.push(n);
+  }
+  assert.deepStrictEqual(
+    crossings,
+    Array.from({ length: 20 }, (_, i) => (i + 1) * 3),
+    "a message is due at 3, 6, 9, ... and nowhere else"
+  );
 });
 
 // --- silence below the first milestone ---------------------------------------
@@ -153,20 +164,35 @@ test("the button under the notice opens the likes list", async () => {
   assert.ok(opened.some((c) => c.method === "sendPhoto"), "and show the people");
 });
 
-// --- the second milestone ----------------------------------------------------
-test("the fifth like announces again", async () => {
-  const her = user("Five");
-  await register(her, { gender: "female", name: "Five" });
+// --- the ladder, through the real bot ----------------------------------------
+//
+// Nine likes, arriving one at a time, must produce exactly three messages --
+// at 3, at 6 and at 9 -- and silence on the six likes in between. Driven
+// through the bot rather than the pure function because the marker that keeps
+// 4 and 5 quiet is stored, and a bug there would not show up above.
+test("nine likes announce exactly three times: at 3, at 6 and at 9", async () => {
+  const her = user("Nine");
+  await register(her, { gender: "female", name: "Nine" });
 
-  let announcements = 0;
-  for (let i = 1; i <= 5; i++) {
-    const him = user(`Five${i}`);
-    await register(him, { gender: "male", name: `Five${i}` });
-    const sent = await likeFrom(him, "Five");
-    announcements += noticesTo(sent, her).length;
+  const announcedAt = [];
+  for (let i = 1; i <= 9; i++) {
+    const him = user(`Nine${i}`);
+    await register(him, { gender: "male", name: `Nine${i}` });
+    const sent = await likeFrom(him, "Nine");
+    const notices = noticesTo(sent, her);
+    assert.ok(notices.length <= 1, `like ${i} must never produce two messages`);
+    if (notices.length === 1) {
+      announcedAt.push(i);
+      assert.match(
+        notices[0].payload.text,
+        new RegExp(`${i} ta odam layk bosdi`),
+        `the message at ${i} must name the real number`
+      );
+    }
   }
-  assert.strictEqual(announcements, 2, "exactly two: one at three, one at five");
-  assert.strictEqual(await db.getLikeNoticeAt(her.id), 5);
+
+  assert.deepStrictEqual(announcedAt, [3, 6, 9], "every third like, nothing in between");
+  assert.strictEqual(await db.getLikeNoticeAt(her.id), 9);
 });
 
 // --- working through the backlog re-arms the milestone ------------------------
