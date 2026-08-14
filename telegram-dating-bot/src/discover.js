@@ -26,7 +26,7 @@ const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { getUsername } = require("./botInfo");
 const { sendMainMenu, mainMenuKeyboard } = require("./menu");
 const { UNLOCK_PRICE_SOM } = require("./orders");
-const { buildPaymentOptions, paymentRows } = require("./checkout");
+const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { leaveAnonQueueOrChat } = require("./anonChat");
 const { promptForComplaint, SOURCE } = require("./complaints");
@@ -680,15 +680,15 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
   // same single order, so paying with either grants exactly the same thing.
   const payment = candidateId
     ? await buildPaymentOptions(buyerId, { type: "unlock", targetId: candidateId, amountSom: UNLOCK_PRICE_SOM, lang, t })
-    : { options: [], configured: false };
+    : { options: [], configured: false, rows: [], note: "" };
   const payRows = payment.configured
-    ? paymentRows(payment.options)
+    ? payment.rows
     : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
 
   const credits = await getUnlockCredits(buyerId);
 
   if (credits > 0 && candidateId) {
-    await ctx.reply(t(lang, "unlockPaywallWithCredits")({ price: priceLabel(), credits }), {
+    await ctx.reply(withPaymentNote(t(lang, "unlockPaywallWithCredits")({ price: priceLabel(), credits }), payment.note), {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([
         ...payRows,
@@ -702,7 +702,10 @@ async function handleUnlockDeepLink(ctx, lang, candidateId) {
   // price. Waiting for a like back costs nothing and already works; inviting
   // friends is the route this screen can actually start.
   await ctx.reply(
-    t(lang, "unlockPaywallNoCredits")({ price: priceLabel(), perCredit: REFERRALS_PER_CREDIT }),
+    withPaymentNote(
+      t(lang, "unlockPaywallNoCredits")({ price: priceLabel(), perCredit: REFERRALS_PER_CREDIT }),
+      payment.note
+    ),
     {
       parse_mode: "HTML",
       ...Markup.inlineKeyboard([

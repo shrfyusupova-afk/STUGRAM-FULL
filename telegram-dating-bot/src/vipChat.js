@@ -2,7 +2,7 @@ const { Markup } = require("telegraf");
 const { getProfile, getLanguage, hasVipChat } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { VIP_CHAT_PRICE_SOM } = require("./orders");
-const { buildPaymentOptions, paymentRows } = require("./checkout");
+const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
 // Telegram invite links can be revoked/regenerated later -- if that ever
@@ -61,18 +61,18 @@ function registerVipChatHandlers(bot) {
   bot.action("vip:pay:choose", async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
-    const { options, configured } = await buildPaymentOptions(ctx.from.id, {
+    const payment = await buildPaymentOptions(ctx.from.id, {
       type: "vipchat",
       amountSom: VIP_CHAT_PRICE_SOM,
       lang,
       t,
     });
 
-    const rows = configured
-      ? paymentRows(options)
+    const rows = payment.configured
+      ? payment.rows
       : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
 
-    await ctx.reply(t(lang, "vipPayIntro"), Markup.inlineKeyboard(rows));
+    await ctx.reply(withPaymentNote(t(lang, "vipPayIntro"), payment.note), Markup.inlineKeyboard(rows));
   });
 
 }

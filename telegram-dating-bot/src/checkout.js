@@ -5,7 +5,7 @@
 // themselves is exactly how one of them ends up missing a provider after the
 // next change. Every paywall in the app calls this.
 const { Markup } = require("telegraf");
-const { createOrder } = require("./orders");
+const { createOrder, getOrder } = require("./orders");
 const clickProvider = require("./click");
 const paymeProvider = require("./payme");
 
@@ -40,7 +40,18 @@ async function buildPaymentOptions(userId, { type, targetId, amountSom, lang, t 
     });
   }
 
-  return { orderId, options, configured: options.length > 0 };
+  const configured = options.length > 0;
+  return {
+    orderId,
+    options,
+    configured,
+    // What a paywall actually puts on screen: a row per provider, then the
+    // confirm button. Callers use this rather than assembling it themselves,
+    // so no screen can end up with providers but no way to come back from
+    // them -- see paymentNote() for why coming back has to be explicit.
+    rows: configured ? [...paymentRows(options), [confirmButton(orderId, lang, t)]] : [],
+    note: configured ? paymentNote(lang, t) : "",
+  };
 }
 
 // The keyboard rows for a paywall: one button per provider, stacked, so each
@@ -48,6 +59,31 @@ async function buildPaymentOptions(userId, { type, targetId, amountSom, lang, t 
 // (e.g. "use a free credit", "get Premium instead").
 function paymentRows(options) {
   return options.map((option) => [option.button]);
+}
+
+// "I have paid".
+//
+// A provider button is a URL button: tapping it leaves Telegram for the
+// bank's page, and Telegram reports nothing back to the bot -- not the tap,
+// not the return. So the person comes back to a screen that looks exactly as
+// it did before they paid, with no way to say what just happened. This is
+// that way. It reads the ledger; it never takes the person's word for it.
+function confirmButton(orderId, lang, t) {
+  return Markup.button.callback(t(lang, "paymentDoneButton"), `payments:done:${orderId}`);
+}
+
+// Appended to every paywall's text. Same reason: the three steps have to be
+// visible BEFORE the tap, because after the tap the person is on a different
+// site and there is nothing left of ours to read.
+function paymentNote(lang, t) {
+  return t(lang, "paymentHowToNote");
+}
+
+// Appends the note to a paywall body. One helper so every paywall separates
+// it the same way, and so a screen without a configured provider (where the
+// steps would be nonsense) simply gets its own text back.
+function withPaymentNote(text, note) {
+  return note ? `${text}\n\n${note}` : text;
 }
 
 // Every paywall falls back to the same button when NO provider is
@@ -60,6 +96,62 @@ function registerCheckoutHandlers(bot, { getLanguage, t, DEFAULT_LANG, safeAnswe
     await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "paymentsNotConfigured"));
   });
+
+  // "I have paid" -- answered from the ledger, never from the claim.
+  //
+  // The person tapping this genuinely believes they paid, and often they
+  // have; the money just hasn't reached us yet. But telling someone their
+  // payment went through when the ledger says pending would hand out a paid
+  // feature for free and, worse, leave them certain they are owed nothing
+  // when the charge later fails. So an unpaid order gets "not confirmed yet,
+  // try again in a minute" -- which is the truth, and is also what someone
+  // who paid 20 seconds ago needs to hear.
+  bot.action(/^payments:done:(.+)$/, async (ctx) => {
+    const orderId = ctx.match[1];
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await safeAnswerCbQuery(ctx);
+
+    let order = null;
+    try {
+      order = await getOrder(orderId);
+    } catch (err) {
+      console.error(`Could not read order ${orderId} for payment confirmation:`, err.message);
+    }
+
+    // Someone else's order, or an id that no longer exists. Both are answered
+    // exactly like "not paid yet": there is nothing here to reveal, and an
+    // order id is not a thing anyone should be able to probe for.
+    if (!order || String(order.userId) !== String(ctx.from.id) || order.status !== "paid") {
+      await ctx.reply(t(lang, "paymentPendingNotice"));
+      return;
+    }
+
+    // Paid. For an unlock the person is waiting on one specific profile, so
+    // hand them a direct way into it rather than a message that only says
+    // "it worked" and leaves them to find it. The button re-checks access on
+    // the other side (discover.js), so this is a shortcut, not a bypass.
+    if (order.type === "unlock" && order.targetId) {
+      await ctx.reply(t(lang, "unlockPaidOpenProfile"), {
+        parse_mode: "HTML",
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(t(lang, "unlockOpenProfileButton"), `unlock:view:${order.targetId}`)],
+        ]),
+      });
+      return;
+    }
+
+    // Premium/VIP/anon already got their own congratulation when the payment
+    // settled; this only confirms, so it doesn't repeat the whole thing.
+    await ctx.reply(t(lang, "paymentConfirmedNotice"));
+  });
 }
 
-module.exports = { buildPaymentOptions, paymentRows, registerCheckoutHandlers, PROVIDERS, PROVIDER_LABELS };
+module.exports = {
+  buildPaymentOptions,
+  paymentRows,
+  withPaymentNote,
+  confirmButton,
+  registerCheckoutHandlers,
+  PROVIDERS,
+  PROVIDER_LABELS,
+};

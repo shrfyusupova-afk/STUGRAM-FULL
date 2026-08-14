@@ -259,8 +259,14 @@ test("a credit unlocks a profile for free and is then gone", async () => {
   assert.match(said(paywall), /bepul ochish imkoniyati bor/, "it should say a free unlock is available");
   const buttons = paywall
     .flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat())
-    .map((b) => b.callback_data || "URL");
-  assert.deepStrictEqual(buttons, ["URL", `unlock:credit:${target.id}`], "pay, then use-free");
+    // The order id in the confirm button is random per order, so compare the
+    // callback's shape rather than the id.
+    .map((b) => (b.callback_data || "URL").replace(/^payments:done:.+$/, "payments:done"));
+  assert.deepStrictEqual(
+    buttons,
+    ["URL", "payments:done", `unlock:credit:${target.id}`],
+    "pay, confirm, then use-free"
+  );
 
   const used = await h.send(M(), h.callbackUpdate(`unlock:credit:${target.id}`, buyer));
   assert.match(said(used), /Bepul imkoniyatdan foydalandingiz/);
@@ -320,8 +326,10 @@ test("with no credits the paywall offers the two free routes", async () => {
   assert.match(text, /taklif qiling/, "inviting friends must be offered");
   const buttons = paywall
     .flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat())
-    .map((b) => b.callback_data || "URL");
-  assert.deepStrictEqual(buttons, ["URL", "referral:show"], "pay, then invite");
+    // The order id in the confirm button is random per order, so compare the
+    // callback's shape rather than the id.
+    .map((b) => (b.callback_data || "URL").replace(/^payments:done:.+$/, "payments:done"));
+  assert.deepStrictEqual(buttons, ["URL", "payments:done", "referral:show"], "pay, confirm, then invite");
 
   // And that second button really opens the invite screen.
   const screen = await h.send(M(), h.callbackUpdate("referral:show", broke));

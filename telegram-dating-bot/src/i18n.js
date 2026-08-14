@@ -229,7 +229,6 @@ const STRINGS = {
       `Qolgan bepul ochishlar: <b>${left} ta</b>.`,
     unlockCreditGone: "🎁 Bepul ochish imkoniyati qolmadi.",
     profileBelowIntro: "👇 Bu insonning profili pastda:",
-    unlockPaymentSuccessIntro: "🎉 To'lov muvaffaqiyatli o'tdi!",
     matchedToast: "🎉 Mos tushdingiz!",
     matchNotificationLocked: (name) =>
       `🎉 <b>Siz ${name} bilan mos tushdingiz!</b>\n\n` +
@@ -289,7 +288,45 @@ const STRINGS = {
     qrCaptionFor: (provider) => `📷 QR kodni skaner qilib, ${provider} orqali to'lang`,
     payWith_click: "💳 Click orqali to'lash",
     payWith_payme: "💳 Payme orqali to'lash",
+    // Appended to every paywall. A URL button hands the person over to the
+    // provider's site and Telegram tells the bot nothing about it -- so the
+    // only way they know what happens when they come back is if we say so
+    // before they leave.
+    paymentHowToNote:
+      "━━━━━━━━━━━━━━\n" +
+      "1️⃣ Click yoki Payme tugmasini bosing\n" +
+      "2️⃣ To'lovni amalga oshiring\n" +
+      "3️⃣ So'ng «✅ To'lov qildim» tugmasini bosing\n\n" +
+      "⏳ To'lov tasdiqlangach, funksiya bir necha soniyada ishga tushadi.",
+    paymentDoneButton: "✅ To'lov qildim",
+    paymentPendingNotice:
+      "⏳ To'lov hali tasdiqlanmadi.\n\n" +
+      "Agar hozirgina to'lagan bo'lsangiz, 1–2 daqiqa kuting va «✅ To'lov qildim» tugmasini yana bir bor bosing. " +
+      "To'lov bankdan tasdiqlanishi bilan xizmat avtomatik ishga tushadi va sizga xabar keladi.\n\n" +
+      "Agar to'lov qilmagan bo'lsangiz, yuqoridagi Click yoki Payme tugmasini bosing 👆",
+    paymentConfirmedNotice: "✅ To'lovingiz tasdiqlangan — xizmat faol. Yoqimli foydalanish! 💛",
+    unlockPaidOpenProfile:
+      "🎉 <b>To'lov qabul qilindi!</b>\n\n" +
+      "🔓 Bu insonning to'liq profili endi siz uchun ochiq.\n\n" +
+      "👇 Profilga o'tish uchun pastdagi tugmani bosing.",
+    unlockOpenProfileButton: "👤 Profilga o'tish",
     premiumActivated: (days) => `🎉 Premium faollashtirildi! ${days} kun davomida barcha imtiyozlardan foydalanasiz.`,
+    premiumPurchaseCongrats: (days) =>
+      "🎉 <b>Tabriklaymiz! Premium faollashtirildi 💎</b>\n\n" +
+      `📅 Amal qilish muddati: <b>${days} kun</b>\n\n` +
+      "Endi sizda quyidagi imkoniyatlar bor:\n" +
+      "🔓 <b>Har bir anketani cheksiz ochish</b> — alohida to'lovsiz\n" +
+      "🔥 <b>Profilingiz ko'proq ko'rsatiladi</b> — ko'proq like va tanishuv\n" +
+      "🕵️ <b>Anonim chatda jinsni tanlash</b> — 👧 yoki 👦, butun oy BEPUL\n" +
+      "💛 <b>Sizni kim yoqtirganini ko'rish</b> — cheklovsiz\n\n" +
+      "Boshlash uchun «💘 Yangi tanishuvlar» tugmasini bosing 👇",
+    vipPurchaseCongrats: (link) =>
+      "🎉 <b>Tabriklaymiz! VIP chatga kirish huquqi ochildi 👑</b>\n\n" +
+      "Guruhda sizni nima kutmoqda:\n" +
+      "💬 <b>Jonli suhbat</b> — yuzlab yigit va qizlar bilan\n" +
+      "🎯 <b>Tanishuv o'yinlari</b> va faol muhokamalar\n" +
+      "🛡 <b>Moderatsiya</b> — spam va noo'rin xabarlarsiz\n\n" +
+      `🔗 Qo'shilish uchun havola:\n${link}`,
     profileSettingsIntro: "⚙️ Anketa sozlamalari:",
     profileSettingsEdit: "✏️ Anketani tahrirlash",
     profileSettingsView: "👁 Mening anketam",
@@ -557,7 +594,6 @@ const STRINGS = {
       `Осталось: <b>${left}</b>.`,
     unlockCreditGone: "🎁 Бесплатных открытий не осталось.",
     profileBelowIntro: "👇 Профиль этого человека ниже:",
-    unlockPaymentSuccessIntro: "🎉 Оплата прошла успешно!",
     matchedToast: "🎉 Это совпадение!",
     matchNotificationLocked: (name) =>
       `🎉 <b>У вас совпадение с ${name}!</b>\n\n` +
@@ -614,7 +650,41 @@ const STRINGS = {
     qrCaptionFor: (provider) => `📷 Отсканируйте QR-код и оплатите через ${provider}`,
     payWith_click: "💳 Оплатить через Click",
     payWith_payme: "💳 Оплатить через Payme",
+    paymentHowToNote:
+      "━━━━━━━━━━━━━━\n" +
+      "1️⃣ Нажмите кнопку Click или Payme\n" +
+      "2️⃣ Совершите оплату\n" +
+      "3️⃣ Затем нажмите «✅ Я оплатил»\n\n" +
+      "⏳ После подтверждения оплаты функция включится за несколько секунд.",
+    paymentDoneButton: "✅ Я оплатил",
+    paymentPendingNotice:
+      "⏳ Оплата пока не подтверждена.\n\n" +
+      "Если вы только что оплатили, подождите 1–2 минуты и нажмите «✅ Я оплатил» ещё раз. " +
+      "Как только банк подтвердит платёж, услуга включится автоматически и вы получите уведомление.\n\n" +
+      "Если вы ещё не оплатили — нажмите кнопку Click или Payme выше 👆",
+    paymentConfirmedNotice: "✅ Ваша оплата подтверждена — услуга активна. Приятного пользования! 💛",
+    unlockPaidOpenProfile:
+      "🎉 <b>Оплата получена!</b>\n\n" +
+      "🔓 Полный профиль этого человека теперь открыт для вас.\n\n" +
+      "👇 Нажмите кнопку ниже, чтобы перейти к профилю.",
+    unlockOpenProfileButton: "👤 Перейти к профилю",
     premiumActivated: (days) => `🎉 Премиум активирован! Все привилегии доступны в течение ${days} дней.`,
+    premiumPurchaseCongrats: (days) =>
+      "🎉 <b>Поздравляем! Премиум активирован 💎</b>\n\n" +
+      `📅 Срок действия: <b>${days} дней</b>\n\n` +
+      "Теперь вам доступно:\n" +
+      "🔓 <b>Безлимитное открытие анкет</b> — без отдельной оплаты\n" +
+      "🔥 <b>Ваш профиль показывается чаще</b> — больше лайков и знакомств\n" +
+      "🕵️ <b>Выбор пола в анонимном чате</b> — 👧 или 👦, весь месяц БЕСПЛАТНО\n" +
+      "💛 <b>Кто вас лайкнул</b> — без ограничений\n\n" +
+      "Нажмите «💘 Новые знакомства», чтобы начать 👇",
+    vipPurchaseCongrats: (link) =>
+      "🎉 <b>Поздравляем! Доступ в VIP-чат открыт 👑</b>\n\n" +
+      "Что вас ждёт в группе:\n" +
+      "💬 <b>Живое общение</b> — сотни парней и девушек\n" +
+      "🎯 <b>Игры для знакомств</b> и активные обсуждения\n" +
+      "🛡 <b>Модерация</b> — без спама и неуместных сообщений\n\n" +
+      `🔗 Ссылка для вступления:\n${link}`,
     profileSettingsIntro: "⚙️ Настройки анкеты:",
     profileSettingsEdit: "✏️ Редактировать анкету",
     profileSettingsView: "👁 Моя анкета",
@@ -881,7 +951,6 @@ const STRINGS = {
       `Remaining: <b>${left}</b>.`,
     unlockCreditGone: "🎁 No free unlocks left.",
     profileBelowIntro: "👇 Their profile is below:",
-    unlockPaymentSuccessIntro: "🎉 Payment successful!",
     matchedToast: "🎉 It's a match!",
     matchNotificationLocked: (name) =>
       `🎉 <b>It's a match with ${name}!</b>\n\n` +
@@ -938,7 +1007,41 @@ const STRINGS = {
     qrCaptionFor: (provider) => `📷 Scan the QR code and pay with ${provider}`,
     payWith_click: "💳 Pay with Click",
     payWith_payme: "💳 Pay with Payme",
+    paymentHowToNote:
+      "━━━━━━━━━━━━━━\n" +
+      "1️⃣ Tap the Click or Payme button\n" +
+      "2️⃣ Complete the payment\n" +
+      "3️⃣ Then tap “✅ I have paid”\n\n" +
+      "⏳ Once the payment is confirmed, the feature turns on within seconds.",
+    paymentDoneButton: "✅ I have paid",
+    paymentPendingNotice:
+      "⏳ Your payment hasn't been confirmed yet.\n\n" +
+      "If you've just paid, wait 1–2 minutes and tap “✅ I have paid” again. " +
+      "As soon as the bank confirms it, the feature switches on automatically and you'll get a message.\n\n" +
+      "If you haven't paid yet, tap the Click or Payme button above 👆",
+    paymentConfirmedNotice: "✅ Your payment is confirmed — the feature is active. Enjoy! 💛",
+    unlockPaidOpenProfile:
+      "🎉 <b>Payment received!</b>\n\n" +
+      "🔓 This person's full profile is now open to you.\n\n" +
+      "👇 Tap the button below to open it.",
+    unlockOpenProfileButton: "👤 Open the profile",
     premiumActivated: (days) => `🎉 Premium activated! You'll have all the perks for ${days} days.`,
+    premiumPurchaseCongrats: (days) =>
+      "🎉 <b>Congratulations! Premium is active 💎</b>\n\n" +
+      `📅 Valid for: <b>${days} days</b>\n\n` +
+      "Here's what you can do now:\n" +
+      "🔓 <b>Open any profile, unlimited</b> — no separate payments\n" +
+      "🔥 <b>Your profile is shown more often</b> — more likes, more matches\n" +
+      "🕵️ <b>Pick a gender in Anonymous chat</b> — 👧 or 👦, free all month\n" +
+      "💛 <b>See everyone who liked you</b> — no limits\n\n" +
+      "Tap “💘 New people” to get started 👇",
+    vipPurchaseCongrats: (link) =>
+      "🎉 <b>Congratulations! VIP chat access is open 👑</b>\n\n" +
+      "What's waiting for you in the group:\n" +
+      "💬 <b>Live conversation</b> — hundreds of guys and girls\n" +
+      "🎯 <b>Icebreaker games</b> and active discussions\n" +
+      "🛡 <b>Moderation</b> — no spam, no inappropriate messages\n\n" +
+      `🔗 Here's your invite link:\n${link}`,
     profileSettingsIntro: "⚙️ Profile settings:",
     profileSettingsEdit: "✏️ Edit profile",
     profileSettingsView: "👁 My profile",

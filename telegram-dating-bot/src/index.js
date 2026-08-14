@@ -4,7 +4,7 @@ const express = require("express");
 const { Telegraf, Scenes, Markup, session } = require("telegraf");
 const { profileWizard } = require("./scenes/profileWizard");
 const { registerMenuHandlers, sendMainMenu } = require("./menu");
-const { registerDiscoverHandlers, handleUnlockDeepLink, sendProfileToChat, openDiscovery } = require("./discover");
+const { registerDiscoverHandlers, handleUnlockDeepLink, openDiscovery } = require("./discover");
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
@@ -521,11 +521,19 @@ if (webhookDomain) {
         await grantUnlock(order.userId, order.targetId);
         const candidate = await getProfile(order.targetId);
         if (candidate) {
-          await bot.telegram.sendMessage(
-            order.userId,
-            `${t(lang, "unlockPaymentSuccessIntro")}\n\n${t(lang, "profileBelowIntro")}`
-          );
-          await sendProfileToChat(bot.telegram, order.userId, lang, order.targetId);
+          // A button rather than the profile itself. Payment happens in a
+          // browser, so this arrives while the person is still on the bank's
+          // "success" page or halfway back -- pushing photos into the chat at
+          // that moment scrolls past unseen. One message they will actually
+          // find when they return, with the way in attached to it. Pressing
+          // it re-checks access (discover.js), so it is a shortcut, never a
+          // second route around the paywall.
+          await bot.telegram.sendMessage(order.userId, t(lang, "unlockPaidOpenProfile"), {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback(t(lang, "unlockOpenProfileButton"), `unlock:view:${order.targetId}`)],
+            ]),
+          });
         } else {
           await bot.telegram.sendMessage(order.userId, t(lang, "unlockSuccessNoContact"));
         }
@@ -539,7 +547,14 @@ if (webhookDomain) {
         // still exists and pressing the VIP button again hands the link back,
         // instead of the payment simply vanishing.
         await grantVipChat(order.userId);
-        await bot.telegram.sendMessage(order.userId, t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
+        // Congratulation + what they just bought, not only a bare link: the
+        // link alone leaves someone who paid 21 900 so'm with no sense of
+        // what for.
+        await bot.telegram.sendMessage(
+          order.userId,
+          t(lang, "vipPurchaseCongrats")(VIP_CHAT_INVITE_LINK),
+          { parse_mode: "HTML" }
+        );
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }
@@ -562,7 +577,9 @@ if (webhookDomain) {
 
       const premiumUntil = extendFrom((await getProfile(order.userId))?.premiumUntil, PREMIUM_DAYS);
       await setPremiumUntil(order.userId, premiumUntil);
-      await bot.telegram.sendMessage(order.userId, t(lang, "premiumActivated")(PREMIUM_DAYS));
+      await bot.telegram.sendMessage(order.userId, t(lang, "premiumPurchaseCongrats")(PREMIUM_DAYS), {
+        parse_mode: "HTML",
+      });
       console.log(`Premium activated for user ${order.userId} (${order.amount} so'm via Click)`);
   };
 

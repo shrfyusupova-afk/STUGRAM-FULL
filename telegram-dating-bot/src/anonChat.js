@@ -2,7 +2,7 @@ const { Markup } = require("telegraf");
 const { getProfile, getLanguage, hasAnonGenderFilter } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { ANON_GENDER_PRICE_SOM } = require("./orders");
-const { buildPaymentOptions, paymentRows } = require("./checkout");
+const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { passesGate } = require("./channelGate");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 const { mainMenuKeyboard } = require("./menu");
@@ -197,16 +197,19 @@ async function genderFilterStatus(userId, lang) {
 }
 
 async function showGenderPaywall(ctx, lang) {
-  const { options, configured } = await buildPaymentOptions(ctx.from.id, {
+  const payment = await buildPaymentOptions(ctx.from.id, {
     type: "anongender",
     amountSom: ANON_GENDER_PRICE_SOM,
     lang,
     t,
   });
-  const rows = configured
-    ? paymentRows(options)
+  const rows = payment.configured
+    ? payment.rows
     : [[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]];
-  await ctx.reply(t(lang, "anonGenderPaywallIntro"), Markup.inlineKeyboard(rows));
+  await ctx.reply(
+    withPaymentNote(t(lang, "anonGenderPaywallIntro"), payment.note),
+    Markup.inlineKeyboard(rows)
+  );
 }
 
 function registerAnonChatHandlers(bot) {
