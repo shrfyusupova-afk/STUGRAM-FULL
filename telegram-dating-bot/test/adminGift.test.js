@@ -15,6 +15,7 @@ for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync
 const h = require("./harness");
 const db = require("../src/db");
 const { getSalesSummary, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("../src/click");
+const { GIFT_UNLOCK_CREDITS } = require("../src/adminBot").__test;
 
 const M = () => h.mainBot();
 const A = () => h.adminBot();
@@ -99,14 +100,44 @@ test("gifting again ADDS to the time left instead of throwing it away", async ()
   );
 });
 
-test("free unlock credits are handed over and actually spendable", async () => {
+test("one free unlock credit is handed over, and it is spendable", async () => {
   const before = await db.getUnlockCredits(admin.id);
   await h.send(A(), h.callbackUpdate(`admin:gift:credits:${admin.id}`, admin));
   const after = await db.getUnlockCredits(admin.id);
-  assert.strictEqual(after - before, 5, "five credits arrive");
+  assert.strictEqual(after - before, GIFT_UNLOCK_CREDITS, "one credit arrives");
+  assert.strictEqual(GIFT_UNLOCK_CREDITS, 1, "one tap is one unlock");
 
-  assert.strictEqual(await db.consumeUnlockCredit(admin.id), true, "and one can be spent");
+  assert.strictEqual(await db.consumeUnlockCredit(admin.id), true, "and it can be spent");
   assert.strictEqual(await db.getUnlockCredits(admin.id), after - 1);
+});
+
+// The size of the gift is now decided by how many times the button is
+// tapped, so tapping it twice has to actually give two.
+test("tapping the gift button again adds another one", async () => {
+  const twice = user("Twice");
+  await register(twice, { gender: "female", name: "Twice" });
+
+  await h.send(A(), h.callbackUpdate(`admin:gift:credits:${twice.id}`, admin));
+  await h.send(A(), h.callbackUpdate(`admin:gift:credits:${twice.id}`, admin));
+  assert.strictEqual(await db.getUnlockCredits(twice.id), 2 * GIFT_UNLOCK_CREDITS, "two taps, two unlocks");
+});
+
+// The label is what an admin reads before tapping. A hardcoded number there
+// would go on promising five long after the gift stopped being five.
+test("the button says how many it actually gives", async () => {
+  const shown = user("Shown");
+  await register(shown, { gender: "female", name: "Shown" });
+
+  const card = await h.send(A(), h.textUpdate(`/u_${shown.id}`, admin));
+  const labels = card
+    .flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat())
+    .map((b) => b.text || "");
+  const gift = labels.find((l) => l.includes("ochish"));
+  assert.ok(gift, `no unlock-gift button on the card: ${JSON.stringify(labels)}`);
+  assert.ok(
+    gift.includes(String(GIFT_UNLOCK_CREDITS)),
+    `the button says "${gift}" but gives ${GIFT_UNLOCK_CREDITS}`
+  );
 });
 
 test("the person is told about their gift, through the MAIN bot", async () => {

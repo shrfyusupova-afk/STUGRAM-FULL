@@ -64,8 +64,11 @@ const CONFIRM_YES_LABEL = "✅ Ha, yuborilsin";
 const CONFIRM_NO_LABEL = "❌ Yo'q, bekor qilish";
 const SKIP_MEDIA_LABEL = "⏭ Rasmsiz davom etish";
 
-// How many free profile unlocks one tap of the gift button hands over.
-const GIFT_UNLOCK_CREDITS = 5;
+// How many free profile unlocks one tap of the gift button hands over. One,
+// so the size of the gift is decided by how many times it is tapped rather
+// than fixed here -- five was the only amount possible, which made it the
+// wrong amount most of the time.
+const GIFT_UNLOCK_CREDITS = 1;
 
 // What the reporter was looking at when they filed, used for the one-line
 // label in the list so an admin can triage without opening each one.
@@ -836,7 +839,9 @@ async function userActionsKeyboard(id, profile, viewerId) {
     ],
     [
       Markup.button.callback("🕵️ Anonim filtr +7 kun", `admin:gift:anon:${id}`),
-      Markup.button.callback("🎁 5 ta ochish", `admin:gift:credits:${id}`),
+      // Built from the constant, never retyped: a hardcoded number here would
+      // go on promising five long after the gift stopped being five.
+      Markup.button.callback(`🎁 ${GIFT_UNLOCK_CREDITS} ta ochish`, `admin:gift:credits:${id}`),
     ],
     [Markup.button.callback(toggleLabel, `admin:toggle:${id}`), Markup.button.callback("🗑 O'chirish", `admin:delete:${id}`)],
   ];
@@ -1772,5 +1777,6 @@ module.exports = {
     formatFullReport,
     formatReferralBoard,
     REFERRAL_TOP_N,
+    GIFT_UNLOCK_CREDITS,
   },
 };
