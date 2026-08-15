@@ -277,19 +277,17 @@ function registerLikesHandlers(bot) {
     const index = ctx.match[2] === undefined ? null : Number(ctx.match[2]);
     const myId = ctx.from.id;
     const lang = await getLanguage(myId) || DEFAULT_LANG;
-    // skipResponderCard: the card is rewritten in place below, so a second
-    // copy of the same profile pushed underneath it would just be noise.
-    await recordLikeWithMatchNotification(ctx, myId, candidateId, { skipResponderCard: true });
+    await recordLikeWithMatchNotification(ctx, myId, candidateId);
     await safeAnswerCbQuery(ctx, t(lang, "matchedToast"));
 
     const candidate = await getProfile(candidateId);
     if (!candidate) return;
 
     // Asks the one question that decides this everywhere: does this viewer
-    // actually have access? Answering a like makes it a match, and a match
-    // grants both sides -- but this still asks rather than assuming, because
-    // "mutual likes" and "has access" are separate facts (Premium, a paid
-    // unlock, a spent credit) and only one of them is the question here.
+    // actually have access? A mutual like is not enough on its own -- on a
+    // match the contact goes to whoever liked FIRST, and answering a like is
+    // by definition not that. Reading "mutual" here instead was exactly how
+    // the responder kept seeing the number.
     const canSee = await canViewProfile(myId, candidateId);
     const me = await getProfile(myId);
     const caption = buildProfileCaption(lang, candidateId, candidate, {

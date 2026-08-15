@@ -411,11 +411,10 @@ async function notifyNewLike(telegram, likedId) {
   });
 }
 
-// `skipResponderCard` is for the likes list, which rewrites the card already
-// on screen to reveal the contact. Without it a person answering from there
-// would get that rewritten card AND a fresh copy of the same profile pushed
-// underneath it -- two cards for one person, one of them redundant.
-async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipResponderCard = false } = {}) {
+// The person who ANSWERS a like is not sent a profile card at all -- they get
+// the paywall instead -- so there is no duplicate for the likes list to
+// suppress.
+async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   const alreadyLikedByMe = await hasLiked(likerId, likedId);
   await recordLike(likerId, likedId);
   // A repeat tap on someone already liked is not news -- never re-notify.
@@ -431,14 +430,14 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipResp
     return;
   }
 
-  // A match: both of them chose each other, so both of them get the contact.
+  // A match. Note who is who: likedId had ALREADY liked, which is the only
+  // reason this is a match at all, so likedId liked FIRST and likerId is the
+  // one who just answered.
   //
-  // It used to go only to whoever liked first, with the one answering sent to
-  // a paywall. That reads as a punishment for saying yes -- two people agree
-  // and one of them is asked for money before they can reach the other -- and
-  // it leaves a match half-made, since only one side can act on it. The
-  // paywall still exists everywhere it should: opening a stranger's profile
-  // before any mutual interest is exactly what it is for.
+  // Only the first liker is given the contact. They took the risk of liking a
+  // stranger with nothing in return; the reward for that is the connection.
+  // The one answering already knows somebody is interested -- they saw it in
+  // their likes list -- so for them the contact is worth paying for.
   const me = await getProfile(likerId);
   const them = await getProfile(likedId);
   if (!me || !them) return;
@@ -446,13 +445,13 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipResp
   const myLang = (await getLanguage(likerId)) || DEFAULT_LANG;
   const theirLang = (await getLanguage(likedId)) || DEFAULT_LANG;
 
-  // Written down rather than inferred later: canViewProfile reads these rows,
-  // and nothing in either backend records that two people liked each other as
-  // a fact in its own right. Both directions, because access is per-viewer.
+  // Written down rather than inferred later: canViewProfile reads this row,
+  // and nothing in either backend records which like came first. ONE
+  // direction only -- granting both is what quietly handed the contact to the
+  // responder as well.
   await grantUnlock(likedId, likerId);
-  await grantUnlock(likerId, likedId);
 
-  // The one who liked first, and has been waiting.
+  // The first liker: told, and given the contact.
   try {
     await ctx.telegram.sendMessage(
       likedId,
@@ -463,16 +462,12 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId, { skipResp
     console.error("match notification (first liker) failed:", err.message);
   }
 
-  // The one who just answered -- the same message and the same profile. Sent
-  // through ctx (they are the person tapping right now) rather than telegram,
-  // so it lands in the conversation they are already looking at.
+  // The one who answered: told what happened and what it means, honestly --
+  // the other person has their contact and can write first. Then the usual
+  // unlock screen, which already offers the free routes as well as the price.
   try {
-    if (skipResponderCard) {
-      await ctx.reply(t(myLang, "matchNotification")(them.name));
-    } else {
-      await ctx.reply(`${t(myLang, "matchNotification")(them.name)}\n\n${t(myLang, "profileBelowIntro")}`);
-      await sendProfileToChat(ctx.telegram, likerId, myLang, likedId);
-    }
+    await ctx.reply(t(myLang, "matchNotificationLocked")(them.name), { parse_mode: "HTML" });
+    await handleUnlockDeepLink(ctx, myLang, String(likedId));
   } catch (err) {
     console.error("match notification (responder) failed:", err.message);
   }

@@ -237,6 +237,14 @@ const STRINGS = {
     unlockCreditGone: "🎁 Bepul ochish imkoniyati qolmadi.",
     profileBelowIntro: "👇 Bu insonning profili pastda:",
     matchedToast: "🎉 Mos tushdingiz!",
+    // The half of a match that is NOT opened. Only whoever liked first gets
+    // the contact -- they took the risk on a stranger -- so this has to tell
+    // the one answering exactly where they stand, without pretending the
+    // match gave them something it did not.
+    matchNotificationLocked: (name) =>
+      `🎉 <b>Siz ${name} bilan mos tushdingiz!</b>\n\n` +
+      `${name} sizning aloqangizni oldi — u sizga birinchi bo'lib yozishi mumkin.\n\n` +
+      "Agar siz ham uning anketasini ochmoqchi bo'lsangiz, quyidagidan foydalaning 👇",
     matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz!`,
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     profileUnavailable:
@@ -600,6 +608,10 @@ const STRINGS = {
     unlockCreditGone: "🎁 Бесплатных открытий не осталось.",
     profileBelowIntro: "👇 Профиль этого человека ниже:",
     matchedToast: "🎉 Это совпадение!",
+    matchNotificationLocked: (name) =>
+      `🎉 <b>У вас совпадение с ${name}!</b>\n\n` +
+      `${name} получил(а) ваши контакты — может написать вам первым.\n\n` +
+      "Если вы тоже хотите открыть анкету, выберите ниже 👇",
     matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}!`,
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     profileUnavailable:
@@ -955,6 +967,10 @@ const STRINGS = {
     unlockCreditGone: "🎁 No free unlocks left.",
     profileBelowIntro: "👇 Their profile is below:",
     matchedToast: "🎉 It's a match!",
+    matchNotificationLocked: (name) =>
+      `🎉 <b>It's a match with ${name}!</b>\n\n` +
+      `${name} has your contact and can write to you first.\n\n` +
+      "If you want to open their profile too, pick below 👇",
     matchNotification: (name) => `🎉 You and ${name} matched!`,
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     profileUnavailable:
