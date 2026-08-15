@@ -105,6 +105,48 @@ test("on a match only the FIRST liker is given the contact", async () => {
   assert.match(textOf(toSecond), /Bu funksiya pullik/, "they are offered the unlock instead");
 });
 
+// The first liker holds the ONLY contact in the pair, so if they sit waiting
+// for the other person, nothing happens at all. "It's a match" alone left
+// both of them waiting; the message has to say whose move it is.
+test("the first liker is told the other person is waiting on them", async () => {
+  const first = user("Mover");
+  const second = user("Waiter");
+  await register(first, { gender: "male", name: "Mover" });
+  await register(second, { gender: "female", name: "Waiter" });
+
+  await likeFrom(first, "Waiter");
+  const sent = await likeFrom(second, "Mover");
+  const text = textOf(to(sent, first));
+
+  assert.match(text, /mos tushdingiz/, "it is still a match message");
+  assert.match(text, /kutmoqda/, "and says the other person is waiting");
+  assert.match(text, /siz yozasiz/, "and that they are the one who writes");
+  assert.match(text, /Waiter/, "naming who they matched with");
+});
+
+// Both match messages are HTML and both put a name the person typed
+// themselves inside it. Unescaped, a name with < or & is read as a broken tag
+// and Telegram refuses the message -- so the one piece of news either of them
+// was waiting for never arrives at all.
+test("a name containing HTML does not swallow the match message", async () => {
+  const awkward = user("Tricky");
+  const other = user("Plain");
+  await register(awkward, { gender: "male", name: "Zed<b>&X" });
+  await register(other, { gender: "female", name: "Plain" });
+
+  await likeFrom(awkward, "Plain");
+  // Searched by the plain part: the card's caption is escaped too, so the
+  // raw name never appears in it verbatim.
+  const sent = await likeFrom(other, "Zed");
+
+  // Both sides must have heard something.
+  assert.match(textOf(to(sent, awkward)), /mos tushdingiz/, "the first liker was told");
+  assert.match(textOf(to(sent, other)), /mos tushdingiz/, "and so was the responder");
+
+  // And the name arrived as text, not as markup.
+  assert.match(textOf(to(sent, other)), /Zed&lt;b&gt;&amp;X/, "the name is escaped, not rendered");
+});
+
 // --- the likes list shows what each side actually has -------------------------
 test("the likes list does not hand the responder the number either", async () => {
   const first = user("Alpha");

@@ -451,11 +451,21 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   // responder as well.
   await grantUnlock(likedId, likerId);
 
-  // The first liker: told, and given the contact.
+  // Both of these messages are HTML, and both put a NAME the person typed
+  // themselves inside it. Unescaped, a name containing < or & is read as a
+  // broken tag and Telegram refuses the whole message -- so the one piece of
+  // news either of them was waiting for simply never arrives.
+  const myName = escapeHtml(me.name);
+  const theirName = escapeHtml(them.name);
+
+  // The first liker: told, given the contact, and told whose move it is. They
+  // hold the only contact in this pair, so if they wait for the other person
+  // nothing happens at all.
   try {
     await ctx.telegram.sendMessage(
       likedId,
-      `${t(theirLang, "matchNotification")(me.name)}\n\n${t(theirLang, "profileBelowIntro")}`
+      `${t(theirLang, "matchNotification")(myName)}\n\n${t(theirLang, "profileBelowIntro")}`,
+      { parse_mode: "HTML" }
     );
     await sendProfileToChat(ctx.telegram, likedId, theirLang, likerId);
   } catch (err) {
@@ -466,7 +476,7 @@ async function recordLikeWithMatchNotification(ctx, likerId, likedId) {
   // the other person has their contact and can write first. Then the usual
   // unlock screen, which already offers the free routes as well as the price.
   try {
-    await ctx.reply(t(myLang, "matchNotificationLocked")(them.name), { parse_mode: "HTML" });
+    await ctx.reply(t(myLang, "matchNotificationLocked")(theirName), { parse_mode: "HTML" });
     await handleUnlockDeepLink(ctx, myLang, String(likedId));
   } catch (err) {
     console.error("match notification (responder) failed:", err.message);

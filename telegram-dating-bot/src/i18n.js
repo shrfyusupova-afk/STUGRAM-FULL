@@ -263,7 +263,13 @@ const STRINGS = {
       `🎉 <b>Siz ${name} bilan mos tushdingiz!</b>\n\n` +
       `${name} sizning aloqangizni oldi — u sizga birinchi bo'lib yozishi mumkin.\n\n` +
       "Agar siz ham uning anketasini ochmoqchi bo'lsangiz, quyidagidan foydalaning 👇",
-    matchNotification: (name) => `🎉 Siz ${name} bilan mos tushdingiz!`,
+    // Sent to whoever liked FIRST -- the only one holding the contact, so the
+    // only one who can start anything. Saying just "it's a match" left both
+    // people waiting for the other; this says whose move it is and why.
+    matchNotification: (name) =>
+      `🎉 <b>Siz ${name} bilan mos tushdingiz!</b>\n\n` +
+      `💬 Endi navbat sizda: <b>${name}</b> sizning xabaringizni kutmoqda. ` +
+      `Aloqa faqat sizda — shuning uchun birinchi bo'lib siz yozasiz 😊`,
     unlockSuccessNoContact: "✅ To'lov qabul qilindi, ammo bu anketa afsuski allaqachon o'chirilgan. 😔",
     profileUnavailable:
       "😔 Bu anketa endi mavjud emas — egasi uni o'chirgan yoki yopgan.\n" +
@@ -645,7 +651,10 @@ const STRINGS = {
       `🎉 <b>У вас совпадение с ${name}!</b>\n\n` +
       `${name} получил(а) ваши контакты — может написать вам первым.\n\n` +
       "Если вы тоже хотите открыть анкету, выберите ниже 👇",
-    matchNotification: (name) => `🎉 У вас взаимная симпатия с ${name}!`,
+    matchNotification: (name) =>
+      `🎉 <b>У вас взаимная симпатия с ${name}!</b>\n\n` +
+      `💬 Теперь ход за вами: <b>${name}</b> ждёт вашего сообщения. ` +
+      `Контакт есть только у вас — поэтому первым пишете вы 😊`,
     unlockSuccessNoContact: "✅ Оплата получена, но, к сожалению, эта анкета уже удалена. 😔",
     profileUnavailable:
       "😔 Этой анкеты больше нет — владелец удалил или закрыл её.\n" +
@@ -1019,7 +1028,10 @@ const STRINGS = {
       `🎉 <b>It's a match with ${name}!</b>\n\n` +
       `${name} has your contact and can write to you first.\n\n` +
       "If you want to open their profile too, pick below 👇",
-    matchNotification: (name) => `🎉 You and ${name} matched!`,
+    matchNotification: (name) =>
+      `🎉 <b>You and ${name} matched!</b>\n\n` +
+      `💬 Your move: <b>${name}</b> is waiting to hear from you. ` +
+      `You're the one holding their contact, so you write first 😊`,
     unlockSuccessNoContact: "✅ Payment received, but unfortunately this profile has already been removed. 😔",
     profileUnavailable:
       "😔 This profile is gone -- the owner deleted or closed it.\n" +
