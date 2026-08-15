@@ -1272,19 +1272,59 @@ function createAdminBot(token, mainBotTelegram) {
         await ctx.reply(draft.text, { parse_mode: "HTML" });
       }
     } catch (err) {
-      // Almost always a broken HTML tag in the admin's own text. Better to
-      // say so now than to fail once per recipient mid-broadcast.
+      // Almost always a stray < or & in the admin's own text, which HTML mode
+      // reads as a broken tag. Better to say so now than to fail once per
+      // recipient mid-broadcast.
+      //
+      // The draft is KEPT, and the step goes back to "text". Deleting it
+      // threw away the photo they had already uploaded and sent them back to
+      // the start of the whole flow -- for a typo they could have fixed by
+      // resending one message.
+      draft.step = "text";
       await ctx.reply(
-        `⚠️ Namunani ko'rsatib bo'lmadi: ${err.message}\n\nMatnni o'zgartirib qaytadan urinib ko'ring.`,
-        adminMenuKeyboard()
+        `⚠️ Matnni ko'rsatib bo'lmadi:\n${err.message}\n\n` +
+          "Ko'pincha sabab: matnda < yoki & belgisi bor va bot uni HTML teg deb o'qiydi.\n\n" +
+          "Tuzatilgan matnni shu yerga qayta yuboring — rasm saqlanib qoldi.",
+        cancelKeyboard()
       );
-      broadcastDraft.delete(ctx.from.id);
       return;
     }
     const total = (await listAllProfileIds()).length;
     await ctx.reply(
       `Tasdiqlaysizmi?\n\n👥 Taxminan ${total} ta foydalanuvchiga yuboriladi.`,
       confirmKeyboard()
+    );
+  }
+
+  // Telegram's own limits, and the reason a long advert used to go nowhere.
+  //
+  // A message carrying a photo or video is a CAPTION, and a caption is capped
+  // at 1024 characters -- a quarter of what a plain text message allows. Past
+  // that the send fails, so an advert that was fine yesterday breaks the
+  // moment a picture is added to it.
+  //
+  // Checked here, against the exact number, rather than left to come back as
+  // a 400 from Telegram: "you are 240 characters over" is something an admin
+  // can act on, and "Bad Request: MEDIA_CAPTION_TOO_LONG" is not.
+  const TEXT_LIMIT = 4096;
+  const CAPTION_LIMIT = 1024;
+
+  function broadcastLengthProblem(draft, text) {
+    const limit = draft.fileId ? CAPTION_LIMIT : TEXT_LIMIT;
+    if (text.length <= limit) return null;
+    const over = text.length - limit;
+    return (
+      `⚠️ Matn juda uzun.\n\n` +
+      `📏 Sizniki: <b>${text.length}</b> belgi\n` +
+      `📐 Ruxsat etilgani: <b>${limit}</b> belgi\n` +
+      `✂️ Qisqartirish kerak: <b>${over}</b> belgi\n\n` +
+      (draft.fileId
+        ? "Sabab: rasm/video bilan yuborilgan matnga Telegram atigi 1024 belgi ruxsat beradi " +
+          "(rasmsiz matnga esa 4096).\n\nIkki yo'l bor:\n" +
+          "1️⃣ Matnni qisqartiring\n" +
+          `2️⃣ Yoki «${BACK_LABEL}» → «${BROADCAST_LABEL}» → «${SKIP_MEDIA_LABEL}» — rasmsiz yuborsangiz 4096 belgi sig'adi\n\n`
+        : "Telegram bitta xabarga 4096 belgidan ko'p sig'dira olmaydi.\n\n") +
+      "Qisqartirilgan matnni shu yerga qayta yuboring."
     );
   }
 
@@ -1556,6 +1596,14 @@ function createAdminBot(token, mainBotTelegram) {
           return;
         }
         if (draft.step === "text") {
+          // Checked before anything is stored, so the draft still holds the
+          // last text that actually worked rather than one that cannot be
+          // sent.
+          const tooLong = broadcastLengthProblem(draft, ctx.message.text);
+          if (tooLong) {
+            await ctx.reply(tooLong, { parse_mode: "HTML", ...cancelKeyboard() });
+            return;
+          }
           draft.text = ctx.message.text;
           await showBroadcastPreview(ctx, draft);
           return;
@@ -1775,9 +1823,33 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
-  bot.catch((err, ctx) => {
+  // An error escaping a handler used to be logged and alerted, and NOTHING
+  // was said to the admin standing in front of the panel. From their side the
+  // bot simply stopped answering -- the same screen, the same keyboard, no
+  // reply, no explanation. "It froze" is exactly what that looks like, and it
+  // is indistinguishable from the bot being down.
+  //
+  // So the admin is told too, and handed the main menu back so there is a way
+  // out that is not "close the chat and hope".
+  bot.catch(async (err, ctx) => {
     console.error(`Admin bot error for update ${ctx.updateType}:`, err);
     alert(`Admin bot error on ${ctx.updateType}:\n${err.stack || err.message}`).catch(() => {});
+
+    // Whatever half-finished thing was on screen is what just failed; leaving
+    // it set would feed the next message into the same broken step.
+    leaveComposers(ctx.from?.id);
+
+    try {
+      await ctx.reply(
+        `⚠️ Xatolik yuz berdi va amal bajarilmadi:\n${err.message}\n\n` +
+          "Asosiy menyuga qaytdingiz — qaytadan urinib ko'ring.",
+        adminMenuKeyboard()
+      );
+    } catch (replyErr) {
+      // The reply itself failing is the one case where silence is genuinely
+      // all that is left. Log it rather than throwing from the error handler.
+      console.error("Admin bot could not report its own error:", replyErr.message);
+    }
   });
 
   return bot;

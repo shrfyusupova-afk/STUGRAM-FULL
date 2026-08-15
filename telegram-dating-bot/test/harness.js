@@ -41,9 +41,26 @@ function fakeMessage(payload) {
 // talking to the real API. The prototype is the only place that catches
 // every call, including the ones made from inside a scene.
 const Telegram = require(path.join(ROOT, "node_modules/telegraf/lib/telegram.js")).default;
+// Lets a test make one specific API call fail, so the paths that only run
+// when Telegram itself refuses -- an error escaping a handler, a caption over
+// the limit -- can be driven without reaching into telegraf's internals from
+// the test file (which is easy to get subtly wrong: patch the wrong module
+// instance and the REAL network client ends up underneath, and every
+// assertion afterwards silently sees nothing at all).
+let apiFailure = null;
+function failApi(predicate) {
+  apiFailure = predicate;
+}
+
 Telegram.prototype.callApi = async function (method, payload = {}) {
   const label = String(this.token).startsWith("222") ? "admin" : "main";
   calls.push({ bot: label, method, payload });
+  // AFTER recording: the call really was attempted, and a test asserting on
+  // what the bot tried to send needs to see it.
+  if (apiFailure) {
+    const message = apiFailure(method, payload, label);
+    if (message) throw new Error(message);
+  }
   if (method === "getMe") return { id: 111, is_bot: true, first_name: label, username: `${label}_bot` };
   if (method === "getFile") return { file_id: payload.file_id, file_path: "photos/x.jpg" };
   if (method === "getWebhookInfo") return { url: "" };
@@ -175,6 +192,7 @@ module.exports = {
   bots,
   calls,
   notSubscribed,
+  failApi,
   mainBot,
   adminBot,
   send,
