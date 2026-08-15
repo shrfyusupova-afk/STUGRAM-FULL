@@ -252,6 +252,53 @@ test("a man tapping the free button is still shown the price", async () => {
   assert.match(text, /so'm/, "he is shown the price instead");
 });
 
+// Premium currently carries VIP access with it -- a promotion while the group
+// is new, because a full room is worth more right now than the seat fee.
+test("a Premium member walks into the VIP group without paying again", async () => {
+  const rich = user("PremiumGuy");
+  await register(rich, { gender: "male", name: "PremiumGuy" });
+  await db.setPremiumUntil(rich.id, new Date(Date.now() + 86400000).toISOString());
+  assert.strictEqual(await db.hasVipChat(rich.id), false, "he never bought VIP itself");
+
+  const sent = await h.send(M(), h.textUpdate("👑 VIP suhbat", rich));
+  const text = said(sent);
+
+  assert.match(text, /t\.me\//, "the link comes straight back");
+  assert.ok(!/so'm/.test(text), "and he is not asked to pay");
+  assert.match(text, /BEPUL/, "he is told why it is free");
+  // The part that matters when it is withdrawn later: a perk that vanishes
+  // without ever having been called temporary reads as something taken away.
+  assert.match(text, /vaqtinchalik/, "and that the perk is temporary");
+});
+
+// Expired Premium is not Premium. Without this the check would read the
+// column rather than the date and hand out seats forever.
+test("expired Premium does not open the VIP group", async () => {
+  const lapsed = user("Lapsed");
+  await register(lapsed, { gender: "male", name: "Lapsed" });
+  await db.setPremiumUntil(lapsed.id, new Date(Date.now() - 86400000).toISOString());
+
+  const sent = await h.send(M(), h.textUpdate("👑 VIP suhbat", lapsed));
+  const text = said(sent);
+  assert.ok(!/t\.me\/\+/.test(text), "no link for a lapsed subscription");
+  assert.match(text, /so'm/, "he is shown the price");
+});
+
+// The pitch has to name it too -- a perk nobody knows they have is not a perk,
+// and this is the screen where somebody decides whether Premium is worth it.
+test("the Premium pitch names the VIP perk and says it is temporary", async () => {
+  const { t } = require("../src/i18n");
+  for (const lang of ["uz", "ru", "en"]) {
+    const pitch = t(lang, "premiumDetails");
+    assert.match(pitch, /VIP/i, `${lang}: the pitch must mention the VIP group`);
+    assert.match(
+      pitch,
+      /vaqtinchalik|временн|temporary/i,
+      `${lang}: and must not promise it permanently`
+    );
+  }
+});
+
 test("someone who already paid gets a link back, not a second invoice", async () => {
   const buyer = user("Paid");
   await register(buyer, { gender: "male", name: "Paid" });

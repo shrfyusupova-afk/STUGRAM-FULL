@@ -1,5 +1,5 @@
 const { Markup } = require("telegraf");
-const { getProfile, getLanguage, hasVipChat } = require("./db");
+const { getProfile, getLanguage, hasVipChat, hasPremium } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { VIP_CHAT_PRICE_SOM } = require("./orders");
 const { buildPaymentOptions, withPaymentNote } = require("./checkout");
@@ -21,6 +21,21 @@ function inviteLinkFor(telegram, userId, opts) {
   return require("./vipInvite").vipInviteLink(telegram, userId, opts);
 }
 
+// Two different questions, kept apart on purpose.
+//
+// hasVipChat is "was this person GIVEN VIP" -- a purchase or an admin gift,
+// written down and permanent. This is "may they walk in today", which is a
+// wider thing: Premium currently carries VIP access along with it.
+//
+// That bonus is deliberately temporary. The group is new, and a full room is
+// worth more right now than the seat fee -- so Premium seats it for free
+// while that is true. Once the group is big enough that a seat is worth
+// paying for on its own, this line goes and Premium stops including it. It is
+// one line, in one place, precisely so removing it later is one line.
+async function canUseVipChat(userId) {
+  return (await hasVipChat(userId)) || (await hasPremium(userId));
+}
+
 function payButtonKeyboard(lang) {
   return Markup.inlineKeyboard([[Markup.button.callback(t(lang, "vipPayButton"), "vip:pay:choose")]]);
 }
@@ -40,15 +55,23 @@ function registerVipChatHandlers(bot) {
 
   bot.hears(vipLabels, async (ctx) => {
     const lang = await getLanguage(ctx.from.id) || DEFAULT_LANG;
-    // Already paid before? Hand the link straight back instead of asking for
-    // money a second time -- this is also the recovery path if the original
-    // "here's your link" message failed to send right after payment.
-    if (await hasVipChat(ctx.from.id)) {
+    // Already entitled -- bought it, was gifted it, or holds Premium? Hand the
+    // link straight back instead of asking for money a second time. This is
+    // also the recovery path if the original "here's your link" message failed
+    // to send right after payment.
+    if (await canUseVipChat(ctx.from.id)) {
       // A fresh single-use link each time they ask. The previous one may well
       // have been used already, and a spent link would read as the purchase
       // having been taken away.
       const link = await inviteLinkFor(ctx.telegram, ctx.from.id, { paid: true });
-      await ctx.reply(t(lang, "vipJoinMessage")(link));
+      // Somebody walking in on Premium is told WHY it is free and that it
+      // will not always be -- a perk nobody knows they have is not a perk,
+      // and one that quietly disappears later reads as something taken away.
+      const boughtOutright = await hasVipChat(ctx.from.id);
+      await ctx.reply(
+        boughtOutright ? t(lang, "vipJoinMessage")(link) : t(lang, "vipPremiumBonusMessage")(link),
+        { parse_mode: "HTML" }
+      );
       return;
     }
     const profile = await getProfile(ctx.from.id);
@@ -96,4 +119,4 @@ function registerVipChatHandlers(bot) {
 
 }
 
-module.exports = { registerVipChatHandlers, VIP_CHAT_INVITE_LINK };
+module.exports = { registerVipChatHandlers, canUseVipChat, VIP_CHAT_INVITE_LINK };

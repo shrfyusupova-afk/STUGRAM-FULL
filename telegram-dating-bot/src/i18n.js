@@ -145,6 +145,8 @@ const STRINGS = {
       "💵 Narxi:\n" +
       `👦 Yigitlar uchun — <b>${price} so'm</b> (hozircha)\n` +
       "👧 Qizlar uchun — 🆓 Mutlaqo bepul\n\n" +
+      "💎 <b>Premium obunangiz bo'lsa — bu guruh sizga hozircha BEPUL.</b> " +
+      "Lekin bu vaqtinchalik: guruh to'lgani sari VIP alohida to'lovga o'tadi.\n\n" +
       "😉 Va'da beraman — bu yerda zerikishga vaqtingiz bo'lmaydi!",
     vipPayButton: "💳 To'lov qilmoqchiman",
     vipJoinFreeButton: "🔗 Bepul qo'shilish",
@@ -153,6 +155,15 @@ const STRINGS = {
     // Women join free, but through a request an admin approves -- so the
     // message has to set that expectation before they tap, or an unanswered
     // request reads as a broken link.
+    // Says WHY it is free and that it will not always be. A perk nobody knows
+    // they have is not a perk -- and one that quietly disappears later reads
+    // as something taken away rather than a promotion that ended.
+    vipPremiumBonusMessage: (link) =>
+      `👑 <b>Premium egasi sifatida VIP guruh siz uchun BEPUL!</b>\n\n` +
+      `🔗 Qo'shilish uchun havola:\n${link}\n\n` +
+      `⏳ <i>Diqqat: bu vaqtinchalik imtiyoz. Guruh hozir yangi — a'zolar ko'paygan sari ` +
+      `VIP guruhga kirish alohida to'lovga o'tadi va Premiumga kirmay qoladi. ` +
+      `Hozir kirib qolganlar esa guruhda qoladi.</i>`,
     vipJoinRequestMessage: (link) =>
       `🎉 Guruhga qo'shilish uchun havola:\n${link}\n\n` +
       `📩 Havolani bosganingizda so'rov yuboriladi — administrator tasdiqlagach guruhga kirasiz. ` +
@@ -274,7 +285,9 @@ const STRINGS = {
       "Premium bilan sizga nima beriladi? 👇\n\n" +
       "🔓 Har bir nomzodning shaxsiy chatiga cheksiz kirish (🔐 alohida to'lovsiz)\n" +
       "🔥 Profilingiz boshqalarga ko'proq va tez-tez ko'rsatiladi\n" +
-      "🕵️ Anonim chatda xohlagan jinsni (qiz yoki o'g'il) tanlab suhbatlashish huquqi — 1 oy davomida BEPUL! (odatda 12 900 so'm/hafta turadi)\n\n" +
+      "🕵️ Anonim chatda xohlagan jinsni (qiz yoki o'g'il) tanlab suhbatlashish huquqi — 1 oy davomida BEPUL! (odatda 12 900 so'm/hafta turadi)\n" +
+      "👑 VIP guruhga kirish — hozircha BEPUL (odatda 21 900 so'm)\n\n" +
+      "⏳ VIP guruh imtiyozi vaqtinchalik: guruh to'lgani sari u alohida to'lovga o'tadi.\n\n" +
       "💵 Narxi: 79 900 so'm / 1 oy",
     // One entry per provider, named after the provider key in checkout.js.
     // --- ForOne kanali ---
@@ -336,7 +349,8 @@ const STRINGS = {
       "🔓 <b>Har bir anketani cheksiz ochish</b> — alohida to'lovsiz\n" +
       "🔥 <b>Profilingiz ko'proq ko'rsatiladi</b> — ko'proq like va tanishuv\n" +
       "🕵️ <b>Anonim chatda jinsni tanlash</b> — 👧 yoki 👦, butun oy BEPUL\n" +
-      "💛 <b>Sizni kim yoqtirganini ko'rish</b> — cheklovsiz\n\n" +
+      "💛 <b>Sizni kim yoqtirganini ko'rish</b> — cheklovsiz\n" +
+      "👑 <b>VIP guruhga kirish</b> — hozircha bepul (vaqtinchalik imtiyoz)\n\n" +
       "Boshlash uchun «💘 Yangi tanishuvlar» tugmasini bosing 👇",
     vipPurchaseCongrats: (link) =>
       "🎉 <b>Tabriklaymiz! VIP chatga kirish huquqi ochildi 👑</b>\n\n" +
@@ -528,11 +542,19 @@ const STRINGS = {
       "💵 Цена:\n" +
       `👦 Для парней — <b>${price} сум</b> (пока что)\n` +
       "👧 Для девушек — 🆓 Совершенно бесплатно\n\n" +
+      "💎 <b>Если у вас есть Premium — группа пока БЕСПЛАТНА для вас.</b> " +
+      "Но это временно: по мере наполнения группы VIP станет отдельной платной услугой.\n\n" +
       "😉 Обещаю — скучать здесь не придётся!",
     vipPayButton: "💳 Хочу оплатить",
     vipJoinFreeButton: "🔗 Присоединиться бесплатно",
     vipPayIntro: "💳 Нажмите кнопку ниже, чтобы оплатить:",
     vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
+    vipPremiumBonusMessage: (link) =>
+      `👑 <b>Как обладателю Premium, VIP-группа для вас БЕСПЛАТНА!</b>\n\n` +
+      `🔗 Ссылка для вступления:\n${link}\n\n` +
+      `⏳ <i>Внимание: это временная привилегия. Группа пока новая — по мере роста ` +
+      `числа участников вход в VIP-группу станет отдельной платной услугой и перестанет ` +
+      `входить в Premium. Те, кто вступил сейчас, останутся в группе.</i>`,
     vipJoinRequestMessage: (link) =>
       `🎉 Ссылка для вступления в группу:\n${link}\n\n` +
       `📩 При переходе по ссылке отправится заявка — вы попадёте в группу, как только администратор её одобрит. ` +
@@ -645,7 +667,9 @@ const STRINGS = {
       "Что вы получаете с Premium? 👇\n\n" +
       "🔓 Неограниченный доступ к личному чату каждого кандидата (без отдельной оплаты 🔐)\n" +
       "🔥 Ваш профиль показывается другим пользователям чаще и заметнее\n" +
-      "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n\n" +
+      "🕵️ Возможность выбирать пол собеседника в анонимном чате — БЕСПЛАТНО весь месяц! (обычно 12 900 сум/неделя)\n" +
+      "👑 Вход в VIP-группу — пока БЕСПЛАТНО (обычно 21 900 сум)\n\n" +
+      "⏳ Привилегия на VIP-группу временная: по мере наполнения группы она станет отдельной платной услугой.\n\n" +
       "💵 Цена: 79 900 сум / 1 месяц",
     // --- Канал ForOne ---
     channelGateText:
@@ -700,7 +724,8 @@ const STRINGS = {
       "🔓 <b>Безлимитное открытие анкет</b> — без отдельной оплаты\n" +
       "🔥 <b>Ваш профиль показывается чаще</b> — больше лайков и знакомств\n" +
       "🕵️ <b>Выбор пола в анонимном чате</b> — 👧 или 👦, весь месяц БЕСПЛАТНО\n" +
-      "💛 <b>Кто вас лайкнул</b> — без ограничений\n\n" +
+      "💛 <b>Кто вас лайкнул</b> — без ограничений\n" +
+      "👑 <b>Вход в VIP-группу</b> — пока бесплатно (временная привилегия)\n\n" +
       "Нажмите «💘 Новые знакомства», чтобы начать 👇",
     vipPurchaseCongrats: (link) =>
       "🎉 <b>Поздравляем! Доступ в VIP-чат открыт 👑</b>\n\n" +
@@ -891,11 +916,19 @@ const STRINGS = {
       "💵 Price:\n" +
       `👦 For guys — <b>${price} UZS</b> (for now)\n` +
       "👧 For girls — 🆓 Completely free\n\n" +
+      "💎 <b>If you have Premium, the group is free for you right now.</b> " +
+      "But only for now: as the group fills up, VIP becomes a paid extra.\n\n" +
       "😉 I promise — you won't be bored here!",
     vipPayButton: "💳 I want to pay",
     vipJoinFreeButton: "🔗 Join for free",
     vipPayIntro: "💳 Tap the button below to pay:",
     vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
+    vipPremiumBonusMessage: (link) =>
+      `👑 <b>As a Premium member, the VIP group is FREE for you!</b>\n\n` +
+      `🔗 Here's your link:\n${link}\n\n` +
+      `⏳ <i>Heads up: this is a temporary perk. The group is new — as it fills up, ` +
+      `VIP access becomes a paid extra and stops being part of Premium. ` +
+      `Anyone who joins now stays in.</i>`,
     vipJoinRequestMessage: (link) =>
       `🎉 Here's the link to join the group:\n${link}\n\n` +
       `📩 Tapping it sends a request — you'll be in as soon as an admin approves it. ` +
@@ -1008,7 +1041,9 @@ const STRINGS = {
       "What do you get with Premium? 👇\n\n" +
       "🔓 Unlimited access to every candidate's private chat (no separate 🔐 payments)\n" +
       "🔥 Your profile is shown to other users more often and more prominently\n" +
-      "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n\n" +
+      "🕵️ Choose either gender to chat with in Anonymous chat — FREE for the whole month! (normally 12,900 UZS/week)\n" +
+      "👑 VIP group access — free for now (normally 21,900 UZS)\n\n" +
+      "⏳ The VIP group perk is temporary: as the group fills up it becomes a paid extra.\n\n" +
       "💵 Price: 79,900 UZS / month",
     // --- ForOne channel ---
     channelGateText:
@@ -1063,7 +1098,8 @@ const STRINGS = {
       "🔓 <b>Open any profile, unlimited</b> — no separate payments\n" +
       "🔥 <b>Your profile is shown more often</b> — more likes, more matches\n" +
       "🕵️ <b>Pick a gender in Anonymous chat</b> — 👧 or 👦, free all month\n" +
-      "💛 <b>See everyone who liked you</b> — no limits\n\n" +
+      "💛 <b>See everyone who liked you</b> — no limits\n" +
+      "👑 <b>VIP group access</b> — free for now (temporary perk)\n\n" +
       "Tap “💘 New people” to get started 👇",
     vipPurchaseCongrats: (link) =>
       "🎉 <b>Congratulations! VIP chat access is open 👑</b>\n\n" +
