@@ -199,6 +199,24 @@ test("a referrer whose invitees all abandoned the form does not appear", async (
   assert.match(said(card), /Taklif qilgan: yo'q/, "the card counts registrations too");
 });
 
+// "Why is browsing showing me men?" is answered by one stored field, and the
+// card used to print the display LABEL instead of it. Those are two separate
+// fields, and the case worth catching is exactly the one where they disagree.
+test("a user card says what browsing will actually show them", async () => {
+  const man = user("Manly");
+  const woman = user("Womanly");
+  await register(man, { gender: "male", name: "Manly" });
+  await register(woman, { gender: "female", name: "Womanly" });
+
+  const hisCard = said(await h.send(A(), h.textUpdate(`/u_${man.id}`, admin)));
+  assert.match(hisCard, /<code>male<\/code>/, "the raw stored value, not only the label");
+  assert.match(hisCard, /tanishuvlarda <b>ayollar<\/b>/, "and what it means for him");
+
+  const herCard = said(await h.send(A(), h.textUpdate(`/u_${woman.id}`, admin)));
+  assert.match(herCard, /<code>female<\/code>/);
+  assert.match(herCard, /tanishuvlarda <b>erkaklar<\/b>/);
+});
+
 // The board is a list of who is worth talking to, so it must be capped --
 // otherwise a successful bot answers with a message Telegram refuses to send.
 test("the board never grows past the top ten", async () => {

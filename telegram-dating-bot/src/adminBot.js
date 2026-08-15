@@ -588,6 +588,24 @@ async function likesLine(id) {
   }
 }
 
+// Gender, and what it MEANS for this person -- which is the thing anyone
+// actually wants to know when they ask "why is browsing showing me men?".
+//
+// The card used to print genderLabel and fall back to gender. Those are two
+// separate stored fields: the label is display text, the raw value is what
+// the candidate query filters on. Showing only the label hid exactly the case
+// worth catching, where the two disagree. So both appear, plus the
+// consequence spelled out, because the raw value alone still needs decoding.
+function genderLine(profile) {
+  const raw = profile.gender;
+  const label = profile.genderLabel || raw || "—";
+  if (raw !== "male" && raw !== "female") {
+    return `${escapeHtml(label)} — ⚠️ saqlangan qiymat: <code>${escapeHtml(String(raw ?? "yo'q"))}</code>`;
+  }
+  const shows = raw === "male" ? "ayollar" : "erkaklar";
+  return `${escapeHtml(label)} (<code>${raw}</code>) → tanishuvlarda <b>${shows}</b> ko'rsatiladi`;
+}
+
 async function userCard(id, profile) {
   const invites = await referralLine(id);
   const likes = await likesLine(id);
@@ -610,7 +628,7 @@ async function userCard(id, profile) {
   return (
     `👤 <b>${escapeHtml(profile.name)}</b>, ${escapeHtml(profile.age)}\n` +
     `🆔 <code>${escapeHtml(id)}</code>\n` +
-    `⚧ ${escapeHtml(profile.genderLabel || profile.gender || "—")}\n` +
+    `⚧ ${genderLine(profile)}\n` +
     `📍 ${escapeHtml(profile.location || "—")}\n` +
     `📞 ${escapeHtml(profile.phone || "—")}\n` +
     `📝 ${escapeHtml(profile.bio || "—")}\n\n` +

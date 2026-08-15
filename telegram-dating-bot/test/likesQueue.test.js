@@ -221,6 +221,55 @@ test("working to the end says so, instead of showing nothing", async () => {
   assert.ok(rows && !rows.some((row) => row.includes("❤️")), `expected the main menu back, got ${JSON.stringify(rows)}`);
 });
 
+// The one way a same-gender card could reach a screen that looks exactly like
+// browsing: somebody likes you, then edits their own profile and changes
+// their gender. The like is still on record, and the likes list had no gender
+// rule of its own -- it relied entirely on browsing never producing one.
+test("somebody who changed gender after liking you drops out of the list", async () => {
+  const her = user("Filtered");
+  await register(her, { gender: "female", name: "Filtered" });
+
+  const stays = user("StillMale");
+  const switched = user("Switched");
+  await register(stays, { gender: "male", name: "StillMale" });
+  await register(switched, { gender: "male", name: "Switched" });
+  await likes(stays, her);
+  await likes(switched, her);
+
+  // Both are in the list while both are men.
+  const before = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  assert.match(
+    to(before, her).map((c) => c.payload.text || "").join("\n"),
+    /2 kishi/,
+    "both admirers are waiting to begin with"
+  );
+
+  // One of them switches. Their like is untouched -- this is not about
+  // deleting history, only about what a dating screen may show.
+  const profile = await db.getProfile(switched.id);
+  await db.saveProfile(switched.id, { ...profile, gender: "female", genderLabel: "Ayol" });
+  assert.strictEqual(await db.hasLiked(switched.id, her.id), true, "the like itself is still recorded");
+
+  // The list shows one card at a time, so the count in the intro is what
+  // reveals the whole queue -- a card-only assertion would pass either way
+  // simply because the other person happened to be second.
+  const after = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  const intro = to(after, her).map((c) => c.payload.text || "").join("\n");
+  assert.match(intro, /1 kishi/, "only the one who is still a man is left waiting");
+
+  // And walking the whole queue never turns her up.
+  const seen = [captionOf(cards(after, her)[0])];
+  for (let i = 0; i < 3; i++) {
+    const next = await h.send(M(), h.textUpdate("👎", her));
+    const card = cards(next, her)[0];
+    if (!card) break;
+    seen.push(captionOf(card));
+  }
+  const shown = seen.join("\n");
+  assert.ok(!/Switched/.test(shown), `a woman must not appear in a woman's likes list: ${shown.slice(0, 200)}`);
+  assert.match(shown, /StillMale/, "and the man who is still a man is still there");
+});
+
 // Leaving the likes list must put the ❤️ back where it belongs: on the browse
 // screen. Otherwise the mode would outlive the screen and the next ❤️ would
 // still be read as answering an admirer.

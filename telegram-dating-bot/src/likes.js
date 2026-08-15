@@ -75,14 +75,34 @@ function nextKeyboard(lang, index, total) {
 // only delete the message off the screen, so the same person was back at the
 // top of the list the very next time it was opened, forever.
 async function loadLikerQueue(myId) {
-  const [likerIds, dislikedIds] = await Promise.all([getLikers(myId), getDislikes(myId)]);
+  const [likerIds, dislikedIds, me] = await Promise.all([
+    getLikers(myId),
+    getDislikes(myId),
+    getProfile(myId),
+  ]);
   const disliked = new Set(dislikedIds.map(String));
   const pending = likerIds.filter((id) => !disliked.has(String(id)));
 
   // Loaded in parallel -- one sequential await per liker would be a
   // round-trip each against a database backend.
   const loaded = await Promise.all(pending.map(async (id) => ({ id, profile: await getProfile(id) })));
-  return loaded.filter((entry) => entry.profile?.mediaFileId && entry.profile.active !== false);
+
+  // The same gender rule browsing uses. Only the opposite gender can reach
+  // this list in the first place -- likes are only ever given from a screen
+  // that already filters -- with one exception: somebody who liked you and
+  // THEN changed their own gender. Their like is still on record, and without
+  // this it comes back as a same-gender card on a screen that looks exactly
+  // like browsing.
+  const wanted = me?.gender === "male" ? "female" : me?.gender === "female" ? "male" : null;
+
+  return loaded.filter(
+    (entry) =>
+      entry.profile?.mediaFileId &&
+      entry.profile.active !== false &&
+      // No gender on the viewer means we cannot tell -- show everything
+      // rather than emptying somebody's list over a missing field.
+      (wanted === null || entry.profile.gender === wanted)
+  );
 }
 
 // ONE liker at a time. This used to loop over the whole list and fire a card
