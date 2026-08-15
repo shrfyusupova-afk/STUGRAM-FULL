@@ -6,6 +6,10 @@
 // somewhere up the scrollback. And 👎 only deleted the message off the
 // screen without recording anything, so the same person was back at the top
 // of the list the very next time it was opened.
+//
+// The ❤️/👎 now live on the keyboard under the chat, exactly as they do while
+// browsing -- so most of these drive plain text taps rather than callbacks,
+// which is what a person actually sends.
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -45,6 +49,14 @@ const buttons = (sent, u) =>
   to(sent, u).flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat());
 const captionOf = (call) => call.payload.caption || "";
 
+// The keyboard under the chat, as rows of plain labels.
+const keyboardRows = (sent, u) => {
+  const withKeyboard = to(sent, u).filter((c) => c.payload.reply_markup?.keyboard);
+  if (withKeyboard.length === 0) return null;
+  const last = withKeyboard[withKeyboard.length - 1];
+  return last.payload.reply_markup.keyboard.map((row) => row.map((b) => (typeof b === "string" ? b : b.text)));
+};
+
 // Records a like directly. The point of these tests is the LIST, not the
 // swipe that fills it, so the likes go in through storage rather than
 // through 30 swipes each.
@@ -82,6 +94,33 @@ test("opening the list shows exactly ONE card, not one per liker", async () => {
   );
 });
 
+// The point of the whole change: the controls for this screen are the ones
+// under your thumb, and they are the SAME ones browsing uses. Before this the
+// card carried inline ❤️/👎 while the keyboard underneath still offered the
+// main menu, so the two rows of controls on screen disagreed about what this
+// screen was for.
+test("the likes list puts ❤️ 👎, report and back under the chat", async () => {
+  const her = user("Keyed");
+  await register(her, { gender: "female", name: "Keyed" });
+  const him = user("Suitor");
+  await register(him, { gender: "male", name: "Suitor" });
+  await likes(him, her);
+
+  const opened = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  const rows = keyboardRows(opened, her);
+  assert.ok(rows, "a keyboard must come with the card");
+  assert.deepStrictEqual(rows[0], ["❤️", "👎"], "like and dislike, first row");
+  assert.match(rows[1][0], /Shikoyat/i, "report on the second row");
+  assert.match(rows[2][0], /Orqaga/i, "back on the third");
+
+  // And no second set of the same controls stuck to the card itself.
+  const inline = buttons(opened, her).map((b) => b.callback_data || "");
+  assert.ok(
+    !inline.some((d) => d.startsWith("likeback:")),
+    `the card must not carry duplicate ❤️/👎 buttons, got ${JSON.stringify(inline)}`
+  );
+});
+
 test("liking back moves straight on to the next one", async () => {
   const her = user("Chooser");
   await register(her, { gender: "female", name: "Chooser" });
@@ -97,18 +136,38 @@ test("liking back moves straight on to the next one", async () => {
   const firstCard = cards(opened, her)[0];
   assert.match(captionOf(firstCard), /FirstUp/, "the queue starts at the first liker");
 
-  // The ❤️ under it carries the position, which is what lets one tap both
-  // answer and advance.
-  const like = buttons(opened, her).find((btn) => (btn.callback_data || "").startsWith("likeback:like:"));
-  assert.ok(like, "the undecided card offers ❤️");
-  assert.match(like.callback_data, /^likeback:like:\d+:0$/, "the ❤️ knows where it is in the queue");
-
-  const answered = await h.send(M(), h.callbackUpdate(like.callback_data, her));
+  const answered = await h.send(M(), h.textUpdate("❤️", her));
   await __test.pendingNotifications();
+  assert.strictEqual(await db.hasLiked(her.id, a.id), true, "the ❤️ answered the person on screen");
   assert.ok(
     cards(answered, her).some((c) => /SecondUp/.test(captionOf(c))),
     "answering hands over the next card without a second tap"
   );
+});
+
+// The ❤️ under the chat is the same label the browse screen uses. If the
+// likes list did not get first refusal on it, this tap would have liked
+// whoever was last on the browse screen instead -- somebody the person never
+// chose.
+test("❤️ answers the admirer on screen, not the last browsed candidate", async () => {
+  const her = user("Crossed");
+  await register(her, { gender: "female", name: "Crossed" });
+
+  const browsed = user("Browsed");
+  const admirer = user("Admires");
+  await register(browsed, { gender: "male", name: "Browsed" });
+  await register(admirer, { gender: "male", name: "Admires" });
+  await likes(admirer, her);
+
+  // She browses first, so a candidate is sitting in the browse state.
+  await h.send(M(), h.textUpdate("🔍 Yangi tanishuvlar", her));
+
+  // Then opens her likes list and answers.
+  await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+
+  assert.strictEqual(await db.hasLiked(her.id, admirer.id), true, "the admirer is the one she answered");
 });
 
 test("turning someone down is remembered, so they do not come back", async () => {
@@ -123,10 +182,9 @@ test("turning someone down is remembered, so they do not come back", async () =>
   await likes(yes, her);
 
   const opened = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
-  const pass = buttons(opened, her).find((btn) => (btn.callback_data || "").startsWith("likeback:dislike:"));
-  assert.ok(pass, "the undecided card offers 👎");
+  assert.match(captionOf(cards(opened, her)[0]), /NotForMe/, "the queue starts at the first liker");
 
-  const passed = await h.send(M(), h.callbackUpdate(pass.callback_data, her));
+  const passed = await h.send(M(), h.textUpdate("👎", her));
   // The turned-down person vacates their slot, so the next card must be the
   // OTHER admirer -- not a re-run of the one just refused, and not a skip
   // straight past somebody.
@@ -151,12 +209,49 @@ test("working to the end says so, instead of showing nothing", async () => {
   await register(only, { gender: "male", name: "OnlyOne" });
   await likes(only, her);
 
-  const opened = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
-  const pass = buttons(opened, her).find((btn) => (btn.callback_data || "").startsWith("likeback:dislike:"));
-  const done = await h.send(M(), h.callbackUpdate(pass.callback_data, her));
+  await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  const done = await h.send(M(), h.textUpdate("👎", her));
 
   const text = to(done, her).map((c) => c.payload.text || "").join("\n");
   assert.match(text, /hech kim|ko'rib chiqdingiz/, `the end of the queue must be stated: ${text}`);
+
+  // With nobody left to decide about, ❤️/👎 would do nothing -- so the main
+  // menu comes back rather than dead controls staying on screen.
+  const rows = keyboardRows(done, her);
+  assert.ok(rows && !rows.some((row) => row.includes("❤️")), `expected the main menu back, got ${JSON.stringify(rows)}`);
+});
+
+// Leaving the likes list must put the ❤️ back where it belongs: on the browse
+// screen. Otherwise the mode would outlive the screen and the next ❤️ would
+// still be read as answering an admirer.
+test("going back, then browsing, likes the candidate on screen", async () => {
+  const her = user("Leaver");
+  await register(her, { gender: "female", name: "Leaver" });
+
+  const admirer = user("Waiting");
+  const candidate = user("OnScreen");
+  await register(admirer, { gender: "male", name: "Waiting" });
+  await register(candidate, { gender: "male", name: "OnScreen" });
+  await likes(admirer, her);
+
+  await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  await h.send(M(), h.textUpdate("⬅️ Orqaga", her));
+
+  // Browsing again. Candidates come out in a random order, so who is on
+  // screen is read from the browse state rather than assumed -- that field IS
+  // "who is on screen", and the point here is that ❤️ follows it.
+  await h.send(M(), h.textUpdate("🔍 Yangi tanishuvlar", her));
+  const onScreen = (await db.getDiscoverState(her.id))?.currentId;
+  assert.ok(onScreen, "browsing should put somebody on screen");
+
+  await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+
+  assert.strictEqual(
+    await db.hasLiked(her.id, onScreen),
+    true,
+    "the ❤️ must land on whoever the browse screen showed"
+  );
 });
 
 // --- go ----------------------------------------------------------------------

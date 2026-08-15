@@ -728,6 +728,12 @@ module.exports = {
   registerDiscoverHandlers,
   handleUnlockDeepLink,
   sendCandidate,
+  // Shared with the likes list so working through your admirers has the same
+  // controls under the same thumb as browsing does -- one keyboard, not two
+  // that drift apart.
+  discoverKeyboard,
+  LIKE,
+  DISLIKE,
   sendProfileToChat,
   buildProfileCaption,
   canViewProfile,

@@ -365,8 +365,14 @@ registerComplaintHandlers(bot);
 // where the taps arrive.
 registerAccountNoticeHandlers(bot, { startNewProfile, safeAnswerCbQuery });
 registerMenuHandlers(bot);
-registerDiscoverHandlers(bot);
+// Likes BEFORE discover: the two screens share the same ❤️ / 👎 / report /
+// back labels under the chat, and the likes list has to get first refusal on
+// them so a tap while working through your admirers answers THAT person
+// rather than whoever was last on the browse screen. Every one of its
+// handlers falls straight through with next() when the person is not in the
+// likes list, so browsing is unaffected.
 registerLikesHandlers(bot);
+registerDiscoverHandlers(bot);
 registerCheckoutHandlers(bot, { getLanguage, t, DEFAULT_LANG, safeAnswerCbQuery });
 
 // What to resume once somebody actually subscribes. Registered here rather
