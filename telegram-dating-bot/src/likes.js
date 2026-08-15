@@ -1,9 +1,8 @@
-const { Markup } = require("telegraf");
 const {
   getProfile,
   getLikers,
   getLanguage,
-  hasLiked,
+  getMyLikes,
   getDislikes,
   recordDislike,
   getDiscoverState,
@@ -60,28 +59,22 @@ function isBrowsingLikes(userId) {
   return true;
 }
 
-// The "next" button, kept only for cards sent before the ❤️/👎 controls moved
-// to the keyboard under the chat -- those messages are still on people's
-// screens and their buttons still have to work.
-function nextKeyboard(lang, index, total) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback(t(lang, "likesNextButton")(index + 2, total), `likes:at:${index + 1}`)],
-  ]);
-}
-
 // Who is actually waiting on a decision, in a stable order.
 //
-// People this viewer has already turned down are filtered out: 👎 used to
-// only delete the message off the screen, so the same person was back at the
-// top of the list the very next time it was opened, forever.
+// "Waiting on a decision" is the whole definition, and BOTH answers end it.
+// A 👎 used to only delete the message off the screen, so the same person was
+// back at the top of the list the very next time it was opened; a ❤️ left
+// them in the queue outright, so an answered admirer kept coming round and
+// being liked again and again. Neither is somebody waiting on anything.
 async function loadLikerQueue(myId) {
-  const [likerIds, dislikedIds, me] = await Promise.all([
+  const [likerIds, dislikedIds, myLikes, me] = await Promise.all([
     getLikers(myId),
     getDislikes(myId),
+    getMyLikes(myId),
     getProfile(myId),
   ]);
-  const disliked = new Set(dislikedIds.map(String));
-  const pending = likerIds.filter((id) => !disliked.has(String(id)));
+  const answered = new Set([...dislikedIds.map(String), ...myLikes.map(String)]);
+  const pending = likerIds.filter((id) => !answered.has(String(id)));
 
   // Loaded in parallel -- one sequential await per liker would be a
   // round-trip each against a database backend.
@@ -165,19 +158,20 @@ async function showLikerAt(ctx, index) {
   await sendCandidate(ctx, lang, id, profile, discoverKeyboard(lang), captionOptions);
 }
 
-// One step on from whoever is on screen.
+// Where somebody currently sits in the queue, or -1 if they have already left
+// it. Read BEFORE recording an answer, because recording is what removes them.
+async function indexOfLiker(myId, candidateId) {
+  const likers = await loadLikerQueue(myId);
+  return likers.findIndex((entry) => String(entry.id) === String(candidateId));
+}
+
+// The card to show after answering somebody.
 //
-// The index is recomputed from the queue rather than remembered, because the
-// queue changes underneath: turning somebody down removes them, so the next
-// person slides into the index just vacated. `after` says which of those two
-// happened -- true for ❤️ (they stay in the list), false for 👎 (they leave).
-async function advanceFrom(ctx, currentId, { after }) {
-  const likers = await loadLikerQueue(ctx.from.id);
-  const index = likers.findIndex((entry) => String(entry.id) === String(currentId));
-  // Not found means they have already left the queue (turned down, or their
-  // profile went away), so the position they held is where the next one is.
-  if (index === -1) return showLikerAt(ctx, 0);
-  return showLikerAt(ctx, after ? index + 1 : index);
+// Answering removes that person from the queue -- both ❤️ and 👎 do -- so
+// the next one has slid into the position they just vacated. Which is why
+// this takes the index they HELD, read before the answer was recorded.
+async function advanceFrom(ctx, indexTheyHeld) {
+  return showLikerAt(ctx, indexTheyHeld < 0 ? 0 : indexTheyHeld);
 }
 
 // Shared by the "💌 Kimlar yoqtirdi" menu button AND the "Kim layk bosganini
@@ -222,10 +216,11 @@ function registerLikesHandlers(bot) {
     const state = await getDiscoverState(ctx.from.id);
     if (!state?.currentId) return next();
 
+    // Their position is read BEFORE the answer, because recording it is what
+    // takes them out of the queue.
+    const held = await indexOfLiker(ctx.from.id, state.currentId);
     await recordLikeWithMatchNotification(ctx, ctx.from.id, state.currentId);
-    // They stay in the list -- somebody who liked you is still somebody who
-    // liked you after you answer -- so the next card is the one after them.
-    await advanceFrom(ctx, state.currentId, { after: true });
+    await advanceFrom(ctx, held);
   });
 
   bot.hears(DISLIKE, async (ctx, next) => {
@@ -233,12 +228,11 @@ function registerLikesHandlers(bot) {
     const state = await getDiscoverState(ctx.from.id);
     if (!state?.currentId) return next();
 
+    const held = await indexOfLiker(ctx.from.id, state.currentId);
     // Recorded, not just skipped: without this the same person is back at the
     // top of the list the very next time it is opened.
     await recordDislike(ctx.from.id, state.currentId);
-    // They have just left the queue, so the next person has slid into the
-    // position they were occupying.
-    await advanceFrom(ctx, state.currentId, { after: false });
+    await advanceFrom(ctx, held);
   });
 
   // Leaving. The browse screen's handler does the actual work (clears the
@@ -306,9 +300,9 @@ function registerLikesHandlers(bot) {
     }
 
     // Answering IS the "next" tap -- one decision, one card, no extra button
-    // to find. The answered person stays in the list (they are still someone
-    // who liked you), so the position after them is index + 1.
-    if (index !== null) await showLikerAt(ctx, index + 1);
+    // to find. The answered person has just left the queue, so the next one
+    // has slid into the position they were occupying.
+    if (index !== null) await showLikerAt(ctx, index);
   });
 
   bot.action(/^likeback:dislike:([^:]+)(?::(\d+))?$/, async (ctx) => {

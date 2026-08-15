@@ -170,6 +170,66 @@ test("❤️ answers the admirer on screen, not the last browsed candidate", asy
   assert.strictEqual(await db.hasLiked(her.id, admirer.id), true, "the admirer is the one she answered");
 });
 
+// The reported symptom: the same admirer kept coming round and being liked
+// again and again. A ❤️ answered them but left them in the queue, so they
+// were still "waiting on a decision" they had already been given.
+test("someone you have already liked back never comes round again", async () => {
+  const her = user("Decided");
+  await register(her, { gender: "female", name: "Decided" });
+
+  const a = user("AnsweredOne");
+  const b = user("StillWaiting");
+  await register(a, { gender: "male", name: "AnsweredOne" });
+  await register(b, { gender: "male", name: "StillWaiting" });
+  await likes(a, her);
+  await likes(b, her);
+
+  const opened = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  assert.match(captionOf(cards(opened, her)[0]), /AnsweredOne/, "the queue starts at the first");
+
+  // Answer them. The NEXT card must be the other person, not the same one.
+  const answered = await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+  const next = captionOf(cards(answered, her)[0] || { payload: {} });
+  assert.ok(!/AnsweredOne/.test(next), `the answered admirer was shown again: ${next.slice(0, 80)}`);
+  assert.match(next, /StillWaiting/, "the one still waiting comes up instead");
+
+  // And reopening the list must not put them back at the top.
+  const reopened = await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  const shown = cards(reopened, her).map(captionOf).join("\n");
+  assert.ok(!/AnsweredOne/.test(shown), "a liked admirer must not reappear on reopening");
+  assert.match(
+    to(reopened, her).map((c) => c.payload.text || "").join("\n"),
+    /1 kishi/,
+    "and the count reflects only who is actually still waiting"
+  );
+});
+
+// Answering everybody empties the queue rather than cycling it forever.
+test("answering every admirer ends the list", async () => {
+  const her = user("Thorough");
+  await register(her, { gender: "female", name: "Thorough" });
+
+  for (const name of ["Th1", "Th2", "Th3"]) {
+    const him = user(name);
+    await register(him, { gender: "male", name });
+    await likes(him, her);
+  }
+
+  await h.send(M(), h.textUpdate("💌 Kimlar yoqtirdi", her));
+  await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+  await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+  const last = await h.send(M(), h.textUpdate("❤️", her));
+  await __test.pendingNotifications();
+
+  const text = to(last, her).map((c) => c.payload.text || "").join("\n");
+  assert.match(text, /hech kim|ko'rib chiqdingiz/, `the queue must end, got: ${text.slice(0, 160)}`);
+  const rows = keyboardRows(last, her);
+  assert.ok(rows && !rows.some((row) => row.includes("❤️")), "and the main menu comes back");
+});
+
 test("turning someone down is remembered, so they do not come back", async () => {
   const her = user("Picky");
   await register(her, { gender: "female", name: "Picky" });
