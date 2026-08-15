@@ -8,7 +8,7 @@ const { registerDiscoverHandlers, handleUnlockDeepLink, openDiscovery } = requir
 const { registerLikesHandlers } = require("./likes");
 const { registerProfileSettingsHandlers } = require("./profileSettings");
 const { registerPremiumHandlers } = require("./premium");
-const { registerVipChatHandlers, VIP_CHAT_INVITE_LINK } = require("./vipChat");
+const { registerVipChatHandlers } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard, attemptJoin } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
@@ -25,6 +25,8 @@ const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
 const { registerPaymeRoutes } = require("./payme");
 const { registerChannelGate, startChannelProbe, channelGateStatus } = require("./channelGate");
+const { vipInviteLink, probeVipChat, vipInviteStatus } = require("./vipInvite");
+const { registerChatIdReporter } = require("./chatIdReporter");
 const { registerCheckoutHandlers } = require("./checkout");
 const { createAdminBot } = require("./adminBot");
 const { alert, configureAlerts, ALERT_CHAT_ID } = require("./alerts");
@@ -393,6 +395,10 @@ registerChannelGate(bot, {
 registerProfileSettingsHandlers(bot);
 registerPremiumHandlers(bot);
 registerVipChatHandlers(bot);
+// Says the group's chat id out loud the moment the bot is added to one --
+// Telegram shows it nowhere in its apps, and every other way of finding it
+// means routing through some third-party bot.
+registerChatIdReporter(bot);
 registerReferralHandlers(bot);
 registerWinbackHandlers(bot, { openDiscovery });
 
@@ -406,6 +412,11 @@ bot.telegram
 // after, and surfaced on /health -- the fix (making the bot a channel admin)
 // happens in Telegram, so /health has to notice it without a redeploy.
 startChannelProbe(bot.telegram);
+
+// Same reasoning, for the VIP group: every failure to mint an invite link
+// falls back silently to the shared one, so a misconfiguration looks exactly
+// like working software until somebody notices a link being passed around.
+probeVipChat(bot.telegram).catch((err) => console.error("VIP invite probe failed:", err.message));
 
 bot.catch((err, ctx) => {
   // Somebody blocking the bot is an ordinary, expected event, not a fault:
@@ -477,6 +488,10 @@ if (webhookDomain) {
       // which is deliberate (see channelGate.js rule 1) but invisible from
       // inside the bot, so it has to be visible from here.
       channelGate: channelGateStatus(),
+      // "active" only when the bot can actually mint invite links for the VIP
+      // group. Anything else means every buyer is getting the same shareable
+      // link -- which works, and is exactly the thing being paid to avoid.
+      vipInvites: vipInviteStatus(),
       // Powers the admin panel's "AI yordamchi" button -- without it that
       // button degrades to a message instead of failing.
       aiAssistant: process.env.ANTHROPIC_API_KEY
@@ -564,14 +579,18 @@ if (webhookDomain) {
         // still exists and pressing the VIP button again hands the link back,
         // instead of the payment simply vanishing.
         await grantVipChat(order.userId);
+        // A link that admits exactly one person, minted for this buyer. A
+        // shared link would let one 21 900 so'm purchase seat their whole
+        // group; this one dies the moment it is used. Falls back to the
+        // shared link if it cannot be created, because a purchase that
+        // delivers nothing is the worse failure.
+        const vipLink = await vipInviteLink(bot.telegram, order.userId, { paid: true });
         // Congratulation + what they just bought, not only a bare link: the
         // link alone leaves someone who paid 21 900 so'm with no sense of
         // what for.
-        await bot.telegram.sendMessage(
-          order.userId,
-          t(lang, "vipPurchaseCongrats")(VIP_CHAT_INVITE_LINK),
-          { parse_mode: "HTML" }
-        );
+        await bot.telegram.sendMessage(order.userId, t(lang, "vipPurchaseCongrats")(vipLink), {
+          parse_mode: "HTML",
+        });
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
         return;
       }

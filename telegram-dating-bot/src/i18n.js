@@ -150,6 +150,13 @@ const STRINGS = {
     vipJoinFreeButton: "🔗 Bepul qo'shilish",
     vipPayIntro: "💳 To'lovni amalga oshirish uchun quyidagi tugmani bosing:",
     vipJoinMessage: (link) => `🎉 Xush kelibsiz! Guruhga qo'shilish uchun havola:\n${link}`,
+    // Women join free, but through a request an admin approves -- so the
+    // message has to set that expectation before they tap, or an unanswered
+    // request reads as a broken link.
+    vipJoinRequestMessage: (link) =>
+      `🎉 Guruhga qo'shilish uchun havola:\n${link}\n\n` +
+      `📩 Havolani bosganingizda so'rov yuboriladi — administrator tasdiqlagach guruhga kirasiz. ` +
+      `Odatda bu tez bo'ladi, biroz kutib turing 💛`,
     discoverNoCandidates:
       "🌱 Siz bizdagi barcha mos nomzodlarni ko'rib chiqdingiz!\n\n" +
       "ForOne hali yosh loyiha — ochilganimizga ko'p bo'lmagani uchun anketalar hozircha tugadi. " +
@@ -526,6 +533,10 @@ const STRINGS = {
     vipJoinFreeButton: "🔗 Присоединиться бесплатно",
     vipPayIntro: "💳 Нажмите кнопку ниже, чтобы оплатить:",
     vipJoinMessage: (link) => `🎉 Добро пожаловать! Ссылка для вступления в группу:\n${link}`,
+    vipJoinRequestMessage: (link) =>
+      `🎉 Ссылка для вступления в группу:\n${link}\n\n` +
+      `📩 При переходе по ссылке отправится заявка — вы попадёте в группу, как только администратор её одобрит. ` +
+      `Обычно это быстро, немного подождите 💛`,
     discoverNoCandidates:
       "🌱 Вы просмотрели все подходящие анкеты!\n\n" +
       "ForOne — молодой проект, мы работаем совсем недавно, поэтому анкеты пока закончились. " +
@@ -885,6 +896,10 @@ const STRINGS = {
     vipJoinFreeButton: "🔗 Join for free",
     vipPayIntro: "💳 Tap the button below to pay:",
     vipJoinMessage: (link) => `🎉 Welcome! Here's the link to join the group:\n${link}`,
+    vipJoinRequestMessage: (link) =>
+      `🎉 Here's the link to join the group:\n${link}\n\n` +
+      `📩 Tapping it sends a request — you'll be in as soon as an admin approves it. ` +
+      `That's usually quick, so hang tight 💛`,
     discoverNoCandidates:
       "🌱 You've seen everyone who matches right now!\n\n" +
       "ForOne is still a young project -- we haven't been open long, so profiles have run out for the moment. " +

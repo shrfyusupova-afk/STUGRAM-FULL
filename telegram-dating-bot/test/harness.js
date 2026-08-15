@@ -47,6 +47,7 @@ const Telegram = require(path.join(ROOT, "node_modules/telegraf/lib/telegram.js"
 // the test file (which is easy to get subtly wrong: patch the wrong module
 // instance and the REAL network client ends up underneath, and every
 // assertion afterwards silently sees nothing at all).
+let inviteLinkSeq = 0;
 let apiFailure = null;
 function failApi(predicate) {
   apiFailure = predicate;
@@ -70,6 +71,13 @@ Telegram.prototype.callApi = async function (method, payload = {}) {
   // exercise the gate adds the id to `notSubscribed`.
   if (method === "getChatMember") {
     return { status: notSubscribed.has(String(payload.user_id)) ? "left" : "member" };
+  }
+  // The VIP group's invite links. Echoing the options back in the URL lets a
+  // test see WHICH kind of link a screen asked for without a second fake.
+  if (method === "createChatInviteLink") {
+    const kind = payload.creates_join_request ? "req" : `one${payload.member_limit || 0}`;
+    inviteLinkSeq += 1;
+    return { invite_link: `https://t.me/+fake${kind}${inviteLinkSeq}`, name: payload.name };
   }
   if (/^send(Message|Photo|Video|Document|Animation|ChatAction)$/.test(method)) return fakeMessage(payload);
   if (method === "copyMessage") return { message_id: 1 };

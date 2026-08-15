@@ -5,9 +5,21 @@ const { VIP_CHAT_PRICE_SOM } = require("./orders");
 const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { safeAnswerCbQuery } = require("./telegramSafety");
 
+// The fallback, used whenever the bot cannot mint a link of its own (no
+// VIP_CHAT_ID, not an admin of the group, Telegram refusing). Shareable, and
+// that is its weakness -- but a purchase that delivers nothing is worse, so
+// this is what every failure path lands on.
+//
 // Telegram invite links can be revoked/regenerated later -- if that ever
 // happens, update this constant (or move it to an env var) and redeploy.
 const VIP_CHAT_INVITE_LINK = "https://t.me/+p80FAqlT0c81Y2Uy";
+
+// Required lazily inside the functions that use it: vipInvite.js needs
+// VIP_CHAT_INVITE_LINK from here for its fallback, so requiring it at the top
+// would be a cycle.
+function inviteLinkFor(telegram, userId, opts) {
+  return require("./vipInvite").vipInviteLink(telegram, userId, opts);
+}
 
 function payButtonKeyboard(lang) {
   return Markup.inlineKeyboard([[Markup.button.callback(t(lang, "vipPayButton"), "vip:pay:choose")]]);
@@ -32,7 +44,11 @@ function registerVipChatHandlers(bot) {
     // money a second time -- this is also the recovery path if the original
     // "here's your link" message failed to send right after payment.
     if (await hasVipChat(ctx.from.id)) {
-      await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
+      // A fresh single-use link each time they ask. The previous one may well
+      // have been used already, and a spent link would read as the purchase
+      // having been taken away.
+      const link = await inviteLinkFor(ctx.telegram, ctx.from.id, { paid: true });
+      await ctx.reply(t(lang, "vipJoinMessage")(link));
       return;
     }
     const profile = await getProfile(ctx.from.id);
@@ -53,7 +69,10 @@ function registerVipChatHandlers(bot) {
       await sendVipIntro(ctx, lang, payButtonKeyboard(lang));
       return;
     }
-    await ctx.reply(t(lang, "vipJoinMessage")(VIP_CHAT_INVITE_LINK));
+    // Free, but not automatic: this link raises a join request that a group
+    // admin approves, rather than admitting anybody who taps it.
+    const link = await inviteLinkFor(ctx.telegram, ctx.from.id, { paid: false });
+    await ctx.reply(t(lang, "vipJoinRequestMessage")(link));
   });
 
   // One button per configured provider -- the person picks how to pay, and
