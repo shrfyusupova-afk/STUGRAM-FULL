@@ -82,6 +82,94 @@ test("a disliked candidate never comes back either, for the same reason", async 
   assert.strictEqual(await pickCandidate(viewer, "male"), null, "a disliked profile must not resurface either");
 });
 
+// --- who is even eligible ------------------------------------------------------
+//
+// Browsing shows the opposite gender and nothing else. This was already true,
+// but nothing pinned it: the pool query is shared by the normal and the
+// "everyone has been seen, start over" branch, and it would be easy to drop
+// the gender condition from one of them while adding an unrelated filter.
+// Every case below therefore drains the pool right past exhaustion, because
+// that recycling branch is where a leak would show up first.
+
+test("a man browsing is only ever shown women", async () => {
+  const viewer = "800300";
+  await db.saveProfile(viewer, {
+    name: "Man", age: 24, gender: "male", genderLabel: "Erkak",
+    location: "Toshkent", bio: "b", phone: "+998900008300",
+    mediaFileId: "F", mediaType: "photo",
+  });
+
+  // A pool with both, deliberately more men than women -- so a filter that
+  // silently stopped working would show one almost immediately.
+  for (const id of ["800301", "800302"]) await db.saveProfile(id, candidate(id, { gender: "female" }));
+  for (const id of ["800303", "800304", "800305", "800306"]) {
+    await db.saveProfile(id, candidate(id, { gender: "male", genderLabel: "Erkak" }));
+  }
+
+  // Well past the number of women available, so the recycling branch runs
+  // several times over.
+  let shown = 0;
+  for (let i = 0; i < 20; i++) {
+    const picked = await pickCandidate(viewer, "male");
+    if (!picked) break;
+    const profile = await db.getProfile(picked.id);
+    assert.strictEqual(profile.gender, "female", `swipe ${i + 1} showed a man (${picked.id})`);
+    shown++;
+    await db.recordDislike(viewer, picked.id);
+  }
+  // Women from the earlier tests are still valid candidates for this fresh
+  // viewer, so the exact count is not the point -- that a man was never among
+  // them is.
+  assert.ok(shown >= 2, `expected the women to be shown, got ${shown}`);
+});
+
+test("a woman browsing is only ever shown men", async () => {
+  const viewer = "800400";
+  await db.saveProfile(viewer, {
+    name: "Woman", age: 24, gender: "female", genderLabel: "Ayol",
+    location: "Toshkent", bio: "b", phone: "+998900008400",
+    mediaFileId: "F", mediaType: "photo",
+  });
+
+  for (const id of ["800401", "800402"]) {
+    await db.saveProfile(id, candidate(id, { gender: "male", genderLabel: "Erkak" }));
+  }
+  for (const id of ["800403", "800404", "800405"]) {
+    await db.saveProfile(id, candidate(id, { gender: "female" }));
+  }
+
+  let shown = 0;
+  for (let i = 0; i < 20; i++) {
+    const picked = await pickCandidate(viewer, "female");
+    if (!picked) break;
+    const profile = await db.getProfile(picked.id);
+    assert.strictEqual(profile.gender, "male", `swipe ${i + 1} showed a woman (${picked.id})`);
+    shown++;
+    await db.recordDislike(viewer, picked.id);
+  }
+  // The men added here, plus every man left over from the tests above -- the
+  // exact count does not matter, only that a woman was never among them.
+  assert.ok(shown >= 2, `expected the men to be shown, got ${shown}`);
+});
+
+// Nobody is ever shown their own card, whichever way the gender filter is
+// pointing -- the one profile that is always in the pool.
+test("you are never shown your own profile", async () => {
+  const viewer = "800500";
+  await db.saveProfile(viewer, {
+    name: "Self", age: 24, gender: "female", genderLabel: "Ayol",
+    location: "Toshkent", bio: "b", phone: "+998900008500",
+    mediaFileId: "F", mediaType: "photo",
+  });
+
+  for (let i = 0; i < 20; i++) {
+    const picked = await pickCandidate(viewer, "female");
+    if (!picked) break;
+    assert.notStrictEqual(String(picked.id), viewer, "the viewer was shown to themselves");
+    await db.recordDislike(viewer, picked.id);
+  }
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;
