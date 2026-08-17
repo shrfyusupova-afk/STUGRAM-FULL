@@ -747,40 +747,9 @@ const TODAY_LIMIT = 200;
 
 function todayGenderKeyboard(boys, girls) {
   const rows = [];
-  if (boys > 0) rows.push([Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male:0")]);
-  if (girls > 0) rows.push([Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female:0")]);
+  if (boys > 0) rows.push([Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male")]);
+  if (girls > 0) rows.push([Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female")]);
   return rows.length ? Markup.inlineKeyboard(rows) : undefined;
-}
-
-// Back / position / forward, with the ends disabled rather than missing --
-// a row that changes width as you page through is harder to use than one
-// that stays put.
-function todayNavKeyboard(gender, index, total) {
-  const back = index > 0
-    ? Markup.button.callback("⬅️ Orqaga", `admin:today:${gender}:${index - 1}`)
-    : Markup.button.callback("·", "admin:today:noop");
-  const forward = index + 1 < total
-    ? Markup.button.callback("➡️ Keyingisi", `admin:today:${gender}:${index + 1}`)
-    : Markup.button.callback("·", "admin:today:noop");
-  return Markup.inlineKeyboard([
-    [back, Markup.button.callback(`${index + 1}/${total}`, "admin:today:noop"), forward],
-  ]);
-}
-
-// One person, numbered, with everything an admin would otherwise have to run
-// a search to see. The id is <code> so it can be copied straight into the
-// search box for the full card and the gift buttons.
-function todayCard(index, total, id, profile) {
-  const joined = profile.updatedAt ? String(profile.updatedAt).slice(11, 16) : "—";
-  return (
-    `${index + 1}/${total} — bugun qo'shilganlar\n\n` +
-    `👤 <b>${escapeHtml(profile.name || "—")}</b>, ${escapeHtml(profile.age ?? "—")}\n` +
-    `🆔 <code>${escapeHtml(id)}</code>\n` +
-    `📍 ${escapeHtml(profile.location || "—")}\n` +
-    `📞 ${escapeHtml(profile.phone || "—")}\n` +
-    `🕒 Qo'shildi: ${escapeHtml(joined)}\n\n` +
-    `📝 ${escapeHtml(profile.bio || "—")}`
-  );
 }
 
 // --- referral leaderboard ----------------------------------------------------
@@ -904,8 +873,12 @@ function renderSearchPage(state) {
   const start = page * SEARCH_PAGE_SIZE;
   const slice = state.hits.slice(start, start + SEARCH_PAGE_SIZE);
 
+  // `title` lets another screen borrow this list wholesale -- same lines,
+  // same paging buttons, same tappable /u_<id> -- and say what it is at the
+  // top. Without it the day list would need its own renderer, which is how
+  // two screens that should look identical stop looking identical.
   const header =
-    `🔍 «${escapeHtml(state.query)}» — ${state.hits.length} ta topildi` +
+    (state.title || `🔍 «${escapeHtml(state.query)}» — ${state.hits.length} ta topildi`) +
     (pageCount > 1 ? `  (${page + 1}/${pageCount}-sahifa)` : "");
   const body = slice.map(([id, profile], i) => searchResultLine(start + i + 1, id, profile)).join("\n\n");
 
@@ -1387,53 +1360,42 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
-  // The dead ends of the pager (and the position label itself) share one
-  // callback, so tapping them acknowledges and does nothing rather than
-  // leaving Telegram's spinner turning.
+  // Opening one of the two lists.
+  //
+  // It hands the day's people to the SAME machinery a name search uses --
+  // ten per screen, back/forward buttons that edit the message in place, and
+  // every id rendered as a tappable /u_<id> that posts the full anketa
+  // underneath. Not a second list implementation: the previous version was a
+  // one-photo-at-a-time pager, which meant two screens doing the same job
+  // and looking nothing alike.
   bot.action(
-    "admin:today:noop",
-    requireAdmin(async (ctx) => {
-      await safeAnswerCbQuery(ctx);
-    })
-  );
-
-  bot.action(
-    /^admin:today:(male|female):(\d+)$/,
+    /^admin:today:(male|female)$/,
     requireAdmin(async (ctx) => {
       const gender = ctx.match[1];
-      const index = Number(ctx.match[2]);
       await safeAnswerCbQuery(ctx);
 
-      // Re-read the list on every tap rather than caching it: somebody can
-      // register while the admin is halfway through, and a cached list would
-      // silently page through a snapshot that no longer matches the counts
-      // shown above it.
       const people = await listNewProfilesSince(gender, startOfTashkentDay(), TODAY_LIMIT);
       if (people.length === 0) {
         await ctx.reply("Bu ro'yxat bo'sh — bugun bu jinsdan hech kim qo'shilmagan.");
         return;
       }
-      if (index >= people.length) {
-        await ctx.reply(`Ro'yxat tugadi (${people.length} ta).`);
-        return;
-      }
 
-      const { id, profile } = people[index];
-      const caption = todayCard(index, people.length, id, profile);
-      const keyboard = todayNavKeyboard(gender, index, people.length);
+      // searchProfiles hands back [id, profile] pairs and the renderer reads
+      // them that way, so the shapes are matched here rather than by teaching
+      // the renderer a second one.
+      const hits = people.map(({ id, profile }) => [id, profile]);
+      const label = gender === "male" ? "👦 Bugun qo'shilgan bollar" : "👧 Bugun qo'shilgan qizlar";
+      const state = {
+        query: label,
+        title: `${label} — ${hits.length} ta`,
+        hits,
+        page: 0,
+        openedAt: Date.now(),
+      };
+      searchState.set(ctx.from.id, state);
 
-      if (profile.mediaFileId) {
-        await ctx.sendChatAction(profile.mediaType === "video" ? "upload_video" : "upload_photo").catch(() => {});
-        const failure = await replyWithProfileMedia(
-          ctx,
-          profile,
-          { caption, parse_mode: "HTML", protect_content: true, ...keyboard },
-          mainBotTelegram
-        );
-        if (!failure) return;
-        console.error(`today list media send failed for ${id}:`, failure);
-      }
-      await ctx.reply(`${caption}\n\n📷 Rasm ko'rsatib bo'lmadi.`, { parse_mode: "HTML", ...keyboard });
+      const view = renderSearchPage(state);
+      await ctx.reply(view.text, { parse_mode: "HTML", disable_web_page_preview: true, ...view.keyboard });
     })
   );
 
@@ -2111,7 +2073,6 @@ module.exports = {
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
     formatFullReport,
     startOfTashkentDay,
-    todayCard,
     formatOrder,
     ORDER_ID_RE,
     formatReferralBoard,
