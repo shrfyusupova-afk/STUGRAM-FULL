@@ -341,6 +341,85 @@ test("a merchant id with anything but digits is reported, not silently shipped",
   }
 });
 
+// --- 6. one URL or two -------------------------------------------------------
+//
+// Click's cabinet does not always offer two separate callback fields. Where
+// it offers one, two endpoints cannot be configured at all -- and the failure
+// is silent: the merchant pastes something into the single box, no error
+// appears anywhere, and the first anyone knows about it is a payment hanging.
+// So a single URL has to be able to answer both, chosen by the `action` field
+// Click already sends.
+
+test("one combined URL serves a full payment, Prepare then Complete", async () => {
+  const u = user("OneUrl");
+  await register(u, { gender: "male", name: "OneUrl" });
+  const orderId = await freshOrder(u, "premium");
+
+  const prepare = {
+    click_trans_id: "9101",
+    service_id: "2222",
+    merchant_trans_id: orderId,
+    amount: String(PREMIUM_PRICE_SOM),
+    action: "0",
+    sign_time: SIGN_TIME,
+  };
+  const prepared = await clickPost("/click", { ...prepare, sign_string: prepareSign(prepare) });
+  assert.strictEqual(prepared.body.error, 0, `prepare through /click failed: ${JSON.stringify(prepared.body)}`);
+
+  const complete = {
+    click_trans_id: "9101",
+    service_id: "2222",
+    merchant_trans_id: orderId,
+    merchant_prepare_id: String(prepared.body.merchant_prepare_id),
+    amount: String(PREMIUM_PRICE_SOM),
+    action: "1",
+    sign_time: SIGN_TIME,
+  };
+  const completed = await clickPost("/click", { ...complete, sign_string: completeSign(complete) });
+  assert.strictEqual(completed.body.error, 0, `complete through /click failed: ${JSON.stringify(completed.body)}`);
+
+  await wait(200);
+  assert.strictEqual(await db.hasPremium(u.id), true, "the feature is granted, exactly as through two URLs");
+});
+
+// The combined URL must be the SAME code, not a relaxed copy of it -- a
+// second implementation is where a signature check quietly goes missing.
+test("the combined URL checks signatures just as strictly", async () => {
+  const u = user("OneUrlForged");
+  await register(u, { gender: "male", name: "OneUrlForged" });
+  const orderId = await freshOrder(u, "premium");
+
+  const forged = await clickPost("/click", {
+    click_trans_id: "9102",
+    service_id: "2222",
+    merchant_trans_id: orderId,
+    amount: String(PREMIUM_PRICE_SOM),
+    action: "1",
+    sign_time: SIGN_TIME,
+    sign_string: "0".repeat(32),
+  });
+  assert.strictEqual(forged.body.error, -1, "a bad signature is refused here too");
+  assert.strictEqual(await db.hasPremium(u.id), false, "and grants nothing");
+});
+
+// Anything that is neither Prepare nor Complete gets Click's own envelope
+// back rather than an HTML error page, which is unreadable both to Click and
+// to whoever is debugging the integration.
+test("an unrecognised action is answered in Click's envelope", async () => {
+  const res = await clickPost("/click", {
+    click_trans_id: "9103",
+    service_id: "2222",
+    merchant_trans_id: "whatever",
+    amount: "1000",
+    action: "7",
+    sign_time: SIGN_TIME,
+    sign_string: "0".repeat(32),
+  });
+  assert.strictEqual(res.status, 200, "Click expects 200 with the error in the body");
+  assert.strictEqual(res.body.error, -1);
+  assert.match(String(res.body.error_note), /action/i);
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;

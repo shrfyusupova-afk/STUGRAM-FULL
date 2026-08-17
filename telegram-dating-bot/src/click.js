@@ -215,7 +215,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
   const middleware = bodyParser ? [bodyParser] : [];
 
-  app.post("/click/prepare", ...middleware, async (req, res) => {
+  const handlePrepare = async (req, res) => {
     const body = req.body || {};
     logCallback("prepare", body);
     const signFailed = {
@@ -279,9 +279,9 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       error: ERROR.SUCCESS,
       error_note: "Success",
     });
-  });
+  };
 
-  app.post("/click/complete", ...middleware, async (req, res) => {
+  const handleComplete = async (req, res) => {
     const body = req.body || {};
     logCallback("complete", body);
     const signFailed = {
@@ -374,7 +374,41 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
       error: ERROR.SUCCESS,
       error_note: "Success",
     });
-  });
+  };
+
+  app.post("/click/prepare", ...middleware, handlePrepare);
+  app.post("/click/complete", ...middleware, handleComplete);
+
+  // One URL that answers both, chosen by the `action` field Click already
+  // sends (0 = Prepare, 1 = Complete).
+  //
+  // Click's cabinet does not always offer two separate fields. Where it
+  // offers one, two endpoints cannot be configured at all -- and the failure
+  // is silent, because the merchant simply pastes something into the single
+  // box and no error appears anywhere until a payment hangs. This makes the
+  // integration work either way: two URLs if the cabinet has two boxes, this
+  // one if it has one.
+  //
+  // Not a second implementation -- it dispatches to the exact same handlers,
+  // so the signature check, the amount check and the idempotent status
+  // transition are the ones already tested, not copies that could drift.
+  const handleEither = async (req, res) => {
+    const action = Number((req.body || {}).action);
+    if (action === ACTION_COMPLETE) return handleComplete(req, res);
+    if (action === ACTION_PREPARE) return handlePrepare(req, res);
+    // Neither -- answer in Click's own envelope rather than an HTML error
+    // page, which is unreadable to it and to whoever is debugging.
+    console.warn(`Click callback with an unrecognised action=${(req.body || {}).action}`);
+    return res.json({
+      click_trans_id: (req.body || {}).click_trans_id,
+      merchant_trans_id: (req.body || {}).merchant_trans_id,
+      error: ERROR.SIGN_FAILED,
+      error_note: "Unknown action",
+    });
+  };
+
+  app.post("/click", ...middleware, handleEither);
+  app.post("/click/callback", ...middleware, handleEither);
 }
 
 module.exports = {
