@@ -266,6 +266,90 @@ test("pressing confirm after a real payment leads into the profile", async () =>
   );
 });
 
+// --- 3b. looking a payment up from the admin panel ---------------------------
+//
+// A customer holding a Click receipt marked "Ko'rib chiqilmoqda" cannot tell
+// whether the money reached us, and neither could the operator. The receipt
+// prints the order id, so pasting it into the panel has to answer the actual
+// question: whose side is this stuck on.
+test("an unpaid order says so, and says what to check", () => {
+  const { formatOrder, ORDER_ID_RE } = require("../src/adminBot").__test;
+
+  // The id shape is the one Click prints as "Buyurtma raqami".
+  assert.ok(ORDER_ID_RE.test("anongender_0f775d70a0faeca9dbbd1af9"), "a real order id is recognised");
+  assert.ok(!ORDER_ID_RE.test("12345"), "a complaint code is not an order id");
+  assert.ok(!ORDER_ID_RE.test("Jahongir"), "and neither is a search term");
+
+  const text = formatOrder("anongender_abc123abc123abc123abc1234", {
+    userId: "42",
+    type: "anongender",
+    amount: 12900,
+    status: "pending",
+    provider: "click",
+    createdAt: "2026-08-17T13:39:00.000Z",
+  });
+  assert.match(text, /To'lanmagan/, "it must say the money never arrived");
+  // The two causes have completely different fixes, so naming only one would
+  // send the operator to the wrong place half the time.
+  assert.match(text, /URL/, "one cause: Click was never told where to call");
+  assert.match(text, /CLICK_SECRET_KEY/, "the other: we refused the call it made");
+});
+
+test("a paid order says the money arrived, and whether it was delivered", () => {
+  const { formatOrder } = require("../src/adminBot").__test;
+
+  const delivered = formatOrder("premium_abc123abc123abc123abc1234", {
+    userId: "42", type: "premium", amount: 79900, status: "paid", provider: "click",
+    paidAt: "2026-08-17T13:40:00.000Z", delivered: true,
+  });
+  assert.match(delivered, /To'langan/);
+  assert.match(delivered, /Xizmat berilgan: ha/);
+
+  // Money in, feature not handed over -- the one state that needs chasing.
+  const stuck = formatOrder("premium_abc123abc123abc123abc1234", {
+    userId: "42", type: "premium", amount: 79900, status: "paid", provider: "click",
+    paidAt: "2026-08-17T13:40:00.000Z", delivered: false, deliveryAttempts: 3,
+  });
+  assert.match(stuck, /Xizmat hali berilmagan/);
+  assert.match(stuck, /3 urinish/, "with how many times it has been retried");
+});
+
+test("an id that is not ours is not silently treated as a search", () => {
+  const { formatOrder } = require("../src/adminBot").__test;
+  const text = formatOrder("unlock_ffffffffffffffffffffffff", null);
+  assert.match(text, /topilmadi/, "it must say plainly that no such order exists");
+});
+
+// End to end: a real order, looked up through the real panel.
+test("pasting an order id into the panel reports its real state", async () => {
+  const buyer = user("Lookup");
+  const target = user("LookupTarget");
+  await register(buyer, { gender: "male", name: "Lookup" });
+  await register(target, { gender: "female", name: "LookupTarget" });
+
+  const paywall = await h.send(M(), h.commandUpdate(`/start unlock_${target.id}`, buyer));
+  const orderId = orderIdFrom(paywall);
+
+  // An admin, logged in.
+  const admin = user("PayAdmin");
+  await register(admin, { gender: "male", name: "PayAdmin" });
+  const db = require("../src/db");
+  await db.addAdmin(admin.id);
+  await h.send(h.adminBot(), h.commandUpdate("/iamadmin", admin));
+  for (const d of "13579") await h.send(h.adminBot(), h.callbackUpdate(`admin:pin:${d}`, admin));
+
+  const before = await h.send(h.adminBot(), h.textUpdate(orderId, admin));
+  assert.match(said(before), /To'lanmagan/, "unpaid before the callback");
+
+  await payForReal(orderId);
+
+  const after = await h.send(h.adminBot(), h.textUpdate(orderId, admin));
+  assert.match(said(after), /To'langan/, "and paid after it");
+  // The thousands separator is locale-dependent (a non-breaking space here),
+  // so match the digits rather than the formatting.
+  assert.match(said(after), /9.?900/, "with the amount that was actually charged");
+});
+
 // --- 4. congratulations ------------------------------------------------------
 
 // Someone who has just spent 79 900 so'm should be told what they now have,

@@ -177,12 +177,47 @@ function wrongEnvelope(body, expectedAction) {
   return null;
 }
 
+// Every callback, logged the moment it lands and before anything can reject
+// it.
+//
+// The question this exists to answer is "did Click ever reach us?", and it
+// was previously unanswerable: a callback with a bad signature was rejected
+// in silence, so a wrong CLICK_SECRET_KEY looked EXACTLY like Click never
+// calling at all. Those two have completely different fixes -- one is a key
+// in this app's environment, the other is a URL in Click's cabinet -- and
+// picking between them by guesswork is how a stuck payment stays stuck.
+function logCallback(kind, body) {
+  console.log(
+    `Click ${kind} received: order=${body.merchant_trans_id} ` +
+      `click_trans=${body.click_trans_id} amount=${body.amount} service=${body.service_id}`
+  );
+}
+
+// Loud, and specific about the two ways it happens. "No secret key
+// configured" and "the key does not match Click's" produce the same refusal
+// on the wire but are different mistakes.
+function logSignFailure(kind, body, secretKey) {
+  if (!secretKey) {
+    console.error(
+      `Click ${kind} REFUSED for order=${body.merchant_trans_id}: CLICK_SECRET_KEY is not set, ` +
+        `so no callback can ever be accepted and every payment will hang.`
+    );
+    return;
+  }
+  console.error(
+    `Click ${kind} REFUSED for order=${body.merchant_trans_id}: signature did not match. ` +
+      `Almost always CLICK_SECRET_KEY here differing from the key in the Click cabinet ` +
+      `(service_id=${body.service_id}).`
+  );
+}
+
 function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
   const secretKey = process.env.CLICK_SECRET_KEY;
   const middleware = bodyParser ? [bodyParser] : [];
 
   app.post("/click/prepare", ...middleware, async (req, res) => {
     const body = req.body || {};
+    logCallback("prepare", body);
     const signFailed = {
       click_trans_id: body.click_trans_id,
       merchant_trans_id: body.merchant_trans_id,
@@ -193,6 +228,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
     // Signature first, always -- a valid callback is processed even from an
     // IP that is mid-flood. Only a request that fails it can be throttled.
     if (!secretKey || !verifyPrepareSign(body, secretKey)) {
+      logSignFailure("prepare", body, secretKey);
       const overLimit = tooManyBadSigns(req.ip);
       recordBadSign(req.ip);
       return res.status(overLimit ? 429 : 200).json(signFailed);
@@ -247,6 +283,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 
   app.post("/click/complete", ...middleware, async (req, res) => {
     const body = req.body || {};
+    logCallback("complete", body);
     const signFailed = {
       click_trans_id: body.click_trans_id,
       merchant_trans_id: body.merchant_trans_id,
@@ -256,6 +293,7 @@ function registerClickRoutes(app, { onPaid, bodyParser } = {}) {
 
     // Signature first, always -- see the note on /click/prepare above.
     if (!secretKey || !verifyCompleteSign(body, secretKey)) {
+      logSignFailure("complete", body, secretKey);
       const overLimit = tooManyBadSigns(req.ip);
       recordBadSign(req.ip);
       return res.status(overLimit ? 429 : 200).json(signFailed);

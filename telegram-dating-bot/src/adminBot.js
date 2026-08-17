@@ -9,6 +9,7 @@ const {
   topReferrers, countReferrals,
   countPendingLikers, getLikeNoticeAt,
 } = require("./db");
+const { getOrder } = require("./orders");
 const {
   getSalesSummary,
   PREMIUM_PRICE_SOM,
@@ -640,6 +641,87 @@ async function userCard(id, profile) {
     (profile.updatedAt ? `🕒 Oxirgi yangilanish: ${escapeHtml(dateOnly(profile.updatedAt))}\n` : "") +
     `\n${contactLine(id, profile)}`
   );
+}
+
+// --- looking a payment up ----------------------------------------------------
+
+// Order ids look like "anongender_0f775d70a0faeca9dbbd1af9" -- a type and 24
+// hex characters. That is exactly what Click's own receipt shows the customer
+// as "Buyurtma raqami", so pasting it here is the shortest path from "my
+// payment is stuck" to knowing whose side it is stuck on.
+const ORDER_ID_RE = /^(premium|unlock|vipchat|anongender)_[0-9a-f]{16,32}$/;
+
+const ORDER_TYPE_LABEL = {
+  premium: "💎 Premium",
+  unlock: "🔐 Profil ochish",
+  vipchat: "👑 VIP chat",
+  anongender: "🕵️ Anonim jins filtri",
+};
+
+// What the ledger knows, and -- more useful -- what that MEANS about where
+// the payment is stuck.
+//
+// A customer showing a Click receipt marked "Ko'rib chiqilmoqda" has no way
+// to tell whether the money reached us, and neither did the operator. Three
+// states, three completely different next steps:
+//
+//   pending   Click never completed a callback for it. Either it never
+//             called (URLs missing in the cabinet) or it called and was
+//             refused (CLICK_SECRET_KEY mismatch) -- the log says which.
+//   prepared  Click's Prepare succeeded but Complete never arrived.
+//   paid      The money is ours; the only remaining question is delivery.
+function formatOrder(orderId, order) {
+  if (!order) {
+    return (
+      `🔎 <code>${escapeHtml(orderId)}</code>\n\n` +
+      `❌ Bunday buyurtma umuman topilmadi.\n\n` +
+      `Ya'ni bu raqam bu bot yaratgan buyurtma emas — raqamni qayta tekshiring.`
+    );
+  }
+
+  const label = ORDER_TYPE_LABEL[order.type] || order.type;
+  const lines = [
+    `🔎 <code>${escapeHtml(orderId)}</code>`,
+    ``,
+    `🛒 Nima: ${label}`,
+    `👤 Kim: <code>${escapeHtml(String(order.userId))}</code>`,
+    `💵 Summa: ${som(order.amount)}`,
+    `💳 Qaysi tizim orqali ochilgan: ${order.provider || "click"}`,
+    `🕒 Yaratilgan: ${order.createdAt ? escapeHtml(String(order.createdAt).slice(0, 19).replace("T", " ")) : "—"}`,
+  ];
+
+  if (order.status === "paid") {
+    lines.push(
+      ``,
+      `✅ <b>To'langan.</b> Pul bizga yetib kelgan.`,
+      `🕒 To'langan vaqti: ${order.paidAt ? escapeHtml(String(order.paidAt).slice(0, 19).replace("T", " ")) : "—"}`,
+      order.delivered
+        ? `📦 Xizmat berilgan: ha`
+        : `⚠️ Xizmat hali berilmagan (${order.deliveryAttempts || 0} urinish). Bot uni o'zi qayta urinadi.`
+    );
+  } else if (order.status === "prepared") {
+    lines.push(
+      ``,
+      `🟡 <b>Yarim yo'lda.</b> Click "Prepare" bosqichini yuborgan va biz qabul qilganmiz, ` +
+        `lekin "Complete" bosqichi kelmagan.`,
+      ``,
+      `Bu Click tomonidagi holat — pul hali bizga o'tmagan.`
+    );
+  } else {
+    lines.push(
+      ``,
+      `🔴 <b>To'lanmagan.</b> Bu buyurtma bo'yicha Clickdan birorta ham tasdiq kelmagan.`,
+      ``,
+      `Ikki sabab bo'lishi mumkin:`,
+      `1️⃣ Click bizga umuman murojaat qilmagan — kabinetda Prepare/Complete URL lari yo'q yoki noto'g'ri`,
+      `2️⃣ Murojaat qilgan, lekin biz rad etganmiz — CLICK_SECRET_KEY mos kelmayapti`,
+      ``,
+      `Qaysi biri ekani Render loglarida yozilgan: "Click prepare received" bo'lsa — ikkinchisi, ` +
+        `umuman yo'q bo'lsa — birinchisi.`
+    );
+  }
+
+  return lines.join("\n");
 }
 
 // --- referral leaderboard ----------------------------------------------------
@@ -1617,6 +1699,23 @@ function createAdminBot(token, mainBotTelegram) {
         }
       }
 
+      // A payment id pasted straight off a Click receipt. Checked before the
+      // complaint code and the search, because it cannot be mistaken for
+      // either -- and because "where is my money" is the question somebody is
+      // usually standing in front of you asking.
+      if (ORDER_ID_RE.test(query)) {
+        let order = null;
+        try {
+          order = await getOrder(query);
+        } catch (err) {
+          console.error(`Could not read order ${query}:`, err.message);
+          await ctx.reply(`⚠️ Buyurtmani o'qib bo'lmadi: ${err.message}`);
+          return;
+        }
+        await ctx.reply(formatOrder(query, order), { parse_mode: "HTML" });
+        return;
+      }
+
       // Jumping straight to a complaint by the code the reporter was given.
       if (/^\d{5}$/.test(query)) {
         const complaint = await getComplaint(query);
@@ -1865,6 +1964,8 @@ module.exports = {
     failedAttempts,
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
     formatFullReport,
+    formatOrder,
+    ORDER_ID_RE,
     formatReferralBoard,
     REFERRAL_TOP_N,
     GIFT_UNLOCK_CREDITS,
