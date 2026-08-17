@@ -745,11 +745,18 @@ function startOfTashkentDay(now = new Date()) {
 // could return.
 const TODAY_LIMIT = 200;
 
+// Both buttons, always -- including when a count is zero.
+//
+// Hiding the empty one made the screen change shape from day to day: an
+// admin who saw two buttons yesterday and one today has no way to tell "no
+// girls joined" from "the girls button is broken", and reads it as the
+// second. The count is on the button, so (0) says it plainly, and tapping it
+// says it again in words.
 function todayGenderKeyboard(boys, girls) {
-  const rows = [];
-  if (boys > 0) rows.push([Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male")]);
-  if (girls > 0) rows.push([Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female")]);
-  return rows.length ? Markup.inlineKeyboard(rows) : undefined;
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male")],
+    [Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female")],
+  ]);
 }
 
 // --- referral leaderboard ----------------------------------------------------

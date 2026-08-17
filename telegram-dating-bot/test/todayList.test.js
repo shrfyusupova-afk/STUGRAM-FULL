@@ -119,6 +119,21 @@ test("an empty list says so instead of showing a blank one", async () => {
   assert.strictEqual(cards(sent).length, 0, "and send no card");
 });
 
+// A button that disappears on a quiet day is indistinguishable from a button
+// that broke. Both are always there, with the count on them -- so (0) says
+// "nobody joined", and the screen keeps the same shape every day.
+test("both buttons are shown even when one side is empty", async () => {
+  const sent = await h.send(A(), h.textUpdate(TODAY, admin));
+  const buttons = inline(sent);
+  const data = buttons.map((b) => b.callback_data);
+
+  assert.ok(data.includes("admin:today:male"), "the boys button");
+  assert.ok(data.includes("admin:today:female"), "and the girls button, with nobody in it");
+
+  const girls = buttons.find((b) => b.callback_data === "admin:today:female");
+  assert.match(girls.text, /\(0\)/, "and it says zero rather than hiding");
+});
+
 // --- the summary and the two lists -------------------------------------------
 
 test("the summary counts today's arrivals by gender", async () => {

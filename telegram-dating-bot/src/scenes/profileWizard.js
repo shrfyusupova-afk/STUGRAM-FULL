@@ -8,7 +8,7 @@ const { isRegistered } = require("../profileState");
 const { resolveLocation } = require("../geo");
 const { isSubscribed, isEnabled, CHANNEL_URL } = require("../channelGate");
 
-const MIN_AGE = 10;
+const MIN_AGE = 18;
 const MAX_AGE = 90;
 const MAX_BIO_LENGTH = 80;
 
