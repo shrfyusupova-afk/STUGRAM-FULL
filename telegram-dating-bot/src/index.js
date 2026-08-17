@@ -472,6 +472,13 @@ if (webhookDomain) {
         process.env.CLICK_MERCHANT_ID && process.env.CLICK_SERVICE_ID && process.env.CLICK_SECRET_KEY
           ? clickConfigProblem() || "configured"
           : "NOT CONFIGURED (no payments possible)",
+      // Not secrets: both of these are query parameters in every checkout URL
+      // the bot hands out, so anybody who has ever paid has seen them. Shown
+      // because the one Click failure that produced no error anywhere -- a
+      // merchant_id with a phone number accidentally appended -- was
+      // invisible from here, and cost days of guessing. The secret key is
+      // never shown, only whether it is present.
+      clickIds: `service_id=${process.env.CLICK_SERVICE_ID || "?"} merchant_id=${process.env.CLICK_MERCHANT_ID || "?"}`,
       // Without ALERT_CHAT_ID, a crash or a broadcast failure is invisible
       // until someone thinks to load this page or a user complains -- worth
       // seeing at a glance, same reasoning as the two fields above it.
