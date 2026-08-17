@@ -79,6 +79,7 @@ module.exports = {
   setNotificationsEnabled: store.setNotificationsEnabled,
   getNotificationsEnabled: store.getNotificationsEnabled,
   countNewProfilesSince: store.countNewProfilesSince,
+  listNewProfilesSince: store.listNewProfilesSince,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,

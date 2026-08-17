@@ -454,6 +454,21 @@ async function countNewProfilesSince(gender, sinceIso) {
   return n;
 }
 
+// Same population as countNewProfilesSince, listed rather than counted. See
+// the Postgres version for why it is ordered oldest-first and capped.
+async function listNewProfilesSince(gender, sinceIso, limit = 200) {
+  const all = readJson(DB_PATH);
+  const out = [];
+  for (const [id, p] of Object.entries(all)) {
+    if (p?.gender !== gender) continue;
+    if (p.active === false || !p.mediaFileId || !p.phone) continue;
+    if (!p.updatedAt || p.updatedAt < sinceIso) continue;
+    out.push({ id, profile: p });
+  }
+  out.sort((a, b) => String(a.profile.updatedAt).localeCompare(String(b.profile.updatedAt)));
+  return out.slice(0, limit);
+}
+
 // --- referrals ---------------------------------------------------------------
 //
 // Keyed by the INVITED person, matching the Postgres primary key: someone can
@@ -790,6 +805,7 @@ module.exports = {
   setNotificationsEnabled,
   getNotificationsEnabled,
   countNewProfilesSince,
+  listNewProfilesSince,
   recordDislike,
   getDislikes,
   getDiscoverState,

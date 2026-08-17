@@ -8,6 +8,7 @@ const {
   setAnonGenderFilterUntil, addUnlockCredits,
   topReferrers, countReferrals,
   countPendingLikers, getLikeNoticeAt,
+  listNewProfilesSince,
 } = require("./db");
 const { getOrder } = require("./orders");
 const {
@@ -56,6 +57,7 @@ const COMPLAINTS_LABEL = "🚨 Shikoyatlar";
 const BROADCAST_LABEL = "📢 Reklama berish";
 const REPORT_LABEL = "📈 To'liq hisobot";
 const REFERRALS_LABEL = "🏆 Takliflar statistikasi";
+const TODAY_LABEL = "📅 Bugun qo'shilganlar";
 const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
@@ -224,7 +226,7 @@ function adminMenuKeyboard() {
     [STATS_LABEL, USERS_LABEL],
     [SALES_LABEL, COMPLAINTS_LABEL],
     [REPORT_LABEL, AI_LABEL],
-    [REFERRALS_LABEL],
+    [REFERRALS_LABEL, TODAY_LABEL],
     [BROADCAST_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
@@ -722,6 +724,63 @@ function formatOrder(orderId, order) {
   }
 
   return lines.join("\n");
+}
+
+// --- today's arrivals ---------------------------------------------------------
+
+// "Today" in Tashkent, not UTC. The two disagree for five hours every night,
+// which is exactly the window somebody checking the panel late would be
+// asking about -- and being told "0 joined today" at 1am because the server
+// has already rolled over is worse than not having the screen.
+const TASHKENT_OFFSET_HOURS = 5;
+
+function startOfTashkentDay(now = new Date()) {
+  const shifted = new Date(now.getTime() + TASHKENT_OFFSET_HOURS * 60 * 60 * 1000);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() - TASHKENT_OFFSET_HOURS * 60 * 60 * 1000).toISOString();
+}
+
+// How many are loaded per gender. This is a screen paged through by hand, so
+// the cap is about what a person can actually look at, not what the database
+// could return.
+const TODAY_LIMIT = 200;
+
+function todayGenderKeyboard(boys, girls) {
+  const rows = [];
+  if (boys > 0) rows.push([Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male:0")]);
+  if (girls > 0) rows.push([Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female:0")]);
+  return rows.length ? Markup.inlineKeyboard(rows) : undefined;
+}
+
+// Back / position / forward, with the ends disabled rather than missing --
+// a row that changes width as you page through is harder to use than one
+// that stays put.
+function todayNavKeyboard(gender, index, total) {
+  const back = index > 0
+    ? Markup.button.callback("⬅️ Orqaga", `admin:today:${gender}:${index - 1}`)
+    : Markup.button.callback("·", "admin:today:noop");
+  const forward = index + 1 < total
+    ? Markup.button.callback("➡️ Keyingisi", `admin:today:${gender}:${index + 1}`)
+    : Markup.button.callback("·", "admin:today:noop");
+  return Markup.inlineKeyboard([
+    [back, Markup.button.callback(`${index + 1}/${total}`, "admin:today:noop"), forward],
+  ]);
+}
+
+// One person, numbered, with everything an admin would otherwise have to run
+// a search to see. The id is <code> so it can be copied straight into the
+// search box for the full card and the gift buttons.
+function todayCard(index, total, id, profile) {
+  const joined = profile.updatedAt ? String(profile.updatedAt).slice(11, 16) : "—";
+  return (
+    `${index + 1}/${total} — bugun qo'shilganlar\n\n` +
+    `👤 <b>${escapeHtml(profile.name || "—")}</b>, ${escapeHtml(profile.age ?? "—")}\n` +
+    `🆔 <code>${escapeHtml(id)}</code>\n` +
+    `📍 ${escapeHtml(profile.location || "—")}\n` +
+    `📞 ${escapeHtml(profile.phone || "—")}\n` +
+    `🕒 Qo'shildi: ${escapeHtml(joined)}\n\n` +
+    `📝 ${escapeHtml(profile.bio || "—")}`
+  );
 }
 
 // --- referral leaderboard ----------------------------------------------------
@@ -1288,6 +1347,93 @@ function createAdminBot(token, mainBotTelegram) {
         disable_web_page_preview: true,
         ...adminMenuKeyboard(),
       });
+    })
+  );
+
+  // Who joined today, and then who exactly.
+  //
+  // The summary answers "how did today go" in one tap; the two buttons under
+  // it answer "who are they", one person at a time. Paged rather than dumped:
+  // a good day is dozens of profiles, and a dozen photos fired into the chat
+  // at once is the same mistake the likes list used to make.
+  bot.hears(
+    TODAY_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      const since = startOfTashkentDay();
+      const [boys, girls] = await Promise.all([
+        listNewProfilesSince("male", since, TODAY_LIMIT),
+        listNewProfilesSince("female", since, TODAY_LIMIT),
+      ]);
+      const total = boys.length + girls.length;
+
+      if (total === 0) {
+        await ctx.reply(
+          "📅 Bugun hali hech kim ro'yxatdan o'tmagan.\n\n" +
+            "(Hisob Toshkent vaqti bilan yarim tundan boshlanadi.)",
+          adminMenuKeyboard()
+        );
+        return;
+      }
+
+      await ctx.reply(
+        `📅 <b>Bugun qo'shilganlar</b>\n\n` +
+          `👥 Jami: <b>${total}</b> ta\n` +
+          `👦 Bollar: ${boys.length} ta\n` +
+          `👧 Qizlar: ${girls.length} ta\n\n` +
+          `Kimlar ekanini ko'rish uchun pastdagi tugmani bosing 👇`,
+        { parse_mode: "HTML", ...todayGenderKeyboard(boys.length, girls.length) }
+      );
+    })
+  );
+
+  // The dead ends of the pager (and the position label itself) share one
+  // callback, so tapping them acknowledges and does nothing rather than
+  // leaving Telegram's spinner turning.
+  bot.action(
+    "admin:today:noop",
+    requireAdmin(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+    })
+  );
+
+  bot.action(
+    /^admin:today:(male|female):(\d+)$/,
+    requireAdmin(async (ctx) => {
+      const gender = ctx.match[1];
+      const index = Number(ctx.match[2]);
+      await safeAnswerCbQuery(ctx);
+
+      // Re-read the list on every tap rather than caching it: somebody can
+      // register while the admin is halfway through, and a cached list would
+      // silently page through a snapshot that no longer matches the counts
+      // shown above it.
+      const people = await listNewProfilesSince(gender, startOfTashkentDay(), TODAY_LIMIT);
+      if (people.length === 0) {
+        await ctx.reply("Bu ro'yxat bo'sh — bugun bu jinsdan hech kim qo'shilmagan.");
+        return;
+      }
+      if (index >= people.length) {
+        await ctx.reply(`Ro'yxat tugadi (${people.length} ta).`);
+        return;
+      }
+
+      const { id, profile } = people[index];
+      const caption = todayCard(index, people.length, id, profile);
+      const keyboard = todayNavKeyboard(gender, index, people.length);
+
+      if (profile.mediaFileId) {
+        await ctx.sendChatAction(profile.mediaType === "video" ? "upload_video" : "upload_photo").catch(() => {});
+        const failure = await replyWithProfileMedia(
+          ctx,
+          profile,
+          { caption, parse_mode: "HTML", protect_content: true, ...keyboard },
+          mainBotTelegram
+        );
+        if (!failure) return;
+        console.error(`today list media send failed for ${id}:`, failure);
+      }
+      await ctx.reply(`${caption}\n\n📷 Rasm ko'rsatib bo'lmadi.`, { parse_mode: "HTML", ...keyboard });
     })
   );
 
@@ -1964,6 +2110,8 @@ module.exports = {
     failedAttempts,
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
     formatFullReport,
+    startOfTashkentDay,
+    todayCard,
     formatOrder,
     ORDER_ID_RE,
     formatReferralBoard,

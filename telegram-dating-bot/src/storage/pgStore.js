@@ -710,6 +710,25 @@ async function countNewProfilesSince(gender, sinceIso) {
   return rows[0].n;
 }
 
+// The same population countNewProfilesSince counts, but listed -- so the admin
+// panel can show WHO joined today rather than only how many.
+//
+// Ordered oldest-first so the numbering matches the order they actually
+// arrived in, and LIMITed because this is a screen somebody pages through by
+// hand: a day that brings ten thousand sign-ups should still answer instantly.
+async function listNewProfilesSince(gender, sinceIso, limit = 200) {
+  const { rows } = await query(
+    `SELECT * FROM profiles
+      WHERE gender = $1 AND active = TRUE
+        AND media_file_id IS NOT NULL AND phone IS NOT NULL
+        AND updated_at >= $2
+      ORDER BY updated_at ASC
+      LIMIT $3`,
+    [gender, sinceIso, limit]
+  );
+  return rows.map((row) => ({ id: row.user_id, profile: rowToProfile(row) }));
+}
+
 // --- referrals ---------------------------------------------------------------
 
 // Returns true only if this is the FIRST time this person has been recorded as
@@ -1130,7 +1149,7 @@ module.exports = {
   countPendingLikers,
   backfillMatchUnlocks,
   touchLastSeen, listWinbackTargets, markWinbackSent, markBotBlocked,
-  setNotificationsEnabled, getNotificationsEnabled, countNewProfilesSince,
+  setNotificationsEnabled, getNotificationsEnabled, countNewProfilesSince, listNewProfilesSince,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
