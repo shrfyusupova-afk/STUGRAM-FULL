@@ -354,15 +354,25 @@ function queueNotification(chatKey, task) {
   return chain;
 }
 
-// A message per like is how a bot gets muted. People are told every third
-// like instead -- 3, 6, 9, 12 and on -- so each message is a real reason to
-// come back ("three more people are waiting") rather than a nudge about one
-// stranger.
-const LIKE_MILESTONE_STEP = 3;
+// A message per like is how a bot gets muted. People are told every Nth like
+// instead, so each message is a real reason to come back ("more people are
+// waiting") rather than a nudge about one stranger.
+//
+// The step is different by gender because the two sides get liked at very
+// different rates -- women accumulate admirers much faster than men do, so
+// the same step of 3 meant a woman's phone buzzing constantly while a man
+// waited a long time between messages either way. Men keep the original
+// step; women's is stretched to 7 so a milestone still means something.
+const LIKE_MILESTONE_STEP = { male: 3, female: 7, default: 3 };
+
+function milestoneStepFor(gender) {
+  return LIKE_MILESTONE_STEP[gender] || LIKE_MILESTONE_STEP.default;
+}
 
 // The largest milestone this count has reached, or 0 below the first one.
-function milestoneFor(count) {
-  return Math.floor(count / LIKE_MILESTONE_STEP) * LIKE_MILESTONE_STEP;
+function milestoneFor(count, gender) {
+  const step = milestoneStepFor(gender);
+  return Math.floor(count / step) * step;
 }
 
 // Announces a milestone at most once per crossing.
@@ -376,8 +386,8 @@ async function notifyNewLike(telegram, likedId) {
   return queueNotification(String(likedId), async () => {
     // Counted at send time, not queue time, so the number is current even if
     // several likes were waiting ahead of this one.
-    const count = await pendingLikerCount(likedId);
-    const reached = milestoneFor(count);
+    const [count, profile] = await Promise.all([pendingLikerCount(likedId), getProfile(likedId)]);
+    const reached = milestoneFor(count, profile?.gender);
     const announced = await getLikeNoticeAt(likedId);
 
     // "Why didn't I get a message when three people liked me?" is otherwise
@@ -758,6 +768,7 @@ module.exports = {
     pickCandidate,
     MAX_SHOWN_MEMORY,
     milestoneFor,
+    milestoneStepFor,
     LIKE_MILESTONE_STEP,
     // Notifications are paced, so they finish AFTER the update that caused
     // them. A test that asserts on them has to wait for the queue rather than

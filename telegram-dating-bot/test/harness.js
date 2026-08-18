@@ -126,13 +126,13 @@ const adminBot = () => bots.find((b) => b.__label === "admin");
 let updateId = 1;
 const USER = { id: 900001, is_bot: false, first_name: "Test", username: "testuser" };
 
-function textUpdate(text, from = USER, entities) {
+function textUpdate(text, from = USER, entities, chat) {
   return {
     update_id: updateId++,
     message: {
       message_id: updateId,
       date: Math.floor(Date.now() / 1000),
-      chat: { id: from.id, type: "private" },
+      chat: chat || { id: from.id, type: "private" },
       from,
       text,
       ...(entities ? { entities } : {}),
@@ -142,11 +142,11 @@ function textUpdate(text, from = USER, entities) {
 
 // bot.start / bot.command match on the bot_command ENTITY, not on the raw
 // text -- a synthetic "/start" without this is silently ignored.
-function commandUpdate(text, from = USER) {
-  return textUpdate(text, from, [{ type: "bot_command", offset: 0, length: text.split(" ")[0].length }]);
+function commandUpdate(text, from = USER, chat) {
+  return textUpdate(text, from, [{ type: "bot_command", offset: 0, length: text.split(" ")[0].length }], chat);
 }
 
-function callbackUpdate(data, from = USER) {
+function callbackUpdate(data, from = USER, chat) {
   return {
     update_id: updateId++,
     callback_query: {
@@ -154,7 +154,7 @@ function callbackUpdate(data, from = USER) {
       from,
       chat_instance: "1",
       data,
-      message: { message_id: 1, date: 0, chat: { id: from.id, type: "private" }, text: "x" },
+      message: { message_id: 1, date: 0, chat: chat || { id: from.id, type: "private" }, text: "x" },
     },
   };
 }
@@ -172,13 +172,13 @@ function contactUpdate(phone, from = USER) {
   };
 }
 
-function photoUpdate(from = USER) {
+function photoUpdate(from = USER, chat) {
   return {
     update_id: updateId++,
     message: {
       message_id: updateId,
       date: Math.floor(Date.now() / 1000),
-      chat: { id: from.id, type: "private" },
+      chat: chat || { id: from.id, type: "private" },
       from,
       photo: [{ file_id: "MAIN_SIDE_FILE", width: 100, height: 100 }],
     },

@@ -73,9 +73,18 @@ const RENDERERS = {
     await ctx.reply(t(lang, "askMedia"), backKeyboard(lang));
   },
   location: async (ctx, lang) => {
+    // Telegram refuses a location-request button OUTSIDE a private chat --
+    // "location can be requested in private chats only" -- and refuses the
+    // WHOLE sendMessage call over it, not just the button. That crashed this
+    // step for anyone the wizard ever runs against in a group (the bot is a
+    // member of the VIP group, and a session is per chat+user, so typing
+    // /anketa there starts a fresh registration IN the group). Typing the
+    // location in is still offered either way, so nobody loses the ability
+    // to finish -- they just don't get the one-tap button outside a DM.
+    const extraButtons = ctx.chat?.type === "private" ? [Markup.button.locationRequest(t(lang, "locationButton"))] : [];
     await ctx.reply(t(lang, "askLocation"), {
       parse_mode: "HTML",
-      ...backKeyboard(lang, [Markup.button.locationRequest(t(lang, "locationButton"))]),
+      ...backKeyboard(lang, extraButtons),
     });
   },
   bio: async (ctx, lang) => {
