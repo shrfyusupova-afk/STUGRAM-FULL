@@ -441,6 +441,25 @@ bot.catch((err, ctx) => {
 
   console.error(`Bot error for update ${ctx.updateType}:`, err);
   alert(`Main bot error on ${ctx.updateType}:\n${err.stack || err.message}`).catch(() => {});
+
+  // And say so to the person standing in front of it.
+  //
+  // Without this, a handler that throws produces total silence: the tap is
+  // registered, nothing is sent, and from the outside the button is simply
+  // dead. That is indistinguishable from a button that was never wired up,
+  // so it gets reported as "the Premium button doesn't work" rather than as
+  // an error -- and the one person who could act on it looks for the wrong
+  // thing. A sentence costs nothing and turns a mystery into a retry.
+  //
+  // Every failure here is swallowed: this runs BECAUSE something already
+  // failed, and an error thrown out of the error handler would take the whole
+  // update down again for no gain.
+  const chatId = ctx.chat?.id || ctx.from?.id;
+  if (!chatId) return;
+  getLanguage(ctx.from?.id)
+    .catch(() => null)
+    .then((lang) => ctx.telegram.sendMessage(chatId, t(lang || DEFAULT_LANG, "unexpectedError")))
+    .catch(() => {});
 });
 
 if (webhookDomain) {

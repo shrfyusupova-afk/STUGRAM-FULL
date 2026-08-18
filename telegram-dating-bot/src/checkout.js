@@ -14,9 +14,17 @@ const paymeProvider = require("./payme");
 const PROVIDER_LABELS = { click: "Click", payme: "Payme" };
 
 // Order matters only in that it is the order the buttons appear in.
+//
+// `sandbox` answers "is this provider pointed at its TEST environment right
+// now". Payme's onboarding requires running against test.paycom.uz for a
+// while before they switch the merchant on -- and a button leading there is
+// worse than no button at all: it opens, it looks completely normal, and no
+// real money can move through it. The person tries to pay, nothing arrives,
+// and every screen involved reads as broken. A provider that cannot take real
+// money simply contributes no button until it can.
 const PROVIDERS = [
-  { key: "click", label: "click", build: clickProvider.buildCheckoutUrl },
-  { key: "payme", label: "payme", build: paymeProvider.buildCheckoutUrl },
+  { key: "click", label: "click", build: clickProvider.buildCheckoutUrl, sandbox: () => false },
+  { key: "payme", label: "payme", build: paymeProvider.buildCheckoutUrl, sandbox: paymeProvider.isTestCheckout },
 ];
 
 // Creates (or reuses) the order and returns one button per configured
@@ -31,6 +39,7 @@ async function buildPaymentOptions(userId, { type, targetId, amountSom, lang, t 
 
   const options = [];
   for (const provider of PROVIDERS) {
+    if (provider.sandbox()) continue;
     const url = provider.build(orderId, amountSom);
     if (!url) continue;
     options.push({
@@ -50,7 +59,7 @@ async function buildPaymentOptions(userId, { type, targetId, amountSom, lang, t 
     // so no screen can end up with providers but no way to come back from
     // them -- see paymentNote() for why coming back has to be explicit.
     rows: configured ? [...paymentRows(options), [confirmButton(orderId, lang, t)]] : [],
-    note: configured ? paymentNote(lang, t) : "",
+    note: configured ? paymentNote(options, lang, t) : "",
   };
 }
 
@@ -75,8 +84,15 @@ function confirmButton(orderId, lang, t) {
 // Appended to every paywall's text. Same reason: the three steps have to be
 // visible BEFORE the tap, because after the tap the person is on a different
 // site and there is nothing left of ours to read.
-function paymentNote(lang, t) {
-  return t(lang, "paymentHowToNote");
+//
+// Step 1 names the providers actually on the screen rather than both of them
+// always. A note that says "tap Click or Payme" above a single Click button
+// sends somebody hunting for a button that is not there -- and the natural
+// conclusion is that the screen is broken, not that we only take one card
+// today.
+function paymentNote(options, lang, t) {
+  const names = options.map((option) => PROVIDER_LABELS[option.key] || option.key);
+  return t(lang, "paymentHowToNote")(names.join(t(lang, "paymentProviderJoin")));
 }
 
 // Appends the note to a paywall body. One helper so every paywall separates

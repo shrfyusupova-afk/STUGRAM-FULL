@@ -394,7 +394,7 @@ test("the confirm flow exists in all three languages", async () => {
   const { t } = require("../src/i18n");
   const keys = [
     "paymentDoneButton",
-    "paymentHowToNote",
+    "paymentProviderJoin",
     "paymentPendingNotice",
     "paymentConfirmedNotice",
     "unlockPaidOpenProfile",
@@ -406,9 +406,14 @@ test("the confirm flow exists in all three languages", async () => {
       assert.strictEqual(typeof value, "string", `${lang}.${key} should be a plain string`);
       assert.ok(value.trim().length > 0, `${lang}.${key} is empty`);
     }
-    for (const key of ["premiumPurchaseCongrats", "vipPurchaseCongrats"]) {
+    // The note takes the provider names actually on screen, so it is a
+    // function of them rather than a fixed string -- a paywall showing one
+    // provider must not tell people to look for two.
+    for (const key of ["premiumPurchaseCongrats", "vipPurchaseCongrats", "paymentHowToNote"]) {
       assert.strictEqual(typeof t(lang, key), "function", `${lang}.${key} should take a parameter`);
     }
+    const note = t(lang, "paymentHowToNote")("Click");
+    assert.ok(note.includes("Click"), `${lang}.paymentHowToNote must use the names it is given`);
   }
 });
 

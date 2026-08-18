@@ -329,12 +329,16 @@ const STRINGS = {
     // provider's site and Telegram tells the bot nothing about it -- so the
     // only way they know what happens when they come back is if we say so
     // before they leave.
-    paymentHowToNote:
+    paymentHowToNote: (providers) =>
       "━━━━━━━━━━━━━━\n" +
-      "1️⃣ Click yoki Payme tugmasini bosing\n" +
+      `1️⃣ ${providers} tugmasini bosing\n` +
       "2️⃣ To'lovni amalga oshiring\n" +
       "3️⃣ So'ng «✅ To'lov qildim» tugmasini bosing\n\n" +
       "⏳ To'lov tasdiqlangach, funksiya bir necha soniyada ishga tushadi.",
+    unexpectedError:
+      "⚠️ Kutilmagan xatolik yuz berdi — amal bajarilmadi.\n\n" +
+      "Iltimos, bir necha soniyadan so'ng qayta urinib ko'ring. Takrorlansa, «🚨 Shikoyat» orqali bizga yozing.",
+    paymentProviderJoin: " yoki ",
     paymentDoneButton: "✅ To'lov qildim",
     paymentPendingNotice:
       "⏳ To'lov hali tasdiqlanmadi.\n\n" +
@@ -736,12 +740,16 @@ const STRINGS = {
     qrCaptionFor: (provider) => `📷 Отсканируйте QR-код и оплатите через ${provider}`,
     payWith_click: "💳 Оплатить через Click",
     payWith_payme: "💳 Оплатить через Payme",
-    paymentHowToNote:
+    paymentHowToNote: (providers) =>
       "━━━━━━━━━━━━━━\n" +
-      "1️⃣ Нажмите кнопку Click или Payme\n" +
+      `1️⃣ Нажмите кнопку ${providers}\n` +
       "2️⃣ Совершите оплату\n" +
       "3️⃣ Затем нажмите «✅ Я оплатил»\n\n" +
       "⏳ После подтверждения оплаты функция включится за несколько секунд.",
+    unexpectedError:
+      "⚠️ Произошла непредвиденная ошибка — действие не выполнено.\n\n" +
+      "Попробуйте ещё раз через несколько секунд. Если повторится, напишите нам через «🚨 Жалоба».",
+    paymentProviderJoin: " или ",
     paymentDoneButton: "✅ Я оплатил",
     paymentPendingNotice:
       "⏳ Оплата пока не подтверждена.\n\n" +
@@ -1138,12 +1146,16 @@ const STRINGS = {
     qrCaptionFor: (provider) => `📷 Scan the QR code and pay with ${provider}`,
     payWith_click: "💳 Pay with Click",
     payWith_payme: "💳 Pay with Payme",
-    paymentHowToNote:
+    paymentHowToNote: (providers) =>
       "━━━━━━━━━━━━━━\n" +
-      "1️⃣ Tap the Click or Payme button\n" +
+      `1️⃣ Tap the ${providers} button\n` +
       "2️⃣ Complete the payment\n" +
       "3️⃣ Then tap “✅ I have paid”\n\n" +
       "⏳ Once the payment is confirmed, the feature turns on within seconds.",
+    unexpectedError:
+      "⚠️ Something went wrong -- that didn't go through.\n\n" +
+      "Please try again in a few seconds. If it keeps happening, report it with \u201c\ud83d\udea8 Report\u201d.",
+    paymentProviderJoin: " or ",
     paymentDoneButton: "✅ I have paid",
     paymentPendingNotice:
       "⏳ Your payment hasn't been confirmed yet.\n\n" +

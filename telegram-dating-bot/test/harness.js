@@ -53,14 +53,31 @@ function failApi(predicate) {
   apiFailure = predicate;
 }
 
+// Telegram's own errors carry a numeric code alongside the text, and the app
+// branches on it: 403 means the person is gone and must be handled in
+// silence, 429 means wait and retry, anything else is a real fault worth
+// telling somebody about. A bare Error would have no code at all, so every
+// test using failApi would silently exercise the "real fault" branch --
+// including the tests written specifically to check the other two.
+//
+// The code is read off the front of the message ("403: Forbidden: ...", the
+// shape Telegram itself uses) and put where telegraf puts it.
+function telegramError(failure) {
+  const message = String(failure);
+  const err = new Error(message);
+  const code = Number((message.match(/^(\d{3})\b/) || [])[1]);
+  if (Number.isFinite(code)) err.response = { error_code: code, description: message };
+  return err;
+}
+
 Telegram.prototype.callApi = async function (method, payload = {}) {
   const label = String(this.token).startsWith("222") ? "admin" : "main";
   calls.push({ bot: label, method, payload });
   // AFTER recording: the call really was attempted, and a test asserting on
   // what the bot tried to send needs to see it.
   if (apiFailure) {
-    const message = apiFailure(method, payload, label);
-    if (message) throw new Error(message);
+    const failure = apiFailure(method, payload, label);
+    if (failure) throw telegramError(failure);
   }
   if (method === "getMe") return { id: 111, is_bot: true, first_name: label, username: `${label}_bot` };
   if (method === "getFile") return { file_id: payload.file_id, file_path: "photos/x.jpg" };
