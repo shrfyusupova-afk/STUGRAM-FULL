@@ -176,7 +176,13 @@ const HANDLERS = {
   location: async (ctx, lang, profile) => {
     const loc = ctx.message?.location;
     if (loc) {
-      profile.location = `${loc.latitude}, ${loc.longitude}`;
+      // A dropped pin used to be stored as the raw "41.31, 69.28" pair --
+      // resolveLocation's own coordinate branch (used below for the typed
+      // path too) was sitting right there unused. Routed through it now, so
+      // a shared pin gets the same "Chilonzor" a typed answer would, and the
+      // profile never shows a stranger a bare pair of numbers instead of a
+      // place name.
+      profile.location = resolveLocation(`${loc.latitude}, ${loc.longitude}`).label;
       return true;
     }
     const text = ctx.message?.text?.trim();

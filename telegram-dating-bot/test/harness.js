@@ -172,6 +172,21 @@ function contactUpdate(phone, from = USER) {
   };
 }
 
+// A tap on the "share my location" button -- what the wizard's location
+// step receives instead of typed text.
+function locationUpdate(lat, lon, from = USER, chat) {
+  return {
+    update_id: updateId++,
+    message: {
+      message_id: updateId,
+      date: Math.floor(Date.now() / 1000),
+      chat: chat || { id: from.id, type: "private" },
+      from,
+      location: { latitude: lat, longitude: lon },
+    },
+  };
+}
+
 function photoUpdate(from = USER, chat) {
   return {
     update_id: updateId++,
@@ -228,6 +243,7 @@ module.exports = {
   commandUpdate,
   callbackUpdate,
   contactUpdate,
+  locationUpdate,
   photoUpdate,
   USER,
 };
