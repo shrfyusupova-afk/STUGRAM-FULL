@@ -10,7 +10,8 @@ const {
   countPendingLikers, getLikeNoticeAt,
   listNewProfilesSince,
 } = require("./db");
-const { getOrder } = require("./orders");
+const { getOrder, createOrder, priceForType } = require("./orders");
+const { somToTiyin, ACCOUNT_FIELD, buildCheckoutUrl } = require("./payme");
 const {
   getSalesSummary,
   PREMIUM_PRICE_SOM,
@@ -840,6 +841,63 @@ function formatOrder(orderId, order) {
   return lines.join("\n");
 }
 
+// --- two live orders, for Payme's onboarding ---------------------------------
+//
+// Before Payme switches a merchant on, their integration team asks for
+// "ID и сумму по 2 заказам" -- two real order ids and what each one costs.
+// They run their own test suite against our API with those ids, so the ids
+// have to be ones our CheckPerformTransaction will actually accept: created
+// by this bot, still PENDING (an already-paid order fails their check), and
+// carrying the exact amount we will later compare their request against.
+//
+// Digging two ids out of the database by hand is how a wrong id gets sent and
+// a week is lost to "your API rejects our test". One command instead.
+//
+// Two DIFFERENT products, deliberately: a single price proves nothing about
+// whether the amount is compared at all, and Payme's suite checks that a
+// wrong amount is refused.
+const PAYME_SAMPLE_TYPES = ["premium", "anongender"];
+
+// Payme counts in tiyin -- 1 so'm = 100 tiyin -- and this is the single most
+// common thing to get wrong in an onboarding form. Both numbers are printed
+// side by side so nobody has to multiply anything by hand.
+function paymeSampleReport(entries) {
+  const lines = [
+    `🧾 <b>Payme uchun 2 ta buyurtma</b>`,
+    ``,
+    `Payme "ID и сумму по 2 заказам" so'raganda ana shularni yuboring.`,
+    ``,
+  ];
+
+  entries.forEach((entry, i) => {
+    lines.push(
+      `<b>${i + 1}) ${ORDER_TYPE_LABEL[entry.type] || entry.type}</b>`,
+      `🆔 <code>${escapeHtml(entry.orderId)}</code>`,
+      `💵 ${som(entry.amount)} = <b>${entry.tiyin}</b> tiyin`,
+      ``
+    );
+  });
+
+  lines.push(
+    `ℹ️ Payme summani <b>tiyin</b>da so'raydi: 1 so'm = 100 tiyin.`,
+    `ℹ️ Hisob maydoni (account): <code>${escapeHtml(ACCOUNT_FIELD)}</code>`,
+    ``,
+    `⚠️ Bu buyurtmalar <b>to'lanmagan</b> holatda turadi — Payme aynan shunday buyurtmani tekshiradi. Ularni to'lamang.`
+  );
+
+  return lines.join("\n");
+}
+
+// The same facts again, in Russian and in a tap-to-copy block, because the
+// next thing that happens is that this gets pasted into a chat with Payme.
+function paymeSamplePaste(entries) {
+  const rows = entries.map(
+    (entry, i) =>
+      `Заказ ${i + 1}: ${ACCOUNT_FIELD} = ${entry.orderId}, сумма = ${entry.amount} сум (${entry.tiyin} тийин)`
+  );
+  return `📋 Nusxa oling va Paymega yuboring:\n\n<pre>${escapeHtml(rows.join("\n"))}</pre>`;
+}
+
 // --- today's arrivals ---------------------------------------------------------
 
 // "Today" in Tashkent, not UTC. The two disagree for five hours every night,
@@ -1309,6 +1367,61 @@ function createAdminBot(token, mainBotTelegram) {
     loginState.set(ctx.from.id, "");
     await ctx.reply(`🔐 Kodni kiriting:\n${maskCode("")}`, pinKeyboard());
   });
+
+  // Two real, unpaid order ids and their amounts, for Payme's onboarding.
+  //
+  // Not a button: this is used a handful of times in the life of the bot,
+  // during one conversation with one payment provider, and a permanent button
+  // for it would sit in the menu forever confusing everybody else.
+  //
+  // Repeating the command is safe and, importantly, gives the SAME two ids --
+  // createOrder reuses a still-pending order for the same (person, product),
+  // so an id already sent to Payme does not go stale the moment somebody taps
+  // the command again.
+  bot.command(
+    "testorders",
+    requireAdmin(async (ctx) => {
+      const entries = [];
+      for (const type of PAYME_SAMPLE_TYPES) {
+        let orderId;
+        try {
+          orderId = await createOrder(ctx.from.id, { type, provider: "payme" });
+        } catch (err) {
+          console.error(`Could not create a Payme sample order (${type}):`, err.message);
+          await ctx.reply(`⚠️ Buyurtma yaratib bo'lmadi (${type}): ${err.message}`);
+          return;
+        }
+        // Read the amount back from the ledger rather than from the price
+        // constant: a reused pending order is what Payme will be checking
+        // against, and it carries its own stored amount.
+        const order = await getOrder(orderId).catch(() => null);
+        const amount = order?.amount ?? priceForType(type);
+        entries.push({ type, orderId, amount, tiyin: somToTiyin(amount) });
+      }
+
+      await ctx.reply(paymeSampleReport(entries), { parse_mode: "HTML" });
+      await ctx.reply(paymeSamplePaste(entries), { parse_mode: "HTML" });
+
+      // Only when the merchant id is already set. Before that there is no
+      // real checkout page to open, and a broken link would read as a bug in
+      // the bot rather than as configuration that has not landed yet.
+      const links = entries
+        .map((entry) => ({ entry, url: buildCheckoutUrl(entry.orderId, entry.amount) }))
+        .filter((row) => row.url);
+      if (links.length) {
+        await ctx.reply(
+          `🔗 <b>Tekshirish uchun havolalar</b>\n\n` +
+            links
+              .map(
+                ({ entry, url }) =>
+                  `${ORDER_TYPE_LABEL[entry.type] || entry.type}:\n<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
+              )
+              .join("\n\n"),
+          { parse_mode: "HTML", disable_web_page_preview: true }
+        );
+      }
+    })
+  );
 
   bot.hears(FAQ_WHAT_LABEL, async (ctx) => {
     await ctx.reply(FAQ_WHAT_TEXT, faqKeyboard());
@@ -2385,6 +2498,9 @@ module.exports = {
     startOfTashkentDay,
     formatOrder,
     ORDER_ID_RE,
+    paymeSampleReport,
+    paymeSamplePaste,
+    PAYME_SAMPLE_TYPES,
     formatReferralBoard,
     REFERRAL_TOP_N,
     GIFT_UNLOCK_CREDITS,
