@@ -58,6 +58,7 @@ const BROADCAST_LABEL = "📢 Reklama berish";
 const REPORT_LABEL = "📈 To'liq hisobot";
 const REFERRALS_LABEL = "🏆 Takliflar statistikasi";
 const TODAY_LABEL = "📅 Bugun qo'shilganlar";
+const GIFT_ALL_LABEL = "🎁 Hammaga ehson";
 const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
@@ -227,7 +228,7 @@ function adminMenuKeyboard() {
     [SALES_LABEL, COMPLAINTS_LABEL],
     [REPORT_LABEL, AI_LABEL],
     [REFERRALS_LABEL, TODAY_LABEL],
-    [BROADCAST_LABEL],
+    [BROADCAST_LABEL, GIFT_ALL_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
 }
@@ -281,6 +282,12 @@ const complaintCursor = new Map();
 // adminId -> { step: "media"|"text"|"confirm", fileId, mediaType, text }
 const broadcastDraft = new Map();
 
+// A gift being composed for EVERYONE: which gift, and the note that goes with
+// it. Same shape and lifetime as broadcastDraft -- one at a time per admin,
+// cleared by leaveComposers, never persisted, because an abandoned
+// half-written gift must not be resumable by accident.
+const giftAllDraft = new Map();
+
 // Admins who tapped "AI yordamchi" and are now in an open chat with it --
 // every text message they send is a question (or a follow-up) until they
 // tap Orqaga, not a search term or a complaint reply.
@@ -295,6 +302,7 @@ const aiHistory = new Map();
 // next thing typed would be swallowed by whichever flow was left dangling.
 function leaveComposers(adminId) {
   broadcastDraft.delete(adminId);
+  giftAllDraft.delete(adminId);
   complaintCursor.delete(adminId);
   aiAwaiting.delete(adminId);
   aiHistory.delete(adminId);
@@ -435,6 +443,112 @@ async function runBroadcast(mainBotTelegram, adminChatId, adminTelegram, draft, 
     console.error("broadcast summary failed:", err.message);
   }
   console.log(`Broadcast finished: ${sent} delivered, ${blocked} blocked, ${failed} failed, ${recipients.length} total`);
+}
+
+// Grants the gift to everyone and tells them, one at a time and paced.
+//
+// Two failures are counted separately on purpose. A grant that fails is a
+// person who did NOT get what was promised; a message that fails is a person
+// who got it and does not know. The first is a bug to chase, the second is
+// mostly people who blocked the bot -- reporting them as one number would
+// hide the first behind the second.
+//
+// The grant always comes before the message: if the order were reversed, a
+// crash in between would leave somebody told about a gift they never got.
+async function runGiftAll(mainBotTelegram, adminChatId, adminTelegram, draft, recipients) {
+  let granted = 0;
+  let notified = 0;
+  let blocked = 0;
+  let grantFailed = 0;
+  let lastProgressAt = Date.now();
+
+  const text = giftAllMessage(draft.kind, draft.note);
+
+  const grantTo = async (userId) => {
+    if (draft.kind === "credits") {
+      await addUnlockCredits(userId, GIFT_UNLOCK_CREDITS);
+      return;
+    }
+    if (draft.kind === "vip") {
+      await grantVipChat(userId);
+      return;
+    }
+    // Premium and the anon filter both EXTEND rather than replace, so nobody
+    // with time already on the clock loses any of it to a gift.
+    const profile = await getProfile(userId);
+    if (draft.kind === "premium") {
+      await setPremiumUntil(userId, extendFrom(profile?.premiumUntil, PREMIUM_DAYS));
+      return;
+    }
+    await setAnonGenderFilterUntil(userId, extendFrom(profile?.anonGenderUntil, ANON_GENDER_DAYS));
+  };
+
+  for (const userId of recipients) {
+    try {
+      await grantTo(userId);
+      granted++;
+    } catch (err) {
+      grantFailed++;
+      console.error(`gift-all grant failed for ${userId}:`, err.message);
+      // Nothing was given, so say nothing -- a message about a gift that did
+      // not arrive is worse than silence.
+      continue;
+    }
+
+    try {
+      await mainBotTelegram.sendMessage(userId, text, { parse_mode: "HTML" });
+      notified++;
+    } catch (err) {
+      if (isGoneError(err)) {
+        // They blocked the bot or deleted their account. The gift is still
+        // recorded and waiting for them if they ever come back.
+        blocked++;
+      } else {
+        const wait = retryAfterMs(err);
+        if (wait) {
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          try {
+            await mainBotTelegram.sendMessage(userId, text, { parse_mode: "HTML" });
+            notified++;
+          } catch (retryErr) {
+            if (isGoneError(retryErr)) blocked++;
+            else console.error(`gift-all notify failed for ${userId}:`, retryErr.message);
+          }
+        } else {
+          console.error(`gift-all notify failed for ${userId}:`, err.message);
+        }
+      }
+    }
+
+    if (Date.now() - lastProgressAt > 30000) {
+      lastProgressAt = Date.now();
+      try {
+        await adminTelegram.sendMessage(adminChatId, `🎁 Tarqatilmoqda... ${granted + grantFailed}/${recipients.length}`);
+      } catch {
+        /* progress is a nicety; never let it break the run */
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, BROADCAST_GAP_MS));
+  }
+
+  try {
+    await adminTelegram.sendMessage(
+      adminChatId,
+      `✅ Ehson tarqatildi!\n\n` +
+        `🎁 Berildi: ${granted} ta\n` +
+        `📬 Xabar yetdi: ${notified} ta\n` +
+        `🚫 Botni bloklagan (sovg'asi saqlanib qoldi): ${blocked} ta\n` +
+        (grantFailed ? `⚠️ Berib bo'lmadi: ${grantFailed} ta\n` : "") +
+        `👥 Jami: ${recipients.length} ta`,
+      adminMenuKeyboard()
+    );
+  } catch (err) {
+    console.error("gift-all summary failed:", err.message);
+  }
+  console.log(
+    `Gift-all (${draft.kind}) finished: ${granted} granted, ${notified} notified, ${blocked} blocked, ${grantFailed} failed`
+  );
 }
 
 // Shown while stepping through complaints one at a time.
@@ -757,6 +871,66 @@ function todayGenderKeyboard(boys, girls) {
     [Markup.button.callback(`👦 Bollar (${boys})`, "admin:today:male")],
     [Markup.button.callback(`👧 Qizlar (${girls})`, "admin:today:female")],
   ]);
+}
+
+// --- gifting everybody at once -----------------------------------------------
+//
+// The same four things the per-person gift buttons hand out, applied to the
+// whole audience. Deliberately built on the SAME grant calls rather than
+// bulk SQL: a gift given to a thousand people must be indistinguishable from
+// one given to a single person, or the two paths drift and only one of them
+// stays correct.
+//
+// extendFrom in particular is why: topping somebody up has to ADD to what
+// they have left, and a bulk UPDATE setting everyone to "now + 30 days" would
+// silently shorten every subscription that had more than a month on it.
+const GIFT_ALL_KINDS = {
+  credits: {
+    label: "🔓 1 ta anketa ochish",
+    describe: () => `🔓 <b>${GIFT_UNLOCK_CREDITS} ta bepul anketa ochish</b>`,
+  },
+  premium: {
+    label: `💎 ${PREMIUM_DAYS} kunlik Premium`,
+    describe: () => `💎 <b>${PREMIUM_DAYS} kunlik Premium</b>`,
+  },
+  vip: {
+    label: "👑 VIP chatga kirish",
+    describe: () => `👑 <b>VIP chatga kirish huquqi</b>`,
+  },
+  anon: {
+    label: `🕵️ ${ANON_GENDER_DAYS} kunlik anonim filtr`,
+    describe: () => `🕵️ <b>${ANON_GENDER_DAYS} kunlik anonim chat jins filtri</b>`,
+  },
+};
+
+function giftAllKindKeyboard() {
+  return Markup.inlineKeyboard(
+    Object.entries(GIFT_ALL_KINDS).map(([kind, spec]) => [
+      Markup.button.callback(spec.label, `admin:giftall:kind:${kind}`),
+    ])
+  );
+}
+
+function giftAllConfirmKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("✅ Ha, tarqatilsin", "admin:giftall:yes"),
+      Markup.button.callback("❌ Yo'q, bekor", "admin:giftall:no"),
+    ],
+  ]);
+}
+
+// What each recipient sees: the admin's own words first, then exactly what
+// they were given. The note alone would leave people guessing what arrived;
+// the gift line alone would read as a system notice rather than a present.
+function giftAllMessage(kind, note) {
+  return (
+    `🎁 <b>Sizga sovg'a!</b>\n\n` +
+    `${note}\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `Nima berildi: ${GIFT_ALL_KINDS[kind].describe()}\n\n` +
+    `Yoqimli foydalanish! 💛`
+  );
 }
 
 // --- referral leaderboard ----------------------------------------------------
@@ -1406,6 +1580,91 @@ function createAdminBot(token, mainBotTelegram) {
     })
   );
 
+  // --- gifting everybody at once ---
+  //
+  // Three steps, deliberately: pick the gift, write what to say about it, then
+  // confirm. Handing something to every user at once is not undoable, so the
+  // last screen shows exactly what is about to happen, to how many people,
+  // before anything is granted.
+  bot.hears(
+    GIFT_ALL_LABEL,
+    requireAdmin(async (ctx) => {
+      leaveComposers(ctx.from.id);
+      giftAllDraft.set(ctx.from.id, { step: "kind" });
+      await ctx.reply(
+        "🎁 <b>Hammaga ehson</b>\n\n" +
+          "1️⃣ Avval qaysi sovg'ani tarqatmoqchisiz? Pastdan tanlang 👇",
+        { parse_mode: "HTML", ...giftAllKindKeyboard() }
+      );
+    })
+  );
+
+  bot.action(
+    /^admin:giftall:kind:(credits|premium|vip|anon)$/,
+    requireAdmin(async (ctx) => {
+      const kind = ctx.match[1];
+      await safeAnswerCbQuery(ctx);
+      const draft = giftAllDraft.get(ctx.from.id);
+      // The buttons live on a message that stays in the chat, so an old one
+      // can be tapped long after the flow was abandoned. Without this, that
+      // tap would start a half-initialised gift from the middle.
+      if (draft?.step !== "kind") {
+        await ctx.reply(`Bu tugma eskirgan — «${GIFT_ALL_LABEL}» dan qaytadan boshlang.`, adminMenuKeyboard());
+        return;
+      }
+
+      draft.kind = kind;
+      draft.step = "note";
+      await ctx.reply(
+        `Tanlandi: ${GIFT_ALL_KINDS[kind].describe()}\n\n` +
+          "2️⃣ Endi nima deb izoh yozasiz? Foydalanuvchilar sovg'a bilan birga shu matnni ko'radi.\n\n" +
+          "Masalan: «Bugun botimizga 1000 kishi qo'shildi — shu munosabat bilan hammaga sovg'a! 🎉»",
+        { parse_mode: "HTML", ...cancelKeyboard() }
+      );
+    })
+  );
+
+  bot.action(
+    "admin:giftall:no",
+    requireAdmin(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+      giftAllDraft.delete(ctx.from.id);
+      await ctx.reply("❌ Bekor qilindi. Hech kimga hech narsa berilmadi.", adminMenuKeyboard());
+    })
+  );
+
+  bot.action(
+    "admin:giftall:yes",
+    requireAdmin(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+      const draft = giftAllDraft.get(ctx.from.id);
+      if (draft?.step !== "confirm") {
+        await ctx.reply(`Bu tugma eskirgan — «${GIFT_ALL_LABEL}» dan qaytadan boshlang.`, adminMenuKeyboard());
+        return;
+      }
+      // Cleared before the run starts, so a second tap on the same message
+      // cannot set the whole thing going twice.
+      giftAllDraft.delete(ctx.from.id);
+
+      const recipients = await listAllProfileIds();
+      if (recipients.length === 0) {
+        await ctx.reply("Sovg'a beradigan foydalanuvchi yo'q.", adminMenuKeyboard());
+        return;
+      }
+
+      await ctx.reply(
+        `🚀 Tarqatish boshlandi — ${recipients.length} ta foydalanuvchi.\n` +
+          `Tugagach xabar beraman, kutib turishingiz shart emas.`,
+        adminMenuKeyboard()
+      );
+      // Not awaited: this takes minutes for a large audience and must not
+      // block the admin's chat or anything else the bot is handling.
+      runGiftAll(mainBotTelegram, ctx.chat.id, ctx.telegram, draft, recipients).catch((err) =>
+        console.error("gift-all crashed:", err)
+      );
+    })
+  );
+
   // --- AI assistant ---
   //
   // An open-ended chat, not a one-shot report: every message this admin
@@ -1776,6 +2035,48 @@ function createAdminBot(token, mainBotTelegram) {
         return;
       }
 
+      // Writing the note that goes with a mass gift. Same priority reasoning
+      // as the advert below: while a gift is waiting for its wording, that is
+      // what this message is.
+      const gift = giftAllDraft.get(ctx.from.id);
+      if (gift) {
+        if (query === BACK_LABEL) {
+          giftAllDraft.delete(ctx.from.id);
+          await ctx.reply("❌ Ehson bekor qilindi.", adminMenuKeyboard());
+          return;
+        }
+        if (gift.step === "kind") {
+          await ctx.reply("Avval sovg'ani tanlang 👆", cancelKeyboard());
+          return;
+        }
+        if (gift.step === "note") {
+          // The note is rendered inside an HTML message, so an unescaped < or
+          // & the admin typed would be read as a broken tag and Telegram would
+          // refuse every single delivery.
+          gift.note = escapeHtml(ctx.message.text);
+          gift.step = "confirm";
+
+          const recipients = await listAllProfileIds();
+          await ctx.reply(
+            `👀 <b>Namuna — foydalanuvchilar aynan shuni ko'radi:</b>\n\n` +
+              `${giftAllMessage(gift.kind, gift.note)}`,
+            { parse_mode: "HTML" }
+          );
+          await ctx.reply(
+            `3️⃣ Tasdiqlaysizmi?\n\n` +
+              `🎁 Sovg'a: ${GIFT_ALL_KINDS[gift.kind].describe()}\n` +
+              `👥 Kimga: <b>${recipients.length}</b> ta foydalanuvchiga\n\n` +
+              `⚠️ Bu amalni orqaga qaytarib bo'lmaydi.`,
+            { parse_mode: "HTML", ...giftAllConfirmKeyboard() }
+          );
+          return;
+        }
+        if (gift.step === "confirm") {
+          await ctx.reply("Pastdagi «✅ Ha» yoki «❌ Yo'q» tugmasini bosing.", cancelKeyboard());
+          return;
+        }
+      }
+
       // Composing an advert takes priority: while a draft is waiting for its
       // text, that is what this message is -- not a search and not a reply.
       const draft = broadcastDraft.get(ctx.from.id);
@@ -2079,6 +2380,8 @@ module.exports = {
     failedAttempts,
     FAILED_ATTEMPT_SWEEP_GRACE_MS,
     formatFullReport,
+    giftAllMessage,
+    GIFT_ALL_KINDS,
     startOfTashkentDay,
     formatOrder,
     ORDER_ID_RE,
