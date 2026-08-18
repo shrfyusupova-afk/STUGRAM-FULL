@@ -1271,6 +1271,61 @@ function som(n) {
   return `${n.toLocaleString("uz-UZ")} so'm`;
 }
 
+// --- sales report --------------------------------------------------------
+
+// One block per product, then a total. The total is computed here rather
+// than added as a fifth field on getSalesSummary() -- it is nothing but the
+// other four added up, and a report is the only place that ever needs it.
+function formatSalesReport(sales, title) {
+  const totalCount = sales.premium.count + sales.unlock.count + sales.vipchat.count + sales.anongender.count;
+  const totalRevenue =
+    sales.premium.totalRevenue + sales.unlock.totalRevenue + sales.vipchat.totalRevenue + sales.anongender.totalRevenue;
+
+  return (
+    `💰 Sotuvlar hisoboti — ${title}\n\n` +
+    `💎 Premium obuna:\n` +
+    `✅ Sotilgan: ${sales.premium.count} ta\n` +
+    `💵 Jami tushum: ${som(sales.premium.totalRevenue)}\n\n` +
+    // Prices come from the constants, never retyped here -- a hardcoded
+    // copy silently goes stale the moment a price changes.
+    `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona):\n` +
+    `✅ Sotilgan: ${sales.unlock.count} ta\n` +
+    `💵 Jami tushum: ${som(sales.unlock.totalRevenue)}\n\n` +
+    `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona):\n` +
+    `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
+    `💵 Jami tushum: ${som(sales.vipchat.totalRevenue)}\n\n` +
+    `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)}):\n` +
+    `✅ Sotilgan: ${sales.anongender.count} ta\n` +
+    `💵 Jami tushum: ${som(sales.anongender.totalRevenue)}\n\n` +
+    `━━━━━━━━━━━━━━\n` +
+    `📊 Umumiy sotuv: ${totalCount} ta\n` +
+    `💰 Umumiy tushum: ${som(totalRevenue)}`
+  );
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Rolling windows, not calendar week/month/year -- "haftalik" here means
+// "the last 7 days from right now", the same convention the win-back
+// sweeper and the AI assistant's own snapshot already use elsewhere in this
+// file. A calendar week would reset to near-zero every Monday morning,
+// which is a worse answer to "how are sales doing" than a rolling one.
+const SALES_PERIODS = {
+  week: { days: 7, title: "so'nggi 7 kun" },
+  month: { days: 30, title: "so'nggi 30 kun" },
+  year: { days: 365, title: "so'nggi 365 kun" },
+};
+
+function salesPeriodKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback("📅 Haftalik sotuv", "admin:sales:week"),
+      Markup.button.callback("🗓 Oylik sotuv", "admin:sales:month"),
+      Markup.button.callback("📆 Yillik sotuv", "admin:sales:year"),
+    ],
+  ]);
+}
+
 // Same real snapshot the AI assistant grounds its answers in (see
 // aiAssistant.js), just formatted straight into text here -- no model call,
 // no API cost, no dependency on ANTHROPIC_API_KEY at all. This is the button
@@ -1557,23 +1612,21 @@ function createAdminBot(token, mainBotTelegram) {
     requireAdmin(async (ctx) => {
       leaveComposers(ctx.from.id);
       const sales = await getSalesSummary();
-      await ctx.reply(
-        `💰 Sotuvlar hisoboti\n\n` +
-          `💎 Premium obuna:\n` +
-          `✅ Sotilgan: ${sales.premium.count} ta\n` +
-          `💵 Jami tushum: ${sales.premium.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          // Prices come from the constants, never retyped here -- a hardcoded
-          // copy silently goes stale the moment a price changes.
-          `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona):\n` +
-          `✅ Sotilgan: ${sales.unlock.count} ta\n` +
-          `💵 Jami tushum: ${sales.unlock.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona):\n` +
-          `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
-          `💵 Jami tushum: ${sales.vipchat.totalRevenue.toLocaleString("uz-UZ")} so'm\n\n` +
-          `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)}):\n` +
-          `✅ Sotilgan: ${sales.anongender.count} ta\n` +
-          `💵 Jami tushum: ${sales.anongender.totalRevenue.toLocaleString("uz-UZ")} so'm`
-      );
+      await ctx.reply(formatSalesReport(sales, "barcha vaqt"), salesPeriodKeyboard());
+    })
+  );
+
+  // Same report, scoped to a rolling window. A separate message rather than
+  // editing the one above -- the all-time totals stay on screen to compare
+  // against, instead of being overwritten by whichever period was tapped last.
+  bot.action(
+    /^admin:sales:(week|month|year)$/,
+    requireAdmin(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+      const period = SALES_PERIODS[ctx.match[1]];
+      const sinceIso = new Date(Date.now() - period.days * DAY_MS).toISOString();
+      const sales = await getSalesSummary(sinceIso);
+      await ctx.reply(formatSalesReport(sales, period.title));
     })
   );
 
