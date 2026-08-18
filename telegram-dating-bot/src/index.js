@@ -24,7 +24,12 @@ const { safeAnswerCbQuery, isGoneError } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
 const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendFrom, PREMIUM_DAYS, ANON_GENDER_DAYS } = require("./click");
-const { registerPaymeRoutes } = require("./payme");
+const {
+  registerPaymeRoutes,
+  isTestCheckout: paymeCheckoutIsTest,
+  ACCOUNT_FIELD: PAYME_ACCOUNT_FIELD,
+} = require("./payme");
+const paymeAccountField = () => PAYME_ACCOUNT_FIELD;
 const { registerChannelGate, startChannelProbe, channelGateStatus } = require("./channelGate");
 const { vipInviteLink, probeVipChat, vipInviteStatus } = require("./vipInvite");
 const { registerChatIdReporter } = require("./chatIdReporter");
@@ -488,8 +493,16 @@ if (webhookDomain) {
       // button is not offered at all and its callbacks are refused.
       paymePayments:
         process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY
-          ? "configured"
+          ? paymeCheckoutIsTest()
+            ? "configured (TEST checkout -- no real money)"
+            : "configured"
           : "NOT CONFIGURED (Payme button hidden)",
+      // Not a secret: the account field name and the merchant id both travel
+      // in every checkout link. Shown for the same reason the Click ids are --
+      // a mismatch between what Payme's cash-box expects here and what the
+      // bot actually sends is invisible otherwise, and shows up only as
+      // payments that never settle.
+      paymeIds: `merchant_id=${process.env.PAYME_MERCHANT_ID || "?"} account_field=${paymeAccountField()}`,
       miniApp: MINI_APP_ENABLED ? "enabled" : "disabled",
       // Reads "active" only when the bot is genuinely an admin of the
       // channel. Anything else means the gate is letting everybody through --

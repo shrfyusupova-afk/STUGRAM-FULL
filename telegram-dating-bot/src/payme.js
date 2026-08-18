@@ -66,13 +66,30 @@ function isConfigured() {
   return Boolean(process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY);
 }
 
+// Where the checkout page lives.
+//
+// Payme issues a merchant TWO key pairs -- one for their sandbox and one for
+// real money -- and each only works against its own checkout host. Testing
+// with the sandbox key against the live host fails in a way that looks like a
+// bad key rather than the wrong environment, so the host is configurable
+// instead of assumed.
+//
+// The default is production, because that is what a deployment without this
+// variable set should mean. Point PAYME_CHECKOUT_URL at Payme's sandbox host
+// while testing, then remove it to go live.
+const CHECKOUT_URL = (process.env.PAYME_CHECKOUT_URL || "https://checkout.paycom.uz").replace(/\/+$/, "");
+
+function isTestCheckout() {
+  return /test/i.test(CHECKOUT_URL);
+}
+
 // The checkout page. Payme takes one base64 blob rather than query params:
 //   m=<merchant id>;ac.<account field>=<order id>;a=<amount in tiyin>
 function buildCheckoutUrl(merchantTransId, amountSom) {
   const merchantId = process.env.PAYME_MERCHANT_ID;
   if (!merchantId) return null;
   const payload = `m=${merchantId};ac.${ACCOUNT_FIELD}=${merchantTransId};a=${somToTiyin(amountSom)}`;
-  return `https://checkout.paycom.uz/${Buffer.from(payload).toString("base64")}`;
+  return `${CHECKOUT_URL}/${Buffer.from(payload).toString("base64")}`;
 }
 
 // --- authentication ----------------------------------------------------------
@@ -372,6 +389,8 @@ function registerPaymeRoutes(app, { onPaid, bodyParser } = {}) {
 module.exports = {
   registerPaymeRoutes,
   buildCheckoutUrl,
+  isTestCheckout,
+  ACCOUNT_FIELD,
   isConfigured,
   somToTiyin,
   ERROR,

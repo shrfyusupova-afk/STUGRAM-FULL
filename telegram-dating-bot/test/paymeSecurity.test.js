@@ -306,6 +306,27 @@ test("a Click-paid order cannot then be paid again through Payme", async () => {
   assert.strictEqual(res.error.code, ERROR.ORDER_ALREADY_PAID);
 });
 
+// --- which environment the checkout points at --------------------------------
+//
+// Payme issues two key pairs, sandbox and live, and each only works against
+// its own checkout host. Testing with the sandbox key against the live host
+// fails in a way that looks like a bad key rather than the wrong environment,
+// which is a day lost to the wrong question.
+
+test("the checkout host defaults to production and can be pointed elsewhere", () => {
+  const payme = require("../src/payme");
+  const url = payme.buildCheckoutUrl("premium_abc", 79900);
+  assert.ok(url.startsWith("https://checkout.paycom.uz/"), `default must be live, got ${url}`);
+  assert.strictEqual(payme.isTestCheckout(), false, "and must not claim to be a test");
+
+  // The payload Payme actually reads: merchant, account field, amount in
+  // TIYIN -- a hundred times the so'm figure.
+  const payload = Buffer.from(url.split("/").pop(), "base64").toString("utf8");
+  assert.match(payload, /m=merchant123/, "the merchant id");
+  assert.match(payload, /ac\.order_id=premium_abc/, "the account field and order");
+  assert.match(payload, /a=7990000$/, "and 79 900 so'm expressed as tiyin");
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;
