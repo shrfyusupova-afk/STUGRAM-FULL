@@ -469,6 +469,52 @@ async function listNewProfilesSince(gender, sinceIso, limit = 200) {
   return out.slice(0, limit);
 }
 
+// --- premium expiry reminders ------------------------------------------------
+// Same behaviour as the Postgres version; see there for why the window has a
+// lower bound as well as an upper one.
+const DAY_MS_JSON = 24 * 60 * 60 * 1000;
+
+async function listPremiumExpiring(limit = 200) {
+  const all = readJson(DB_PATH);
+  const now = Date.now();
+  const out = [];
+  for (const [id, p] of Object.entries(all)) {
+    if (!p?.premiumUntil) continue;
+    if (p.active === false || p.botBlocked || p.notificationsEnabled === false) continue;
+    const until = new Date(p.premiumUntil).getTime();
+    if (!Number.isFinite(until)) continue;
+    if (until > now + 7 * DAY_MS_JSON) continue;
+    if (until < now - 2 * DAY_MS_JSON) continue;
+    out.push({ userId: id, premiumUntil: p.premiumUntil, noticeAt: p.premiumNoticeAt ?? null });
+  }
+  out.sort((a, b) => String(a.premiumUntil).localeCompare(String(b.premiumUntil)));
+  return out.slice(0, limit);
+}
+
+async function setPremiumNoticeAt(userId, value) {
+  const all = readJson(DB_PATH);
+  const key = String(userId);
+  if (!all[key]) return;
+  all[key] = { ...all[key], premiumNoticeAt: value };
+  writeJson(DB_PATH, all);
+}
+
+async function clearRenewedPremiumNotices() {
+  const all = readJson(DB_PATH);
+  const now = Date.now();
+  let cleared = 0;
+  for (const [id, p] of Object.entries(all)) {
+    if (p?.premiumNoticeAt === undefined || p?.premiumNoticeAt === null) continue;
+    if (!p.premiumUntil) continue;
+    if (new Date(p.premiumUntil).getTime() > now + 7 * DAY_MS_JSON) {
+      all[id] = { ...p, premiumNoticeAt: null };
+      cleared++;
+    }
+  }
+  if (cleared) writeJson(DB_PATH, all);
+  return cleared;
+}
+
 // --- referrals ---------------------------------------------------------------
 //
 // Keyed by the INVITED person, matching the Postgres primary key: someone can
@@ -806,6 +852,9 @@ module.exports = {
   getNotificationsEnabled,
   countNewProfilesSince,
   listNewProfilesSince,
+  listPremiumExpiring,
+  setPremiumNoticeAt,
+  clearRenewedPremiumNotices,
   recordDislike,
   getDislikes,
   getDiscoverState,

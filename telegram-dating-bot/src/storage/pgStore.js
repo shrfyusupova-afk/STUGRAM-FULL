@@ -253,6 +253,11 @@ async function init() {
   // error, it is a fact worth recording -- writing to them again is wasted
   // quota forever.
   await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN NOT NULL DEFAULT FALSE`);
+  // Which expiry reminder this person has already had, as the days-remaining
+  // bucket it belonged to (7, 5, 3, 0). NULL means none is owed -- either the
+  // subscription is nowhere near ending, or it was just renewed and the
+  // sweeper reset it so the next cycle can speak again.
+  await query(`ALTER TABLE profiles ADD COLUMN IF NOT EXISTS premium_notice_at INTEGER`);
   await query(
     `CREATE INDEX IF NOT EXISTS profiles_winback_idx ON profiles (last_seen_at)
        WHERE active = TRUE AND notifications_enabled = TRUE AND bot_blocked = FALSE`
@@ -729,6 +734,55 @@ async function listNewProfilesSince(gender, sinceIso, limit = 200) {
   return rows.map((row) => ({ id: row.user_id, profile: rowToProfile(row) }));
 }
 
+// --- premium expiry reminders ------------------------------------------------
+
+// Everyone whose Premium is inside the reminder window: about to end, or
+// ended in the last couple of days.
+//
+// The lower bound matters as much as the upper one. Without it, every person
+// whose Premium lapsed months ago -- back before this feature existed, with
+// no notice recorded -- would be told today that it "just expired".
+async function listPremiumExpiring(limit = 200) {
+  const { rows } = await query(
+    `SELECT user_id, premium_until, premium_notice_at
+       FROM profiles
+      WHERE premium_until IS NOT NULL
+        AND premium_until <= NOW() + INTERVAL '7 days'
+        AND premium_until >= NOW() - INTERVAL '2 days'
+        AND active = TRUE
+        AND bot_blocked = FALSE
+        AND notifications_enabled = TRUE
+      ORDER BY premium_until ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    userId: r.user_id,
+    premiumUntil: r.premium_until.toISOString(),
+    noticeAt: r.premium_notice_at,
+  }));
+}
+
+async function setPremiumNoticeAt(userId, value) {
+  await query(`UPDATE profiles SET premium_notice_at = $2 WHERE user_id = $1`, [String(userId), value]);
+}
+
+// Renewing puts the end date back out of reach, and that has to clear the
+// marker or the next cycle would find "already told them about 7 days" still
+// standing and stay silent all the way to expiry.
+//
+// One statement for everyone rather than a check per person: it costs the
+// same whether it clears nobody or a thousand.
+async function clearRenewedPremiumNotices() {
+  const { rowCount } = await query(
+    `UPDATE profiles SET premium_notice_at = NULL
+      WHERE premium_notice_at IS NOT NULL
+        AND premium_until IS NOT NULL
+        AND premium_until > NOW() + INTERVAL '7 days'`
+  );
+  return rowCount;
+}
+
 // --- referrals ---------------------------------------------------------------
 
 // Returns true only if this is the FIRST time this person has been recorded as
@@ -1150,6 +1204,7 @@ module.exports = {
   backfillMatchUnlocks,
   touchLastSeen, listWinbackTargets, markWinbackSent, markBotBlocked,
   setNotificationsEnabled, getNotificationsEnabled, countNewProfilesSince, listNewProfilesSince,
+  listPremiumExpiring, setPremiumNoticeAt, clearRenewedPremiumNotices,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,

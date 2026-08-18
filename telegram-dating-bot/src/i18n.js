@@ -348,6 +348,35 @@ const STRINGS = {
       "👇 Profilga o'tish uchun pastdagi tugmani bosing.",
     unlockOpenProfileButton: "👤 Profilga o'tish",
     premiumActivated: (days) => `🎉 Premium faollashtirildi! ${days} kun davomida barcha imtiyozlardan foydalanasiz.`,
+    // --- Premium tugashi haqida eslatmalar ---
+    //
+    // Bu xabarlar sotuvchidan emas, do'stdan kelgandek yozilgan. Odam bir
+    // marta to'lagan — unga qayta reklama emas, oddiy eslatma kerak.
+    premiumEnding7: (name) =>
+      `👋 ${name ? `<b>${name}</b>, s` : "S"}alom!\n\n` +
+      `💎 Premium muddatingiz tugashiga <b>bir hafta</b> qoldi ⏳\n\n` +
+      `Shu vaqt ichida:\n` +
+      `🔓 anketalarni cheksiz ochdingiz\n` +
+      `🔥 profilingiz ko'proq ko'rsatildi\n` +
+      `🕵️ anonim chatda jinsni tanlab suhbatlashdingiz\n\n` +
+      `Nima deysiz — yana bittasini bosvoramizmi? 😄`,
+    premiumEnding5: (name) =>
+      `⏰ ${name ? `<b>${name}</b>, ` : ""}Premium tugashiga <b>5 kun</b> qoldi.\n\n` +
+      `Shunchaki eslatib qo'ydim, xolos 🙂\n` +
+      `Shoshilmang — hali vaqt bor 💛`,
+    premiumEnding3: (name) =>
+      `🔔 ${name ? `<b>${name}</b>, ` : ""}Premium tugashiga <b>3 kun</b> qoldi.\n\n` +
+      `Agar yoqqan bo'lsa — yana bittasini ulab qo'yamizmi? 😊\n` +
+      `⚡️ 5 daqiqagina vaqtingizni oladi, hammasi joyida davom etadi.`,
+    premiumEnded: (name) =>
+      `😔 ${name ? `<b>${name}</b>, ` : ""}Premium muddati tugadi.\n\n` +
+      `Endi:\n` +
+      `🔒 anketalar yopiq\n` +
+      `📉 profilingiz kamroq ko'rsatiladi\n` +
+      `🚫 anonim chatda jins tanlash yo'q\n\n` +
+      `Lekin hammasi bir tugma narida — qaytaramizmi? 💛`,
+    premiumRenewButton: "💎 Ha, yana bir oy",
+    premiumRenewExpiredButton: "💎 Premiumni qaytarish",
     premiumPurchaseCongrats: (days) =>
       "🎉 <b>Tabriklaymiz! Premium faollashtirildi 💎</b>\n\n" +
       `📅 Amal qilish muddati: <b>${days} kun</b>\n\n` +
@@ -726,6 +755,31 @@ const STRINGS = {
       "👇 Нажмите кнопку ниже, чтобы перейти к профилю.",
     unlockOpenProfileButton: "👤 Перейти к профилю",
     premiumActivated: (days) => `🎉 Премиум активирован! Все привилегии доступны в течение ${days} дней.`,
+    premiumEnding7: (name) =>
+      `👋 ${name ? `<b>${name}</b>, п` : "П"}ривет!\n\n` +
+      `💎 До конца вашего Premium осталась <b>неделя</b> ⏳\n\n` +
+      `За это время вы:\n` +
+      `🔓 открывали анкеты без ограничений\n` +
+      `🔥 показывались другим чаще\n` +
+      `🕵️ выбирали пол собеседника в анонимном чате\n\n` +
+      `Ну что, продлим ещё на месяц? 😄`,
+    premiumEnding5: (name) =>
+      `⏰ ${name ? `<b>${name}</b>, д` : "Д"}о конца Premium — <b>5 дней</b>.\n\n` +
+      `Просто напоминаю, не более 🙂\n` +
+      `Не спешите — время ещё есть 💛`,
+    premiumEnding3: (name) =>
+      `🔔 ${name ? `<b>${name}</b>, д` : "Д"}о конца Premium — <b>3 дня</b>.\n\n` +
+      `Если понравилось — продлим? 😊\n` +
+      `⚡️ Займёт минут пять, и всё продолжится как было.`,
+    premiumEnded: (name) =>
+      `😔 ${name ? `<b>${name}</b>, в` : "В"}аш Premium закончился.\n\n` +
+      `Теперь:\n` +
+      `🔒 анкеты снова закрыты\n` +
+      `📉 профиль показывается реже\n` +
+      `🚫 выбор пола в анонимном чате недоступен\n\n` +
+      `Но всё это в одном нажатии — вернём? 💛`,
+    premiumRenewButton: "💎 Да, ещё на месяц",
+    premiumRenewExpiredButton: "💎 Вернуть Premium",
     premiumPurchaseCongrats: (days) =>
       "🎉 <b>Поздравляем! Премиум активирован 💎</b>\n\n" +
       `📅 Срок действия: <b>${days} дней</b>\n\n` +
@@ -1103,6 +1157,31 @@ const STRINGS = {
       "👇 Tap the button below to open it.",
     unlockOpenProfileButton: "👤 Open the profile",
     premiumActivated: (days) => `🎉 Premium activated! You'll have all the perks for ${days} days.`,
+    premiumEnding7: (name) =>
+      `👋 Hi${name ? ` <b>${name}</b>` : ""}!\n\n` +
+      `💎 Your Premium has <b>one week</b> left ⏳\n\n` +
+      `This month you've been:\n` +
+      `🔓 opening profiles without limits\n` +
+      `🔥 shown to others more often\n` +
+      `🕵️ picking who you talk to in Anonymous chat\n\n` +
+      `So — shall we go another round? 😄`,
+    premiumEnding5: (name) =>
+      `⏰ ${name ? `<b>${name}</b>, y` : "Y"}our Premium ends in <b>5 days</b>.\n\n` +
+      `Just a heads up, nothing more 🙂\n` +
+      `No rush — there's still time 💛`,
+    premiumEnding3: (name) =>
+      `🔔 ${name ? `<b>${name}</b>, y` : "Y"}our Premium ends in <b>3 days</b>.\n\n` +
+      `If you've enjoyed it, shall we extend? 😊\n` +
+      `⚡️ Takes about five minutes and everything carries on as it was.`,
+    premiumEnded: (name) =>
+      `😔 ${name ? `<b>${name}</b>, y` : "Y"}our Premium has ended.\n\n` +
+      `From now on:\n` +
+      `🔒 profiles are locked again\n` +
+      `📉 yours is shown less often\n` +
+      `🚫 no gender choice in Anonymous chat\n\n` +
+      `All of it is one tap away though — bring it back? 💛`,
+    premiumRenewButton: "💎 Yes, one more month",
+    premiumRenewExpiredButton: "💎 Bring Premium back",
     premiumPurchaseCongrats: (days) =>
       "🎉 <b>Congratulations! Premium is active 💎</b>\n\n" +
       `📅 Valid for: <b>${days} days</b>\n\n` +

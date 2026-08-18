@@ -19,6 +19,7 @@ const {
   registerReferralHandlers,
 } = require("./referral");
 const { startWinbackSweeper, registerWinbackHandlers } = require("./winback");
+const { startPremiumReminders } = require("./premiumReminder");
 const { safeAnswerCbQuery, isGoneError } = require("./telegramSafety");
 const { isRegistered } = require("./profileState");
 const { floodGuardMiddleware } = require("./floodGuard");
@@ -772,6 +773,10 @@ if (webhookDomain) {
       // the free plan bills instance-hours per ACCOUNT, so a second always-on
       // service would push the pair past the monthly allowance and stop both.
       startWinbackSweeper(bot.telegram);
+      // Same timer-in-this-process reasoning. A subscription that ends with
+      // no warning is felt as something taken away; these four messages turn
+      // the last week into a conversation instead.
+      startPremiumReminders(bot.telegram);
 
       keepWebhookRegistered(
         bot.telegram,

@@ -80,6 +80,9 @@ module.exports = {
   getNotificationsEnabled: store.getNotificationsEnabled,
   countNewProfilesSince: store.countNewProfilesSince,
   listNewProfilesSince: store.listNewProfilesSince,
+  listPremiumExpiring: store.listPremiumExpiring,
+  setPremiumNoticeAt: store.setPremiumNoticeAt,
+  clearRenewedPremiumNotices: store.clearRenewedPremiumNotices,
   // Likes / dislikes
   recordLike: store.recordLike,
   getLikers: store.getLikers,
