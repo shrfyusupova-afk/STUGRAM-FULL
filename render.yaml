@@ -87,6 +87,25 @@ services:
       - key: ADMIN_WEBHOOK_SECRET
         generateValue: true
 
+  # A separate, unrelated bot: paste an Instagram/TikTok/YouTube link, get
+  # the video back. Its own service because it has nothing to do with
+  # ForOne -- different token, no database, and a crash in one must never be
+  # able to take the other down.
+  - type: web
+    name: video-downloader-bot
+    runtime: node
+    plan: free
+    rootDir: video-downloader-bot
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # From @BotFather -- a different bot than ForOne's.
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+
 databases:
   # NOTE: Render's free Postgres is time-limited (currently 30 days), after
   # which it must be upgraded or it is removed. Plan for that BEFORE it
