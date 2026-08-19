@@ -92,7 +92,11 @@ function confirmButton(orderId, lang, t) {
 // today.
 function paymentNote(options, lang, t) {
   const names = options.map((option) => PROVIDER_LABELS[option.key] || option.key);
-  return t(lang, "paymentHowToNote")(names.join(t(lang, "paymentProviderJoin")));
+  // A person whose bank Click doesn't support used to have no way through
+  // this screen at all -- the only button on it was the one that couldn't
+  // take their money. Every paywall now says plainly that there is a human
+  // to write to instead, right under the steps, not buried somewhere else.
+  return `${t(lang, "paymentHowToNote")(names.join(t(lang, "paymentProviderJoin")))}\n\n${t(lang, "paymentAdminHelpNote")}`;
 }
 
 // Appends the note to a paywall body. One helper so every paywall separates

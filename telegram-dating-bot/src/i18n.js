@@ -335,6 +335,10 @@ const STRINGS = {
       "2️⃣ To'lovni amalga oshiring\n" +
       "3️⃣ So'ng «✅ To'lov qildim» tugmasini bosing\n\n" +
       "⏳ To'lov tasdiqlangach, funksiya bir necha soniyada ishga tushadi.",
+    // Click is not everyone's bank. Rather than leave a person stuck on a
+    // provider that doesn't work for them, every paywall says plainly that
+    // there is another way through -- a human, not just another button.
+    paymentAdminHelpNote: "(Agar sizda Click bo'lmasa bu muammo emas 😊 adminimizga murojaat qiling @ForOnebest)",
     unexpectedError:
       "⚠️ Kutilmagan xatolik yuz berdi — amal bajarilmadi.\n\n" +
       "Iltimos, bir necha soniyadan so'ng qayta urinib ko'ring. Takrorlansa, «🚨 Shikoyat» orqali bizga yozing.",
@@ -746,6 +750,7 @@ const STRINGS = {
       "2️⃣ Совершите оплату\n" +
       "3️⃣ Затем нажмите «✅ Я оплатил»\n\n" +
       "⏳ После подтверждения оплаты функция включится за несколько секунд.",
+    paymentAdminHelpNote: "(Если у вас нет Click — это не проблема 😊 обратитесь к нашему админу @ForOnebest)",
     unexpectedError:
       "⚠️ Произошла непредвиденная ошибка — действие не выполнено.\n\n" +
       "Попробуйте ещё раз через несколько секунд. Если повторится, напишите нам через «🚨 Жалоба».",
@@ -1152,6 +1157,7 @@ const STRINGS = {
       "2️⃣ Complete the payment\n" +
       "3️⃣ Then tap “✅ I have paid”\n\n" +
       "⏳ Once the payment is confirmed, the feature turns on within seconds.",
+    paymentAdminHelpNote: "(No Click? No problem 😊 message our admin @ForOnebest)",
     unexpectedError:
       "⚠️ Something went wrong -- that didn't go through.\n\n" +
       "Please try again in a few seconds. If it keeps happening, report it with \u201c\ud83d\udea8 Report\u201d.",
