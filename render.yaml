@@ -59,6 +59,14 @@ services:
         sync: false
       - key: PAYME_KEY
         sync: false
+      # Payme's sandbox authenticates its test requests with a DIFFERENT key
+      # than the production one -- set this alongside PAYME_KEY while
+      # PAYME_CHECKOUT_URL still points at the sandbox, so their test suite
+      # can authorise. Both keys are accepted at once; nothing needs to be
+      # swapped out when Payme approves the merchant and production traffic
+      # starts arriving with the other key.
+      - key: PAYME_TEST_KEY
+        sync: false
       # Only needed if your cash-box uses an account field other than
       # "order_id" -- check the Payme merchant cabinet.
       - key: PAYME_ACCOUNT_FIELD

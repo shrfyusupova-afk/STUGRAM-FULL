@@ -95,6 +95,61 @@ test("an unauthenticated caller cannot even discover whether an order exists", a
   assert.strictEqual(res.error.code, ERROR.INSUFFICIENT_PRIVILEGE, "auth is checked before the order is looked at");
 });
 
+// --- 1b. a second, sandbox-only key ------------------------------------------
+//
+// Payme's own sandbox authenticates its test requests with a DIFFERENT key
+// than production traffic does. Before this, PAYME_KEY held only one value --
+// whichever one was configured, the other side's requests were refused as
+// "wrong key", which is exactly the support message this fixes: "мои запросы
+// не могут вас авторизоваться через песочницу".
+test("a request authenticated with PAYME_TEST_KEY is accepted alongside PAYME_KEY", async () => {
+  process.env.PAYME_TEST_KEY = "SANDBOX_ONLY_KEY";
+  try {
+    const sandboxAuth = "Basic " + Buffer.from("Paycom:SANDBOX_ONLY_KEY").toString("base64");
+    const res = await rpc("CheckPerformTransaction", { amount: 100, account: account("x") }, { auth: sandboxAuth });
+    // A made-up order id still fails, but on ORDER lookup, not on auth --
+    // proof the credential itself was accepted.
+    assert.notStrictEqual(res.error.code, ERROR.INSUFFICIENT_PRIVILEGE, "the sandbox key must authenticate");
+  } finally {
+    delete process.env.PAYME_TEST_KEY;
+  }
+});
+
+test("the production key still works once a sandbox key is also configured", async () => {
+  process.env.PAYME_TEST_KEY = "SANDBOX_ONLY_KEY";
+  try {
+    // goodAuth is built from PAYME_KEY (the production key) -- neither key
+    // must stop authenticating because the other one now exists too.
+    const res = await rpc("CheckPerformTransaction", { amount: 100, account: account("x") });
+    assert.notStrictEqual(res.error.code, ERROR.INSUFFICIENT_PRIVILEGE, "the production key must still authenticate");
+  } finally {
+    delete process.env.PAYME_TEST_KEY;
+  }
+});
+
+test("a key matching NEITHER PAYME_KEY nor PAYME_TEST_KEY is still refused", async () => {
+  process.env.PAYME_TEST_KEY = "SANDBOX_ONLY_KEY";
+  try {
+    const bad = "Basic " + Buffer.from("Paycom:NEITHER_ONE").toString("base64");
+    const res = await rpc("CheckPerformTransaction", { amount: 100, account: account("x") }, { auth: bad });
+    assert.strictEqual(res.error.code, ERROR.INSUFFICIENT_PRIVILEGE);
+  } finally {
+    delete process.env.PAYME_TEST_KEY;
+  }
+});
+
+test("isConfigured() is true with only a sandbox key set, no production key", () => {
+  const savedProdKey = process.env.PAYME_KEY;
+  delete process.env.PAYME_KEY;
+  process.env.PAYME_TEST_KEY = "SANDBOX_ONLY_KEY";
+  try {
+    assert.strictEqual(payme.isConfigured(), true, "a sandbox-only setup must still count as configured");
+  } finally {
+    process.env.PAYME_KEY = savedProdKey;
+    delete process.env.PAYME_TEST_KEY;
+  }
+});
+
 // --- 2. amount, in tiyin -----------------------------------------------------
 
 test("the amount is checked in TIYIN against the server-side price", async () => {

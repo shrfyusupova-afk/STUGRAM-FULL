@@ -63,7 +63,7 @@ const somToTiyin = (som) => Math.round(Number(som) * TIYIN_PER_SOM);
 const ACCOUNT_FIELD = process.env.PAYME_ACCOUNT_FIELD || "order_id";
 
 function isConfigured() {
-  return Boolean(process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY);
+  return Boolean(process.env.PAYME_MERCHANT_ID) && configuredKeys().length > 0;
 }
 
 // Where the checkout page lives.
@@ -104,9 +104,21 @@ function timingSafeEqualStr(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// Payme's own sandbox authenticates its test requests with a DIFFERENT key
+// than production does -- their support message ("мои запросы не могут вас
+// авторизоваться через песочницу") is exactly this: PAYME_KEY held the
+// production key while PAYME_CHECKOUT_URL still pointed at the sandbox, so
+// every test call was rejected before it ever reached the merchant logic.
+// Both keys are accepted here, whichever is configured, so nothing has to
+// be swapped out (and re-broken) the moment Payme approves the merchant and
+// production calls start arriving carrying the other one.
+function configuredKeys() {
+  return [process.env.PAYME_KEY, process.env.PAYME_TEST_KEY].filter(Boolean);
+}
+
 function authorised(req) {
-  const key = process.env.PAYME_KEY;
-  if (!key) return false;
+  const keys = configuredKeys();
+  if (keys.length === 0) return false;
 
   const header = req.headers.authorization || "";
   if (!header.startsWith("Basic ")) return false;
@@ -122,7 +134,11 @@ function authorised(req) {
   if (separator === -1) return false;
   const password = decoded.slice(separator + 1);
 
-  return timingSafeEqualStr(password, key);
+  // Every candidate key is checked -- stopping at the first non-match would
+  // still take the same time either way here (there are at most two), so
+  // this doesn't reopen the timing side-channel timingSafeEqualStr exists
+  // to close.
+  return keys.some((key) => timingSafeEqualStr(password, key));
 }
 
 // --- JSON-RPC plumbing -------------------------------------------------------
