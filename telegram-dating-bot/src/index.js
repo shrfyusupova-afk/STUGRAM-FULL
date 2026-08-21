@@ -27,6 +27,7 @@ const { registerClickRoutes, clickConfigProblem, retryUndeliveredOrders, extendF
 const {
   registerPaymeRoutes,
   isTestCheckout: paymeCheckoutIsTest,
+  isConfigured: paymeConfigured,
   ACCOUNT_FIELD: PAYME_ACCOUNT_FIELD,
 } = require("./payme");
 const paymeAccountField = () => PAYME_ACCOUNT_FIELD;
@@ -510,18 +511,22 @@ if (webhookDomain) {
       alerts: ALERT_CHAT_ID ? "configured" : "NOT CONFIGURED (crashes and failures are silent)",
       // Same reasoning as clickPayments above: without these, the Payme
       // button is not offered at all and its callbacks are refused.
-      paymePayments:
-        process.env.PAYME_MERCHANT_ID && process.env.PAYME_KEY
-          ? paymeCheckoutIsTest()
-            ? "configured (TEST checkout -- no real money)"
-            : "configured"
-          : "NOT CONFIGURED (Payme button hidden)",
+      paymePayments: paymeConfigured()
+        ? paymeCheckoutIsTest()
+          ? "configured (TEST checkout -- no real money)"
+          : "configured"
+        : "NOT CONFIGURED (Payme button hidden)",
       // Not a secret: the account field name and the merchant id both travel
       // in every checkout link. Shown for the same reason the Click ids are --
       // a mismatch between what Payme's cash-box expects here and what the
       // bot actually sends is invisible otherwise, and shows up only as
       // payments that never settle.
       paymeIds: `merchant_id=${process.env.PAYME_MERCHANT_ID || "?"} account_field=${paymeAccountField()}`,
+      // Neither key's VALUE is shown, only which ones are present -- this is
+      // the one thing "add PAYME_TEST_KEY in Render" cannot be confirmed
+      // without: whether the value actually landed, as opposed to a typo'd
+      // variable name or a deploy that hasn't picked it up yet.
+      paymeKeys: `key=${process.env.PAYME_KEY ? "set" : "MISSING"} test_key=${process.env.PAYME_TEST_KEY ? "set" : "MISSING"}`,
       miniApp: MINI_APP_ENABLED ? "enabled" : "disabled",
       // Reads "active" only when the bot is genuinely an admin of the
       // channel. Anything else means the gate is letting everybody through --
