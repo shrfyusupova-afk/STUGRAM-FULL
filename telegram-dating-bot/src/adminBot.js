@@ -9,7 +9,7 @@ const {
   topReferrers, countReferrals,
   countPendingLikers, getLikeNoticeAt,
   listNewProfilesSince,
-  listAllAds, getAd, setAdActive,
+  setAdActive,
 } = require("./db");
 const { getOrder, createOrder, priceForType } = require("./orders");
 const { somToTiyin, ACCOUNT_FIELD, buildCheckoutUrl } = require("./payme");
@@ -61,7 +61,6 @@ const REPORT_LABEL = "📈 To'liq hisobot";
 const REFERRALS_LABEL = "🏆 Takliflar statistikasi";
 const TODAY_LABEL = "📅 Bugun qo'shilganlar";
 const GIFT_ALL_LABEL = "🎁 Hammaga ehson";
-const ADS_LABEL = "📊 ForStatistic afishalari";
 const AI_LABEL = "🤖 AI yordamchi";
 const LOGOUT_LABEL = "🚪 Admin bo'lishdan chiqish";
 const NEXT_LABEL = "➡️ Keyingisi";
@@ -232,7 +231,6 @@ function adminMenuKeyboard() {
     [REPORT_LABEL, AI_LABEL],
     [REFERRALS_LABEL, TODAY_LABEL],
     [BROADCAST_LABEL, GIFT_ALL_LABEL],
-    [ADS_LABEL],
     [LOGOUT_LABEL],
   ]).resize();
 }
@@ -899,58 +897,6 @@ function paymeSamplePaste(entries) {
       `Заказ ${i + 1}: ${ACCOUNT_FIELD} = ${entry.orderId}, сумма = ${entry.amount} сум (${entry.tiyin} тийин)`
   );
   return `📋 Nusxa oling va Paymega yuboring:\n\n<pre>${escapeHtml(rows.join("\n"))}</pre>`;
-}
-
-// --- ForStatistic moderation --------------------------------------------------
-
-// How many rows the screen carries. Not a paging limit for its own sake: the
-// list prints five fields per ad and Telegram refuses a message over 4096
-// characters, so a long board would silently fail to send at all.
-const ADS_ADMIN_LIMIT = 20;
-
-// Hidden ads are shown too, and marked -- the whole point of this screen is
-// seeing what the public board is NOT showing, which a list of live ads
-// could never answer.
-function formatAdList(ads, total) {
-  if (ads.length === 0) {
-    return "📊 <b>ForStatistic afishalari</b>\n\nHozircha to'langan afisha yo'q.";
-  }
-
-  const rows = ads.map((ad, i) => {
-    const state = ad.active ? "✅ Ko'rinmoqda" : "🚫 Yashirilgan";
-    const action = ad.active ? `/adhide_${ad.id}` : `/adshow_${ad.id}`;
-    return (
-      `${i + 1}. <b>#${ad.id}</b> — ${state}\n` +
-      `📌 ${escapeHtml(ad.name)}\n` +
-      `💬 ${escapeHtml(ad.about)}\n` +
-      `🔗 ${escapeHtml(ad.link)}\n` +
-      `👤 <code>${escapeHtml(String(ad.userId))}</code>  ·  💰 ${som(ad.amountSom)}\n` +
-      `${action}`
-    );
-  });
-
-  return (
-    `📊 <b>ForStatistic afishalari</b>\n\n` +
-    `Jami: <b>${total}</b> ta` +
-    (total > ads.length ? ` (eng yuqori ${ads.length} tasi ko'rsatilmoqda)` : "") +
-    `\n\n${rows.join("\n\n")}`
-  );
-}
-
-async function showAdList(ctx) {
-  let ads;
-  try {
-    ads = await listAllAds(100);
-  } catch (err) {
-    console.error("Could not list ForStatistic ads:", err.message);
-    await ctx.reply(`⚠️ Afishalarni o'qib bo'lmadi: ${err.message}`);
-    return;
-  }
-  await ctx.reply(formatAdList(ads.slice(0, ADS_ADMIN_LIMIT), ads.length), {
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...adminMenuKeyboard(),
-  });
 }
 
 // --- today's arrivals ---------------------------------------------------------
@@ -1817,19 +1763,11 @@ function createAdminBot(token, mainBotTelegram) {
   //
   // Hiding never refunds or deletes: the row and the money paid stay on
   // record, so a wrongly hidden ad can be put straight back.
-  bot.hears(
-    ADS_LABEL,
-    requireAdmin(async (ctx) => {
-      leaveComposers(ctx.from.id);
-      await showAdList(ctx);
-    })
-  );
-
-  // Commands rather than inline buttons: Telegram renders "/adhide_12" as a
-  // tappable link inside the text, so a fifty-row list still costs one tap
-  // per row without carrying fifty buttons -- and the same command works
-  // straight from the "new ad" alert, which is where most of these decisions
-  // actually get made.
+  // The board and its moderation screen live in the MAIN bot; only these two
+  // commands are kept here, because the "new ad" alert is delivered through
+  // this bot (see configureAlerts in index.js) and its one-tap /adhide_12
+  // has to work in the chat it actually lands in. Deciding on an ad the
+  // moment you are told about it is the whole point of that alert.
   bot.hears(/^\/adhide_(\d+)$/, requireAdmin(async (ctx) => {
     const id = ctx.match[1];
     const ad = await setAdActive(id, false);
@@ -2646,9 +2584,6 @@ module.exports = {
     paymeSampleReport,
     paymeSamplePaste,
     PAYME_SAMPLE_TYPES,
-    formatAdList,
-    ADS_LABEL,
-    ADS_ADMIN_LIMIT,
     formatReferralBoard,
     REFERRAL_TOP_N,
     GIFT_UNLOCK_CREDITS,

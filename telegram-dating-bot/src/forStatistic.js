@@ -12,7 +12,7 @@
 // at it by id, and only appears on the board once money actually lands --
 // see the "adboard" branch of deliverPaidOrder in index.js.
 const { Markup } = require("telegraf");
-const { getLanguage, createAd, getAd, listTopAds } = require("./db");
+const { getLanguage, createAd, getAd, listTopAds, listAllAds, setAdActive, isAdmin } = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { AD_MIN_SOM, AD_MAX_SOM, isValidAdAmount } = require("./orders");
@@ -123,7 +123,7 @@ const shorten = (text, max) => (text.length <= max ? text : `${text.slice(0, max
 // carry their own "open this one" without fifty buttons.
 const adCommand = (id) => `/ad_${id}`;
 
-function boardKeyboard(lang, { page, pages }) {
+function boardKeyboard(lang, { page, pages, admin = false }) {
   const rows = [];
   if (pages > 1) {
     const nav = [];
@@ -136,6 +136,10 @@ function boardKeyboard(lang, { page, pages }) {
   // evenly, which would truncate each of them mid-word on a phone.
   rows.push([Markup.button.callback(t(lang, "forStatisticAddButton"), "fs:add")]);
   rows.push([Markup.button.callback(t(lang, "forStatisticInfoButton"), "fs:info")]);
+  // Added only for an admin, so moderation is reachable from the same screen
+  // the ads are on rather than through a command nobody remembers. Everyone
+  // else never sees that this row exists.
+  if (admin) rows.push([Markup.button.callback("🛡 Moderatsiya", "fs:mod")]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -174,10 +178,13 @@ function renderBoard(ads, page, lang) {
 async function showBoard(ctx, lang, page = 1) {
   const ads = await listTopAds(BOARD_LIMIT);
   const view = renderBoard(ads, page, lang);
+  // A failed admin lookup must not cost anybody the board -- it only decides
+  // whether one extra button is drawn.
+  const admin = await isAdmin(ctx.from.id).catch(() => false);
   await ctx.reply(view.text, {
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    ...boardKeyboard(lang, view),
+    ...boardKeyboard(lang, { ...view, admin }),
   });
 }
 
@@ -191,6 +198,67 @@ async function sendPromo(ctx, lang) {
   await ctx.reply(t(lang, "forStatisticPromo"), {
     parse_mode: "HTML",
     ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "forStatisticPromoButton"), "fs:open")]]),
+  });
+}
+
+// --- moderation ------------------------------------------------------------------
+//
+// Every ad is a picture and a link chosen by a member of the public and shown
+// to every user of the bot. Payment is friction, not vetting -- a scam is
+// exactly as payable as a coffee shop -- so there has to be a way to take one
+// down from wherever the operator happens to be.
+//
+// Admin-only, and invisible rather than refused: somebody who is not an admin
+// gets no button, no reply and no hint that any of this exists. The screen
+// carries live ids, owners' Telegram ids and what each of them paid.
+//
+// Uzbek-only, like every other operator-facing surface here (adminBot.js) --
+// it is read by the handful of people who run the bot, not by its users.
+const ADS_ADMIN_LIMIT = 20;
+
+const ADS_COMMAND = "/afishalar";
+
+// Hidden ads are listed too, and marked. The whole point of this screen is
+// seeing what the public board is NOT showing, which a list of live ads could
+// never answer.
+function formatAdList(ads, total) {
+  if (ads.length === 0) {
+    return "📊 <b>ForStatistic afishalari</b>\n\nHozircha to'langan afisha yo'q.";
+  }
+
+  const rows = ads.map((ad, i) => {
+    const state = ad.active ? "✅ Ko'rinmoqda" : "🚫 Yashirilgan";
+    const action = ad.active ? `/adhide_${ad.id}` : `/adshow_${ad.id}`;
+    return (
+      `${i + 1}. <b>#${ad.id}</b> — ${state}\n` +
+      `📌 ${escapeHtml(ad.name)}\n` +
+      `💬 ${escapeHtml(ad.about)}\n` +
+      `🔗 ${escapeHtml(ad.link)}\n` +
+      `👤 <code>${escapeHtml(String(ad.userId))}</code>  ·  💰 ${money(ad.amountSom, "uz")}\n` +
+      `${action}`
+    );
+  });
+
+  return (
+    `📊 <b>ForStatistic afishalari</b>\n\n` +
+    `Jami: <b>${total}</b> ta` +
+    (total > ads.length ? ` (eng yuqori ${ads.length} tasi ko'rsatilmoqda)` : "") +
+    `\n\n${rows.join("\n\n")}`
+  );
+}
+
+async function showAdList(ctx) {
+  let ads;
+  try {
+    ads = await listAllAds(100);
+  } catch (err) {
+    console.error("Could not list ForStatistic ads:", err.message);
+    await ctx.reply(`⚠️ Afishalarni o'qib bo'lmadi: ${err.message}`);
+    return;
+  }
+  await ctx.reply(formatAdList(ads.slice(0, ADS_ADMIN_LIMIT), ads.length), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
   });
 }
 
@@ -381,6 +449,46 @@ function registerForStatisticHandlers(bot) {
     await startWizard(ctx, lang);
   });
 
+  // --- moderation, admin only -------------------------------------------------
+  //
+  // Every one of these falls through with next() for a non-admin rather than
+  // refusing: a refusal confirms the command exists. Someone who is not an
+  // admin sees the same nothing they would see for any unknown command.
+  const adminOnly = (handler) => async (ctx, next) => {
+    if (!(await isAdmin(ctx.from.id).catch(() => false))) return next();
+    return handler(ctx);
+  };
+
+  bot.action(
+    "fs:mod",
+    adminOnly(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+      await showAdList(ctx);
+    })
+  );
+
+  bot.hears(ADS_COMMAND, adminOnly(async (ctx) => showAdList(ctx)));
+
+  bot.hears(
+    /^\/adhide_(\d+)$/,
+    adminOnly(async (ctx) => {
+      const id = ctx.match[1];
+      const ad = await setAdActive(id, false);
+      await ctx.reply(ad ? `🚫 Afisha #${id} yashirildi.` : `Afisha #${id} topilmadi.`);
+      if (ad) console.log(`ForStatistic ad ${id} hidden by admin ${ctx.from.id}`);
+    })
+  );
+
+  bot.hears(
+    /^\/adshow_(\d+)$/,
+    adminOnly(async (ctx) => {
+      const id = ctx.match[1];
+      const ad = await setAdActive(id, true);
+      await ctx.reply(ad ? `✅ Afisha #${id} qaytarildi.` : `Afisha #${id} topilmadi.`);
+      if (ad) console.log(`ForStatistic ad ${id} shown by admin ${ctx.from.id}`);
+    })
+  );
+
   // "/ad_12" -- one entry in full, with the photo the list cannot carry.
   bot.hears(/^\/ad_(\d+)$/, async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
@@ -443,6 +551,9 @@ module.exports = {
     drafts,
     sweepDrafts,
     DRAFT_TTL_MS,
+    formatAdList,
+    ADS_COMMAND,
+    ADS_ADMIN_LIMIT,
     escapeHtml,
     NAME_MAX,
     ABOUT_MAX,

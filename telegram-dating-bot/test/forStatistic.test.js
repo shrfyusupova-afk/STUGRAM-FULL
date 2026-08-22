@@ -510,6 +510,88 @@ test("an ad id that was never issued is answered, not crashed on", async () => {
   assert.match(said(sent), /topilmadi/);
 });
 
+// --- moderation, in the main bot ------------------------------------------------
+//
+// The screen carries live ad ids, the owners' Telegram ids and what each of
+// them paid, and its commands take ads off a board people paid to be on. So
+// the rule tested here is not "a non-admin is refused" but "a non-admin sees
+// nothing at all" -- a refusal message is itself a confirmation that the
+// command exists.
+
+test("an admin gets a moderation button on the board; nobody else does", async () => {
+  const boss = user("Boss");
+  await register(boss, { gender: "male", name: "Boss" });
+  const plain = user("Plain");
+  await register(plain, { gender: "male", name: "Plain" });
+  await db.addAdmin(boss.id);
+
+  const adminView = await h.send(M(), h.callbackUpdate("fs:open", boss));
+  assert.ok(callbacks(adminView).includes("fs:mod"), "the admin must get the moderation button");
+
+  const userView = await h.send(M(), h.callbackUpdate("fs:open", plain));
+  assert.ok(!callbacks(userView).includes("fs:mod"), "an ordinary user must not even see it exists");
+});
+
+test("the moderation list marks hidden ads and offers the matching command", async () => {
+  const boss = user("Lister");
+  await register(boss, { gender: "male", name: "Lister" });
+  await db.addAdmin(boss.id);
+
+  const live = await db.createAd({ userId: boss.id, name: "Live One", about: "x", link: "https://x.com" });
+  const hidden = await db.createAd({ userId: boss.id, name: "Hidden One", about: "x", link: "https://y.com" });
+  await db.addAdAmount(live, 30000);
+  await db.addAdAmount(hidden, 20000);
+  await db.setAdActive(hidden, false);
+
+  const text = said(await h.send(M(), h.textUpdate(fs_.ADS_COMMAND, boss)));
+  assert.match(text, /Live One/, "a live ad is listed");
+  assert.match(text, /Hidden One/, "and so is a hidden one -- that is the point of the screen");
+  assert.match(text, new RegExp(`/adhide_${live}`), "a live ad offers the hide command");
+  assert.match(text, new RegExp(`/adshow_${hidden}`), "a hidden ad offers the restore command");
+});
+
+test("a non-admin gets nothing from the moderation command", async () => {
+  const nosy = user("Nosy");
+  await register(nosy, { gender: "male", name: "Nosy" });
+  const text = said(await h.send(M(), h.textUpdate(fs_.ADS_COMMAND, nosy)));
+  assert.ok(!/ForStatistic afishalari/.test(text), "the screen must not open");
+  assert.ok(!/adhide_/.test(text), "and no ad ids may leak");
+});
+
+test("an admin can hide and restore an ad from the main bot", async () => {
+  const boss = user("Mod");
+  await register(boss, { gender: "male", name: "Mod" });
+  await db.addAdmin(boss.id);
+
+  const adId = await db.createAd({ userId: boss.id, name: "Naughty", about: "x", link: "https://x.com" });
+  await db.addAdAmount(adId, 40000);
+
+  await h.send(M(), h.textUpdate(`/adhide_${adId}`, boss));
+  assert.strictEqual((await db.getAd(adId)).active, false, "the ad comes off the board");
+
+  await h.send(M(), h.textUpdate(`/adshow_${adId}`, boss));
+  assert.strictEqual((await db.getAd(adId)).active, true, "and can be put back");
+  await db.setAdActive(adId, false);
+});
+
+// The commands hide ads people have paid to show. Anyone being able to run
+// them would let one user quietly delete a competitor off a board they paid
+// for.
+test("a non-admin cannot hide an ad, and is not told the command exists", async () => {
+  const owner = user("Owner");
+  await register(owner, { gender: "male", name: "Owner" });
+  const attacker = user("Attacker");
+  await register(attacker, { gender: "male", name: "Attacker" });
+
+  const adId = await db.createAd({ userId: owner.id, name: "Paid For", about: "x", link: "https://x.com" });
+  await db.addAdAmount(adId, 80000);
+
+  const text = said(await h.send(M(), h.textUpdate(`/adhide_${adId}`, attacker)));
+  assert.strictEqual((await db.getAd(adId)).active, true, "the ad must still be on the board");
+  assert.ok(!/yashirildi|topilmadi/.test(text), "and nothing may confirm the command exists");
+  await db.setAdActive(adId, false);
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;
