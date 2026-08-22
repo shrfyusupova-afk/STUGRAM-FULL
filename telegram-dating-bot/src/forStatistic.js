@@ -1,22 +1,33 @@
 // ForStatistic -- a paid advertising board anyone can buy a place on.
 //
-// The whole product is one rule: the ranking is "who has put in the most".
-// That is what makes it worth buying into and what makes topping up worth
-// doing, so the amount a person names is not a price -- it IS the thing they
-// are buying. Every screen here exists to make that rule visible: the board
-// shows the money next to each place, the amount prompt shows what #1
-// currently costs, and paying again adds to your total rather than replacing
-// it.
+// The whole product is one rule: the ranking is "who has put in the most",
+// and paying again ADDS to your total rather than replacing it. Everything
+// here exists to make that rule visible and act on it -- the board shows the
+// money beside each place, the top-up screen says exactly how much more each
+// of the top three would cost, and the top three are shown as full cards
+// rather than list rows because that is what people are paying for.
 //
 // An ad is created BEFORE payment (inactive, 0 so'm) so the order can point
 // at it by id, and only appears on the board once money actually lands --
 // see the "adboard" branch of deliverPaidOrder in index.js.
 const { Markup } = require("telegraf");
-const { getLanguage, createAd, getAd, listTopAds, listAllAds, setAdActive, isAdmin } = require("./db");
+const {
+  getLanguage,
+  createAd,
+  getAd,
+  listTopAds,
+  listAllAds,
+  listAdsByUser,
+  updateAd,
+  setAdActive,
+  isAdmin,
+} = require("./db");
 const { t, DEFAULT_LANG, STRINGS } = require("./i18n");
 const { buildPaymentOptions, withPaymentNote } = require("./checkout");
 const { AD_MIN_SOM, AD_MAX_SOM, isValidAdAmount } = require("./orders");
 const { safeAnswerCbQuery } = require("./telegramSafety");
+const { mainMenuKeyboard } = require("./menu");
+const { alert } = require("./alerts");
 
 // Every field on an ad is text somebody typed, and all of it is rendered
 // into HTML messages. Unescaped, a name containing < or & makes Telegram
@@ -29,72 +40,72 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;");
 }
 
-// How many places exist at all, and how many fit on one screen.
 const BOARD_LIMIT = 50;
+// The top three get full cards; everything below them is paged ten at a time.
+const TOP_CARDS = 3;
 const PAGE_SIZE = 10;
 
 const NAME_MAX = 40;
 const ABOUT_MAX = 100;
 const LINK_MAX = 200;
-// The board prints every field for ten ads at once and Telegram refuses a
-// text message over 4096 characters. A full-length link is the one field
-// that can be long enough to matter, so the list shows a shortened form and
-// the detail view shows it whole.
+// The list prints every field for ten ads at once and Telegram refuses a text
+// message over 4096 characters. A full-length link is the one field long
+// enough to matter, so the list shortens it and the card shows it whole.
 const LINK_LIST_MAX = 50;
 
 const RANK_MARKS = ["🥇", "🥈", "🥉"];
 const rankMark = (index) => RANK_MARKS[index] || "🔸";
 
-// The currency word, per language. Not worth an i18n key of its own -- it is
-// one word and it never appears alone.
 const MONEY_UNIT = { uz: "so'm", ru: "сум", en: "so'm" };
 const money = (som, lang) =>
   `${Number(som).toLocaleString("uz-UZ")} ${MONEY_UNIT[lang] || MONEY_UNIT.uz}`;
 
-// Every main-menu label, in every language. Someone halfway through the ad
-// wizard who taps a menu button means "take me there", never "file this
-// button's name as my ad name" -- see the text handler below.
 const MENU_LABELS = new Set(Object.values(STRINGS).flatMap((dict) => Object.values(dict.menu)));
 
-// --- the draft being composed -------------------------------------------------
+// Every label this screen's own keyboard can produce, in every language.
+// Collected once so the wizard can tell "they tapped one of my buttons" from
+// "this is their answer to the question I asked".
+function labelsOf(...keys) {
+  return new Set(Object.values(STRINGS).flatMap((dict) => keys.map((k) => dict[k])).filter(Boolean));
+}
+const FS_BUTTON_LABELS = labelsOf(
+  "forStatisticAddButton",
+  "forStatisticInfoButton",
+  "forStatisticMyAdButton",
+  "forStatisticTopUpButton",
+  "forStatisticEditButton",
+  "forStatisticEditNameButton",
+  "forStatisticEditPhotoButton",
+  "forStatisticEditLinkButton",
+  "forStatisticEditAboutButton",
+  "backButton"
+);
+
+// --- contact: a link, a Telegram handle, or a phone number ---------------------
 //
-// Swept on a timer, like every other in-memory map in this codebase: without
-// it, one entry per person who ever started the wizard and abandoned it would
-// be held for the life of the process.
-const drafts = new Map(); // userId -> { step, name, link, about, mediaFileId, at }
-const DRAFT_TTL_MS = 60 * 60 * 1000;
+// Demanding an https URL turned away the two things most advertisers here
+// actually have: a Telegram channel they know as "@name", and a phone number.
+// All three are accepted and stored in the shape the person typed; the button
+// URL and the icon are derived at render time, so no second column is needed.
 
-function sweepDrafts(now = Date.now()) {
-  let removed = 0;
-  for (const [userId, draft] of drafts) {
-    if (now - draft.at > DRAFT_TTL_MS) {
-      drafts.delete(userId);
-      removed++;
-    }
-  }
-  return removed;
-}
-setInterval(() => sweepDrafts(), DRAFT_TTL_MS).unref();
-
-function setDraft(userId, patch) {
-  const current = drafts.get(String(userId)) || {};
-  const next = { ...current, ...patch, at: Date.now() };
-  drafts.set(String(userId), next);
-  return next;
-}
-
-const getDraft = (userId) => drafts.get(String(userId)) || null;
-const clearDraft = (userId) => drafts.delete(String(userId));
-
-// --- validation ---------------------------------------------------------------
-
-// http/https only. A link on this board is shown to every user of the bot and
-// is one tap from opening, so a `javascript:` or `data:` URL has no business
-// being accepted -- and anything that is not a parseable absolute URL is a
-// typo the person should fix now rather than discover after paying.
-function normaliseLink(raw) {
+function normaliseContact(raw) {
   const text = String(raw || "").trim();
-  if (!text || text.length > LINK_MAX || /\s/.test(text)) return null;
+  if (!text || text.length > LINK_MAX) return null;
+
+  // "@channel". Telegram usernames are 5-32 characters, starting with a letter.
+  const handle = /^@([A-Za-z][A-Za-z0-9_]{4,31})$/.exec(text);
+  if (handle) return { value: `@${handle[1]}`, kind: "telegram" };
+
+  // A phone number, however it was spaced or bracketed.
+  const digits = text.replace(/[\s()–—-]/g, "");
+  if (/^\+?\d{7,15}$/.test(digits)) {
+    return { value: digits.startsWith("+") ? digits : `+${digits}`, kind: "phone" };
+  }
+
+  // A URL -- http/https only. This board shows every link to every user and
+  // puts it one tap from opening, so a javascript: or data: URL has no
+  // business being accepted.
+  if (/\s/.test(text)) return null;
   let url;
   try {
     url = new URL(text);
@@ -102,11 +113,30 @@ function normaliseLink(raw) {
     return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  return url.toString();
+  return { value: url.toString(), kind: "url" };
 }
 
-// "50 000", "50000 so'm" and "50,000" are all the same intention. Anything
-// with no digits at all is not.
+function contactKind(value) {
+  const text = String(value || "");
+  if (text.startsWith("@")) return "telegram";
+  if (/^\+\d+$/.test(text)) return "phone";
+  return "url";
+}
+
+const CONTACT_ICON = { url: "🔗", telegram: "✈️", phone: "📞" };
+const contactIcon = (value) => CONTACT_ICON[contactKind(value)];
+
+// The URL behind the "open" button, or null when there is nothing to open.
+// A phone number has no URL an inline button will accept -- Telegram makes a
+// phone tappable in the message text by itself, which is the right behaviour
+// anyway (it offers calling rather than a browser).
+function contactUrl(value) {
+  const kind = contactKind(value);
+  if (kind === "telegram") return `https://t.me/${String(value).slice(1)}`;
+  if (kind === "phone") return null;
+  return value;
+}
+
 function parseAmount(raw) {
   const digits = String(raw || "").replace(/[^\d]/g, "");
   if (!digits) return null;
@@ -116,14 +146,121 @@ function parseAmount(raw) {
 
 const shorten = (text, max) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
 
-// --- rendering ----------------------------------------------------------------
+// --- where somebody is, and what they are half-way through ---------------------
+//
+// Both swept on a timer, like every other in-memory map here: without it, one
+// entry per person who ever opened the screen would be held for the life of
+// the process.
+const screens = new Map(); // userId -> { screen, adId, at }
+const drafts = new Map(); // userId -> { mode, step, ...fields, at }
+const TTL_MS = 60 * 60 * 1000;
+
+function sweepState(now = Date.now()) {
+  let removed = 0;
+  for (const map of [screens, drafts]) {
+    for (const [key, value] of map) {
+      if (now - value.at > TTL_MS) {
+        map.delete(key);
+        removed++;
+      }
+    }
+  }
+  return removed;
+}
+setInterval(() => sweepState(), TTL_MS).unref();
+
+const setScreen = (userId, patch) => {
+  const next = { ...(screens.get(String(userId)) || {}), ...patch, at: Date.now() };
+  screens.set(String(userId), next);
+  return next;
+};
+const getScreen = (userId) => screens.get(String(userId)) || null;
+const clearScreen = (userId) => screens.delete(String(userId));
+
+function setDraft(userId, patch) {
+  const next = { ...(drafts.get(String(userId)) || {}), ...patch, at: Date.now() };
+  drafts.set(String(userId), next);
+  return next;
+}
+const getDraft = (userId) => drafts.get(String(userId)) || null;
+const clearDraft = (userId) => drafts.delete(String(userId));
+
+// --- keyboards ------------------------------------------------------------------
+//
+// Reply keyboards, docked under the input box, rather than inline buttons
+// attached to one message: the board is a place you stay in and act from, and
+// an inline row scrolls away the moment anything else is sent.
+
+function boardKeyboard(lang) {
+  return Markup.keyboard([
+    [t(lang, "forStatisticAddButton"), t(lang, "forStatisticMyAdButton")],
+    [t(lang, "forStatisticInfoButton"), t(lang, "backButton")],
+  ])
+    .resize()
+    .persistent();
+}
+
+function myAdKeyboard(lang) {
+  return Markup.keyboard([
+    [t(lang, "forStatisticTopUpButton"), t(lang, "forStatisticEditButton")],
+    [t(lang, "backButton")],
+  ])
+    .resize()
+    .persistent();
+}
+
+function editKeyboard(lang) {
+  return Markup.keyboard([
+    [t(lang, "forStatisticEditNameButton"), t(lang, "forStatisticEditPhotoButton")],
+    [t(lang, "forStatisticEditLinkButton"), t(lang, "forStatisticEditAboutButton")],
+    [t(lang, "backButton")],
+  ])
+    .resize()
+    .persistent();
+}
+
+// --- rendering --------------------------------------------------------------------
 
 // "/ad_12" is a real bot command, so Telegram renders it as a tappable link
-// with no keyboard button needed -- which is what lets fifty entries each
-// carry their own "open this one" without fifty buttons.
+// with no button needed -- which is what lets fifty rows each carry their own
+// "open this one".
 const adCommand = (id) => `/ad_${id}`;
 
-function boardKeyboard(lang, { page, pages, admin = false }) {
+function entryFields(ad, place, lang, { short = false } = {}) {
+  return {
+    mark: rankMark(place - 1),
+    place,
+    command: adCommand(ad.id),
+    id: escapeHtml(ad.id),
+    name: escapeHtml(shorten(ad.name, NAME_MAX)),
+    about: escapeHtml(ad.about),
+    contactIcon: contactIcon(ad.link),
+    link: escapeHtml(short ? shorten(ad.link, LINK_LIST_MAX) : ad.link),
+    money: money(ad.amountSom, lang),
+  };
+}
+
+// Places 4 and below. Given the same weight as the top three -- bold name,
+// its own money line, its own separator -- because being in the list is not
+// being an also-ran; those people paid too.
+function renderRest(rest, page, lang) {
+  const pages = Math.max(1, Math.ceil(rest.length / PAGE_SIZE));
+  const current = Math.min(Math.max(1, page), pages);
+  const start = (current - 1) * PAGE_SIZE;
+  const slice = rest.slice(start, start + PAGE_SIZE);
+
+  const body = slice
+    .map((ad, i) => t(lang, "forStatisticEntry")(entryFields(ad, TOP_CARDS + start + i + 1, lang, { short: true })))
+    .join("\n");
+
+  const text =
+    `${t(lang, "forStatisticRestTitle")}\n${body}\n` +
+    t(lang, "forStatisticBoardFooter")(current, pages, rest.length + Math.min(TOP_CARDS, rest.length ? TOP_CARDS : 0));
+
+  return { text, pages, page: current };
+}
+
+function restKeyboard(lang, { page, pages, admin = false }) {
   const rows = [];
   if (pages > 1) {
     const nav = [];
@@ -131,69 +268,77 @@ function boardKeyboard(lang, { page, pages, admin = false }) {
     if (page < pages) nav.push(Markup.button.callback(t(lang, "forStatisticNextButton"), `fs:page:${page + 1}`));
     rows.push(nav);
   }
-  // The two actions sit on their own rows rather than side by side: both
-  // labels run to about 25 characters, and Telegram splits a shared row
-  // evenly, which would truncate each of them mid-word on a phone.
-  rows.push([Markup.button.callback(t(lang, "forStatisticAddButton"), "fs:add")]);
-  rows.push([Markup.button.callback(t(lang, "forStatisticInfoButton"), "fs:info")]);
-  // Added only for an admin, so moderation is reachable from the same screen
-  // the ads are on rather than through a command nobody remembers. Everyone
-  // else never sees that this row exists.
+  // Added only for an admin, so moderation is reachable from the screen the
+  // ads are actually on. Everybody else never sees that this row exists.
   if (admin) rows.push([Markup.button.callback("🛡 Moderatsiya", "fs:mod")]);
-  return Markup.inlineKeyboard(rows);
+  return rows.length ? Markup.inlineKeyboard(rows) : undefined;
 }
 
-function renderBoard(ads, page, lang) {
-  if (ads.length === 0) {
-    return { text: t(lang, "forStatisticBoardEmpty"), pages: 1, page: 1 };
+// One ad as a full card: its picture, its details, and a button straight to
+// whatever contact it carries.
+async function sendAdCard(ctx, ad, place, lang, { extraRows = [] } = {}) {
+  const caption = t(lang, "forStatisticDetail")(entryFields(ad, place, lang));
+  const url = contactUrl(ad.link);
+  const rows = [
+    ...(url ? [[Markup.button.url(t(lang, "forStatisticOpenLinkButton"), url)]] : []),
+    ...extraRows,
+  ];
+  const extra = {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    ...(rows.length ? Markup.inlineKeyboard(rows) : {}),
+  };
+
+  if (ad.mediaFileId) {
+    try {
+      await ctx.replyWithPhoto(ad.mediaFileId, { caption, ...extra });
+      return;
+    } catch (err) {
+      // A file_id can stop resolving (Telegram expiring it, the original
+      // message deleted). The ad was paid for, so it still has to be
+      // readable -- text without the picture beats an error.
+      console.error(`ForStatistic: photo for ad ${ad.id} failed, falling back to text:`, err.message);
+    }
   }
-
-  const pages = Math.max(1, Math.ceil(ads.length / PAGE_SIZE));
-  const current = Math.min(Math.max(1, page), pages);
-  const start = (current - 1) * PAGE_SIZE;
-  const slice = ads.slice(start, start + PAGE_SIZE);
-
-  const body = slice
-    .map((ad, i) => {
-      const place = start + i + 1;
-      return t(lang, "forStatisticEntry")({
-        mark: rankMark(place - 1),
-        place,
-        command: adCommand(ad.id),
-        name: escapeHtml(shorten(ad.name, NAME_MAX)),
-        about: escapeHtml(ad.about),
-        link: escapeHtml(shorten(ad.link, LINK_LIST_MAX)),
-        money: money(ad.amountSom, lang),
-      });
-    })
-    .join("\n");
-
-  const text =
-    `${t(lang, "forStatisticBoardTitle")}\n${body}\n` +
-    t(lang, "forStatisticBoardFooter")(current, pages, ads.length);
-
-  return { text, pages, page: current };
+  await ctx.reply(caption, extra);
 }
 
 async function showBoard(ctx, lang, page = 1) {
+  setScreen(ctx.from.id, { screen: "board" });
   const ads = await listTopAds(BOARD_LIMIT);
-  const view = renderBoard(ads, page, lang);
-  // A failed admin lookup must not cost anybody the board -- it only decides
-  // whether one extra button is drawn.
+
+  if (ads.length === 0) {
+    await ctx.reply(t(lang, "forStatisticBoardEmpty"), {
+      parse_mode: "HTML",
+      ...boardKeyboard(lang),
+    });
+    return;
+  }
+
   const admin = await isAdmin(ctx.from.id).catch(() => false);
+  const rest = ads.slice(TOP_CARDS);
+
+  // Page one leads with the podium. Later pages are the list alone -- resending
+  // three photos every time somebody taps "next" would be noise.
+  if (page <= 1) {
+    await ctx.reply(t(lang, "forStatisticTop3Title"), { parse_mode: "HTML", ...boardKeyboard(lang) });
+    for (const [i, ad] of ads.slice(0, TOP_CARDS).entries()) {
+      await sendAdCard(ctx, ad, i + 1, lang);
+    }
+  }
+
+  if (rest.length === 0) return;
+
+  const view = renderRest(rest, page, lang);
   await ctx.reply(view.text, {
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    ...boardKeyboard(lang, { ...view, admin }),
+    ...(restKeyboard(lang, { ...view, admin }) || {}),
   });
 }
 
-// --- the promo that rides along with the main menu -----------------------------
+// --- the promo that rides along with the main menu --------------------------------
 
-// Required lazily: menu.js calls this, and this module needs mainMenuKeyboard
-// from menu.js in the wizard below. A top-level require in both directions is
-// a cycle, so the direction used least often is the lazy one -- the same
-// pattern vipChat.js/vipInvite.js already use here.
 async function sendPromo(ctx, lang) {
   await ctx.reply(t(lang, "forStatisticPromo"), {
     parse_mode: "HTML",
@@ -201,31 +346,150 @@ async function sendPromo(ctx, lang) {
   });
 }
 
-// --- moderation ------------------------------------------------------------------
+// --- my ad -------------------------------------------------------------------------
+
+// Which ad the top-up and edit buttons act on. Almost everybody has exactly
+// one; when there are several the highest is selected by default and each
+// card carries a button to switch.
+async function selectedAdFor(userId) {
+  const mine = await listAdsByUser(userId);
+  if (mine.length === 0) return { mine, ad: null };
+  const chosen = getScreen(userId)?.adId;
+  const ad = mine.find((row) => String(row.id) === String(chosen)) || mine[0];
+  return { mine, ad };
+}
+
+async function showMyAd(ctx, lang) {
+  const { mine } = await selectedAdFor(ctx.from.id);
+
+  if (mine.length === 0) {
+    setScreen(ctx.from.id, { screen: "board", adId: null });
+    await ctx.reply(t(lang, "forStatisticNoAd"), { parse_mode: "HTML", ...boardKeyboard(lang) });
+    return;
+  }
+
+  setScreen(ctx.from.id, { screen: "myad", adId: mine[0].id });
+  await ctx.reply(t(lang, "forStatisticMyAdTitle"), { parse_mode: "HTML", ...myAdKeyboard(lang) });
+
+  const board = await listTopAds(BOARD_LIMIT);
+  for (const ad of mine) {
+    const index = board.findIndex((row) => String(row.id) === String(ad.id));
+    const place = index === -1 ? board.length + 1 : index + 1;
+    // A hidden ad is shown to its OWNER, marked. Finding it simply missing
+    // with no explanation is worse than being told it was taken down.
+    const extraRows =
+      mine.length > 1
+        ? [[Markup.button.callback(t(lang, "forStatisticPickAdButton"), `fs:pick:${ad.id}`)]]
+        : [];
+    await sendAdCard(ctx, ad, place, lang, { extraRows });
+    if (!ad.active) await ctx.reply(t(lang, "forStatisticMyAdHidden"), { parse_mode: "HTML" });
+  }
+}
+
+// --- topping up ---------------------------------------------------------------------
+
+// How much more each of the top three places would cost. Computed against
+// everybody ELSE, so the person's own row never counts as an obstacle to
+// themselves -- and +1 because ties are broken by who paid first, so matching
+// an amount does not overtake it.
+function gapsFor(board, ad) {
+  const others = board.filter((row) => String(row.id) !== String(ad.id));
+  const gaps = [];
+  for (let place = 1; place <= TOP_CARDS; place++) {
+    const holder = others[place - 1];
+    if (!holder) break;
+    const need = holder.amountSom - ad.amountSom + 1;
+    if (need > 0) gaps.push({ place, need });
+  }
+  return gaps;
+}
+
+async function askTopUp(ctx, lang) {
+  const { ad } = await selectedAdFor(ctx.from.id);
+  if (!ad) {
+    await showMyAd(ctx, lang);
+    return;
+  }
+
+  const board = await listTopAds(BOARD_LIMIT);
+  const index = board.findIndex((row) => String(row.id) === String(ad.id));
+  const place = index === -1 ? board.length + 1 : index + 1;
+  const gaps = gapsFor(board, ad);
+
+  const gapsBlock =
+    gaps.length === 0
+      ? t(lang, "forStatisticAlreadyTop")
+      : t(lang, "forStatisticGapsHeader") +
+        gaps
+          .map((gap) =>
+            t(lang, "forStatisticGapLine")({
+              mark: rankMark(gap.place - 1),
+              place: gap.place,
+              need: money(gap.need, lang),
+            })
+          )
+          .join("\n") +
+        "\n";
+
+  setDraft(ctx.from.id, { mode: "topup", step: "amount", adId: ad.id });
+  await ctx.reply(
+    t(lang, "forStatisticTopUpAsk")({
+      name: escapeHtml(ad.name),
+      money: money(ad.amountSom, lang),
+      place,
+      gapsBlock,
+      minMoney: money(AD_MIN_SOM, lang),
+    }),
+    { parse_mode: "HTML" }
+  );
+}
+
+// --- the paywall -----------------------------------------------------------------------
+
+async function sendPaywall(ctx, lang, { adId, amountSom, name, about, link }) {
+  const payment = await buildPaymentOptions(ctx.from.id, {
+    type: "adboard",
+    targetId: adId,
+    amountSom,
+    lang,
+    t,
+  });
+
+  const summary = t(lang, "forStatisticDraftReady")({
+    name: escapeHtml(name),
+    about: escapeHtml(about),
+    link: escapeHtml(link),
+    money: money(amountSom, lang),
+  });
+
+  if (!payment.configured) {
+    await ctx.reply(summary, {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]]),
+    });
+    return;
+  }
+
+  await ctx.reply(withPaymentNote(summary, payment.note), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    ...Markup.inlineKeyboard(payment.rows),
+  });
+}
+
+// --- moderation ---------------------------------------------------------------------------
 //
 // Every ad is a picture and a link chosen by a member of the public and shown
-// to every user of the bot. Payment is friction, not vetting -- a scam is
-// exactly as payable as a coffee shop -- so there has to be a way to take one
-// down from wherever the operator happens to be.
-//
-// Admin-only, and invisible rather than refused: somebody who is not an admin
-// gets no button, no reply and no hint that any of this exists. The screen
-// carries live ids, owners' Telegram ids and what each of them paid.
-//
-// Uzbek-only, like every other operator-facing surface here (adminBot.js) --
-// it is read by the handful of people who run the bot, not by its users.
+// to every user. Payment is friction, not vetting, so there has to be a way to
+// take one down. Admin-only, and invisible rather than refused: a refusal is
+// itself a confirmation that the command exists.
 const ADS_ADMIN_LIMIT = 20;
-
 const ADS_COMMAND = "/afishalar";
 
-// Hidden ads are listed too, and marked. The whole point of this screen is
-// seeing what the public board is NOT showing, which a list of live ads could
-// never answer.
 function formatAdList(ads, total) {
   if (ads.length === 0) {
     return "📊 <b>ForStatistic afishalari</b>\n\nHozircha to'langan afisha yo'q.";
   }
-
   const rows = ads.map((ad, i) => {
     const state = ad.active ? "✅ Ko'rinmoqda" : "🚫 Yashirilgan";
     const action = ad.active ? `/adhide_${ad.id}` : `/adshow_${ad.id}`;
@@ -233,12 +497,11 @@ function formatAdList(ads, total) {
       `${i + 1}. <b>#${ad.id}</b> — ${state}\n` +
       `📌 ${escapeHtml(ad.name)}\n` +
       `💬 ${escapeHtml(ad.about)}\n` +
-      `🔗 ${escapeHtml(ad.link)}\n` +
+      `${contactIcon(ad.link)} ${escapeHtml(ad.link)}\n` +
       `👤 <code>${escapeHtml(String(ad.userId))}</code>  ·  💰 ${money(ad.amountSom, "uz")}\n` +
       `${action}`
     );
   });
-
   return (
     `📊 <b>ForStatistic afishalari</b>\n\n` +
     `Jami: <b>${total}</b> ta` +
@@ -262,88 +525,73 @@ async function showAdList(ctx) {
   });
 }
 
-// --- the add-an-ad wizard -------------------------------------------------------
+// An ad edited after it was approved is new content nobody has looked at, so
+// it is reported exactly like a new one. Without this, "pay with something
+// harmless, then edit it into a scam" is free.
+function alertAboutAd(ad, { edited = false } = {}) {
+  alert(
+    `📊 ForStatistic: ${edited ? "afisha TAHRIRLANDI" : "yangi afisha"} #${ad.id}\n` +
+      `👤 ${ad.userId}\n` +
+      `📌 ${ad.name}\n` +
+      `${contactIcon(ad.link)} ${ad.link}\n` +
+      `💬 ${ad.about}\n` +
+      `💰 ${Number(ad.amountSom).toLocaleString("uz-UZ")} so'm\n\n` +
+      `Yashirish: /adhide_${ad.id}`,
+    { bypassThrottle: true }
+  ).catch(() => {});
+}
+
+// --- the wizard ---------------------------------------------------------------------------
 
 const STEP = { NAME: "name", PHOTO: "photo", LINK: "link", ABOUT: "about", AMOUNT: "amount" };
 
 async function startWizard(ctx, lang) {
-  setDraft(ctx.from.id, { step: STEP.NAME });
+  setDraft(ctx.from.id, { mode: "create", step: STEP.NAME });
   await ctx.reply(t(lang, "forStatisticAskName"), { parse_mode: "HTML" });
 }
 
-// The last step: the ad row is written now (inactive, no money on it yet) so
-// the order can reference it, then the usual checkout buttons are offered.
-// Nothing is shown on the board until the payment actually settles.
-async function finishWizard(ctx, lang, draft, amountSom) {
-  const adId = await createAd({
-    userId: ctx.from.id,
-    name: draft.name,
-    about: draft.about,
-    link: draft.link,
-    mediaFileId: draft.mediaFileId,
-  });
-
-  const payment = await buildPaymentOptions(ctx.from.id, {
-    type: "adboard",
-    targetId: adId,
-    amountSom,
-    lang,
-    t,
-  });
-
-  const summary = t(lang, "forStatisticDraftReady")({
-    name: escapeHtml(draft.name),
-    about: escapeHtml(draft.about),
-    link: escapeHtml(draft.link),
-    money: money(amountSom, lang),
-  });
-
+// Applies one answer to whichever field the draft is collecting, in either
+// mode. Returns the next step for a create, or null when an edit is done.
+async function applyEdit(ctx, lang, draft, patch) {
+  const ad = await updateAd(draft.adId, patch);
   clearDraft(ctx.from.id);
-
-  if (!payment.configured) {
-    await ctx.reply(summary, {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "payButtonGeneric"), "payments:noop")]]),
-    });
-    return;
-  }
-
-  await ctx.reply(withPaymentNote(summary, payment.note), {
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...Markup.inlineKeyboard(payment.rows),
-  });
+  await ctx.reply(t(lang, "forStatisticEditSaved"), { parse_mode: "HTML" });
+  if (ad) alertAboutAd(ad, { edited: true });
+  await showMyAd(ctx, lang);
 }
 
-// --- handlers -------------------------------------------------------------------
-
 function registerForStatisticHandlers(bot) {
-  const labels = Object.values(STRINGS).map((dict) => dict.menu.forStatistic);
+  const menuLabels = Object.values(STRINGS).map((dict) => dict.menu.forStatistic);
+  const backLabels = new Set(Object.values(STRINGS).map((dict) => dict.backButton));
+  const label = (key) => Object.values(STRINGS).map((dict) => dict[key]);
 
-  // Registered from index.js before every bot.hears, so somebody mid-wizard
-  // has their message taken as the answer to the step they are on rather than
-  // matched against a menu label that happens to appear in what they typed.
+  // --- text, before every bot.hears -------------------------------------------
+  //
+  // Registered from index.js ahead of the menu handlers, so somebody partway
+  // through the wizard has their message taken as the answer to the step they
+  // are on rather than matched against a label that happens to appear in it.
   bot.on("text", async (ctx, next) => {
     const draft = getDraft(ctx.from.id);
     if (!draft) return next();
 
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    const text = ctx.message.text.trim();
 
-    // Tapping a menu button mid-wizard means "I changed my mind, take me
-    // there" -- the draft is dropped and the update carries on to whichever
-    // handler owns that button (all registered after this one).
-    if (MENU_LABELS.has(ctx.message.text)) {
+    // Tapping any button -- a main-menu one or one of this screen's own --
+    // means "I changed my mind, take me there", never "file this label as my
+    // answer". The draft is dropped and the update carries on to whichever
+    // handler owns that button.
+    if (MENU_LABELS.has(text) || FS_BUTTON_LABELS.has(text)) {
       clearDraft(ctx.from.id);
       return next();
     }
-
-    const text = ctx.message.text.trim();
 
     if (draft.step === STEP.NAME) {
       if (text.length < 2 || text.length > NAME_MAX) {
         await ctx.reply(t(lang, "forStatisticErrName"));
         return;
       }
+      if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { name: text });
       setDraft(ctx.from.id, { step: STEP.PHOTO, name: text });
       await ctx.reply(t(lang, "forStatisticAskPhoto"), { parse_mode: "HTML" });
       return;
@@ -355,12 +603,13 @@ function registerForStatisticHandlers(bot) {
     }
 
     if (draft.step === STEP.LINK) {
-      const link = normaliseLink(text);
-      if (!link) {
+      const contact = normaliseContact(text);
+      if (!contact) {
         await ctx.reply(t(lang, "forStatisticErrLink"), { parse_mode: "HTML" });
         return;
       }
-      setDraft(ctx.from.id, { step: STEP.ABOUT, link });
+      if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { link: contact.value });
+      setDraft(ctx.from.id, { step: STEP.ABOUT, link: contact.value });
       await ctx.reply(t(lang, "forStatisticAskAbout"), { parse_mode: "HTML" });
       return;
     }
@@ -370,6 +619,7 @@ function registerForStatisticHandlers(bot) {
         await ctx.reply(t(lang, "forStatisticErrAbout"));
         return;
       }
+      if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { about: text });
       setDraft(ctx.from.id, { step: STEP.AMOUNT, about: text });
       const top = (await listTopAds(1))[0];
       await ctx.reply(
@@ -394,14 +644,47 @@ function registerForStatisticHandlers(bot) {
         );
         return;
       }
-      await finishWizard(ctx, lang, { ...drafts.get(String(ctx.from.id)) }, amount);
+
+      // Topping up an ad that already exists, versus paying for a new one.
+      if (draft.mode === "topup") {
+        const ad = await getAd(draft.adId);
+        clearDraft(ctx.from.id);
+        if (!ad) {
+          await showMyAd(ctx, lang);
+          return;
+        }
+        await sendPaywall(ctx, lang, {
+          adId: ad.id,
+          amountSom: amount,
+          name: ad.name,
+          about: ad.about,
+          link: ad.link,
+        });
+        return;
+      }
+
+      const adId = await createAd({
+        userId: ctx.from.id,
+        name: draft.name,
+        about: draft.about,
+        link: draft.link,
+        mediaFileId: draft.mediaFileId,
+      });
+      const saved = { ...draft };
+      clearDraft(ctx.from.id);
+      await sendPaywall(ctx, lang, {
+        adId,
+        amountSom: amount,
+        name: saved.name,
+        about: saved.about,
+        link: saved.link,
+      });
       return;
     }
 
     return next();
   });
 
-  // The photo step. Same early registration, same reason.
   bot.on("photo", async (ctx, next) => {
     const draft = getDraft(ctx.from.id);
     if (!draft || draft.step !== STEP.PHOTO) return next();
@@ -409,11 +692,19 @@ function registerForStatisticHandlers(bot) {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     const photos = ctx.message.photo;
     const fileId = photos[photos.length - 1].file_id;
+
+    if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { mediaFileId: fileId });
+
     setDraft(ctx.from.id, { step: STEP.LINK, mediaFileId: fileId });
-    await ctx.reply(t(lang, "forStatisticAskLink"), { parse_mode: "HTML", disable_web_page_preview: true });
+    await ctx.reply(t(lang, "forStatisticAskLink"), {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
   });
 
-  bot.hears(labels, async (ctx) => {
+  // --- getting in and out --------------------------------------------------------
+
+  bot.hears(menuLabels, async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await showBoard(ctx, lang, 1);
   });
@@ -424,23 +715,59 @@ function registerForStatisticHandlers(bot) {
     await showBoard(ctx, lang, 1);
   });
 
+  // Back means one step out, not all the way home: out of the edit menu to
+  // your ad, out of your ad to the board, out of the board to the main menu.
+  // Falls through for anybody who is not inside ForStatistic at all, so the
+  // same button keeps working everywhere else it is used.
+  bot.hears([...backLabels], async (ctx, next) => {
+    const screen = getScreen(ctx.from.id);
+    if (!screen) return next();
+
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    clearDraft(ctx.from.id);
+
+    if (screen.screen === "edit") {
+      setScreen(ctx.from.id, { screen: "myad" });
+      await showMyAd(ctx, lang);
+      return;
+    }
+    if (screen.screen === "myad") {
+      await showBoard(ctx, lang, 1);
+      return;
+    }
+    clearScreen(ctx.from.id);
+    await ctx.reply(t(lang, "mainMenuIntro"), mainMenuKeyboard(lang));
+  });
+
   bot.action(/^fs:page:(\d+)$/, async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     await showBoard(ctx, lang, Number(ctx.match[1]));
   });
 
-  bot.action("fs:info", async (ctx) => {
+  bot.hears(label("forStatisticInfoButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
-    await safeAnswerCbQuery(ctx);
     await ctx.reply(t(lang, "forStatisticInfo"), {
       parse_mode: "HTML",
       disable_web_page_preview: true,
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback(t(lang, "forStatisticAddButton"), "fs:add")],
-        [Markup.button.callback(t(lang, "forStatisticBoardButton"), "fs:open")],
-      ]),
+      ...boardKeyboard(lang),
     });
+  });
+
+  bot.action("fs:info", async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await safeAnswerCbQuery(ctx);
+    setScreen(ctx.from.id, { screen: "board" });
+    await ctx.reply(t(lang, "forStatisticInfo"), {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      ...boardKeyboard(lang),
+    });
+  });
+
+  bot.hears(label("forStatisticAddButton"), async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await startWizard(ctx, lang);
   });
 
   bot.action("fs:add", async (ctx) => {
@@ -449,11 +776,64 @@ function registerForStatisticHandlers(bot) {
     await startWizard(ctx, lang);
   });
 
+  // --- my ad ---------------------------------------------------------------------
+
+  bot.hears(label("forStatisticMyAdButton"), async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await showMyAd(ctx, lang);
+  });
+
+  bot.action(/^fs:pick:(\d+)$/, async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await safeAnswerCbQuery(ctx);
+    const ad = await getAd(ctx.match[1]);
+    // Only over your own ad: the id travels in callback_data, which a
+    // technically capable client can set to anything.
+    if (!ad || String(ad.userId) !== String(ctx.from.id)) return;
+    setScreen(ctx.from.id, { screen: "myad", adId: ad.id });
+    await ctx.reply(t(lang, "forStatisticAdSelected")(escapeHtml(ad.name)), {
+      parse_mode: "HTML",
+      ...myAdKeyboard(lang),
+    });
+  });
+
+  bot.hears(label("forStatisticTopUpButton"), async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    await askTopUp(ctx, lang);
+  });
+
+  bot.hears(label("forStatisticEditButton"), async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    const { ad } = await selectedAdFor(ctx.from.id);
+    if (!ad) {
+      await showMyAd(ctx, lang);
+      return;
+    }
+    setScreen(ctx.from.id, { screen: "edit", adId: ad.id });
+    await ctx.reply(t(lang, "forStatisticEditPick"), { parse_mode: "HTML", ...editKeyboard(lang) });
+  });
+
+  // One prompt per field. The draft carries mode:"edit", so the text handler
+  // above saves the answer instead of walking on to the next wizard step --
+  // one collection path, two ways of finishing it.
+  const editField = (buttonKey, step, promptKey) =>
+    bot.hears(label(buttonKey), async (ctx) => {
+      const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+      const { ad } = await selectedAdFor(ctx.from.id);
+      if (!ad) {
+        await showMyAd(ctx, lang);
+        return;
+      }
+      setDraft(ctx.from.id, { mode: "edit", step, adId: ad.id });
+      await ctx.reply(t(lang, promptKey), { parse_mode: "HTML", disable_web_page_preview: true });
+    });
+
+  editField("forStatisticEditNameButton", STEP.NAME, "forStatisticAskName");
+  editField("forStatisticEditPhotoButton", STEP.PHOTO, "forStatisticAskPhoto");
+  editField("forStatisticEditLinkButton", STEP.LINK, "forStatisticAskLink");
+  editField("forStatisticEditAboutButton", STEP.ABOUT, "forStatisticAskAbout");
+
   // --- moderation, admin only -------------------------------------------------
-  //
-  // Every one of these falls through with next() for a non-admin rather than
-  // refusing: a refusal confirms the command exists. Someone who is not an
-  // admin sees the same nothing they would see for any unknown command.
   const adminOnly = (handler) => async (ctx, next) => {
     if (!(await isAdmin(ctx.from.id).catch(() => false))) return next();
     return handler(ctx);
@@ -492,9 +872,8 @@ function registerForStatisticHandlers(bot) {
   // "/ad_12" -- one entry in full, with the photo the list cannot carry.
   bot.hears(/^\/ad_(\d+)$/, async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
-    const id = ctx.match[1];
+    const ad = await getAd(ctx.match[1]);
 
-    const ad = await getAd(id);
     // A hidden ad is answered exactly like one that never existed: an ad
     // taken off the board by a moderator must not stay reachable by id.
     if (!ad || !ad.active || ad.amountSom <= 0) {
@@ -502,37 +881,9 @@ function registerForStatisticHandlers(bot) {
       return;
     }
 
-    const ads = await listTopAds(BOARD_LIMIT);
-    const index = ads.findIndex((row) => String(row.id) === String(ad.id));
-    const place = index === -1 ? ads.length + 1 : index + 1;
-
-    const caption = t(lang, "forStatisticDetail")({
-      mark: rankMark(place - 1),
-      place,
-      id: escapeHtml(ad.id),
-      name: escapeHtml(ad.name),
-      about: escapeHtml(ad.about),
-      link: escapeHtml(ad.link),
-      money: money(ad.amountSom, lang),
-    });
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.url(t(lang, "forStatisticOpenLinkButton"), ad.link)],
-      [Markup.button.callback(t(lang, "forStatisticBoardButton"), "fs:open")],
-    ]);
-
-    if (ad.mediaFileId) {
-      try {
-        await ctx.replyWithPhoto(ad.mediaFileId, { caption, parse_mode: "HTML", ...keyboard });
-        return;
-      } catch (err) {
-        // A file_id can stop resolving (Telegram expiring it, the original
-        // message deleted). The ad was paid for, so it still has to be
-        // readable -- text without the picture beats an error.
-        console.error(`ForStatistic: photo for ad ${ad.id} failed, falling back to text:`, err.message);
-      }
-    }
-    await ctx.reply(caption, { parse_mode: "HTML", disable_web_page_preview: true, ...keyboard });
+    const board = await listTopAds(BOARD_LIMIT);
+    const index = board.findIndex((row) => String(row.id) === String(ad.id));
+    await sendAdCard(ctx, ad, index === -1 ? board.length + 1 : index + 1, lang);
   });
 }
 
@@ -543,18 +894,25 @@ module.exports = {
   BOARD_LIMIT,
   PAGE_SIZE,
   __test: {
-    renderBoard,
-    normaliseLink,
+    renderRest,
+    normaliseContact,
+    contactKind,
+    contactUrl,
+    contactIcon,
+    gapsFor,
     parseAmount,
     rankMark,
     money,
     drafts,
-    sweepDrafts,
-    DRAFT_TTL_MS,
+    screens,
+    sweepState,
+    TTL_MS,
+    escapeHtml,
     formatAdList,
+    entryFields,
     ADS_COMMAND,
     ADS_ADMIN_LIMIT,
-    escapeHtml,
+    TOP_CARDS,
     NAME_MAX,
     ABOUT_MAX,
   },

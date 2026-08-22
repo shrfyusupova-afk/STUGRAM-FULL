@@ -730,6 +730,31 @@ async function addAdAmount(id, amountSom) {
   return { ...ad };
 }
 
+// Somebody's own ads, best-funded first. Includes hidden ones on purpose:
+// an owner whose ad was taken down has to be able to see that it was, rather
+// than find their ad simply missing with no explanation.
+async function listAdsByUser(userId) {
+  return Object.values(readJson(ADS_PATH))
+    .filter((ad) => String(ad.userId) === String(userId) && ad.amountSom > 0)
+    .sort((a, b) => b.amountSom - a.amountSom || String(a.paidAt).localeCompare(String(b.paidAt)));
+}
+
+// Editing changes only what the owner is allowed to change. The amount is
+// deliberately NOT in that set -- it is the one field that decides the
+// ranking, so it can only move through a payment.
+const AD_EDITABLE = ["name", "about", "link", "mediaFileId"];
+
+async function updateAd(id, patch) {
+  const all = readJson(ADS_PATH);
+  const ad = all[String(id)];
+  if (!ad) return null;
+  for (const field of AD_EDITABLE) {
+    if (patch[field] !== undefined) ad[field] = patch[field];
+  }
+  writeJson(ADS_PATH, all);
+  return { ...ad };
+}
+
 // Admin moderation. Hiding leaves the record (and the money paid) intact --
 // this is "take it off the board", never "pretend it never happened".
 async function setAdActive(id, active) {
@@ -962,4 +987,6 @@ module.exports = {
   addAdAmount,
   setAdActive,
   listAllAds,
+  listAdsByUser,
+  updateAd,
 };

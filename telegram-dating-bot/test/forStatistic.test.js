@@ -132,16 +132,39 @@ const test = (name, fn) => tests.push({ name, fn });
 
 // --- pure logic ---------------------------------------------------------------
 
-test("only http and https links are accepted", () => {
-  assert.ok(fs_.normaliseLink("https://t.me/foroneforever"));
-  assert.ok(fs_.normaliseLink("http://example.com/page"));
-  // A link on this board is shown to every user and is one tap from opening.
-  assert.strictEqual(fs_.normaliseLink("javascript:alert(1)"), null);
-  assert.strictEqual(fs_.normaliseLink("data:text/html,<script>x</script>"), null);
-  assert.strictEqual(fs_.normaliseLink("ftp://example.com"), null);
-  assert.strictEqual(fs_.normaliseLink("not a link"), null);
-  assert.strictEqual(fs_.normaliseLink(""), null);
-  assert.strictEqual(fs_.normaliseLink("https://x.com/" + "a".repeat(300)), null, "over the length cap");
+// Demanding an https URL turned away the two things most advertisers here
+// actually have: a Telegram channel they know as "@name", and a phone number.
+test("a contact can be a link, a Telegram handle, or a phone number", () => {
+  assert.strictEqual(fs_.normaliseContact("https://t.me/foroneforever").kind, "url");
+  assert.strictEqual(fs_.normaliseContact("http://example.com/page").kind, "url");
+  assert.strictEqual(fs_.normaliseContact("@kofexona").kind, "telegram");
+  assert.strictEqual(fs_.normaliseContact("+998 90 123 45 67").kind, "phone");
+  // However it was spaced or bracketed, and with or without the plus.
+  assert.strictEqual(fs_.normaliseContact("+998 90 123 45 67").value, "+998901234567");
+  assert.strictEqual(fs_.normaliseContact("998901234567").value, "+998901234567");
+});
+
+test("a contact that is none of the three is refused", () => {
+  // This board shows every contact to every user and puts it one tap from
+  // opening, so a javascript: or data: URL has no business being accepted.
+  assert.strictEqual(fs_.normaliseContact("javascript:alert(1)"), null);
+  assert.strictEqual(fs_.normaliseContact("data:text/html,<script>x</script>"), null);
+  assert.strictEqual(fs_.normaliseContact("ftp://example.com"), null);
+  assert.strictEqual(fs_.normaliseContact("not a link"), null);
+  assert.strictEqual(fs_.normaliseContact("@ab"), null, "too short for a Telegram username");
+  assert.strictEqual(fs_.normaliseContact(""), null);
+  assert.strictEqual(fs_.normaliseContact("https://x.com/" + "a".repeat(300)), null, "over the length cap");
+});
+
+test("each contact kind gets its own icon and the right button target", () => {
+  assert.strictEqual(fs_.contactUrl("@kofexona"), "https://t.me/kofexona", "a handle becomes a real link");
+  assert.strictEqual(fs_.contactUrl("https://x.com/"), "https://x.com/");
+  // Telegram makes a phone tappable in the text itself, and refuses a tel:
+  // URL in an inline button -- so a phone gets no button rather than a broken one.
+  assert.strictEqual(fs_.contactUrl("+998901234567"), null);
+  assert.strictEqual(fs_.contactIcon("+998901234567"), "📞");
+  assert.strictEqual(fs_.contactIcon("@kofexona"), "✈️");
+  assert.strictEqual(fs_.contactIcon("https://x.com"), "🔗");
 });
 
 test("an amount is read out of whatever shape somebody types it in", () => {
@@ -163,7 +186,7 @@ test("the amount is bounded at both ends", () => {
 });
 
 test("a name or description containing HTML cannot break the board", () => {
-  const rendered = fs_.renderBoard(
+  const rendered = fs_.renderRest(
     [{ id: "1", name: "Kofe & Co <b>", about: "a > b & c", link: "https://x.com", amountSom: 5000 }],
     1,
     "uz"
@@ -180,7 +203,7 @@ test("ten full-length ads still fit inside Telegram's message limit", () => {
     link: `https://example.com/${"L".repeat(180)}`,
     amountSom: 999999999,
   }));
-  const { text } = fs_.renderBoard(ads, 1, "uz");
+  const { text } = fs_.renderRest(ads, 1, "uz");
   assert.ok(text.length < 4096, `a full page must not exceed 4096 characters, got ${text.length}`);
 });
 
@@ -192,41 +215,48 @@ test("the board pages ten at a time", () => {
     link: "https://x.com",
     amountSom: 1000 * (25 - i),
   }));
-  const p1 = fs_.renderBoard(ads, 1, "uz");
+  const p1 = fs_.renderRest(ads, 1, "uz");
   assert.strictEqual(p1.pages, 3);
   assert.ok(p1.text.includes("/ad_1") && p1.text.includes("/ad_10"));
   assert.ok(!p1.text.includes("/ad_11"), "page one must stop at ten");
 
-  const p3 = fs_.renderBoard(ads, 3, "uz");
+  const p3 = fs_.renderRest(ads, 3, "uz");
   assert.ok(p3.text.includes("/ad_21") && p3.text.includes("/ad_25"));
 
   // A page number beyond the end (a stale button from an older, longer board)
   // must clamp rather than render an empty screen.
-  assert.strictEqual(fs_.renderBoard(ads, 99, "uz").page, 3);
+  assert.strictEqual(fs_.renderRest(ads, 99, "uz").page, 3);
 });
 
-test("places are numbered continuously across pages", () => {
-  const ads = Array.from({ length: 15 }, (_, i) => ({
+test("the list numbers places below the podium and never restarts", () => {
+  const rest = Array.from({ length: 15 }, (_, i) => ({
     id: String(i + 1),
     name: `Ad ${i + 1}`,
     about: "x",
     link: "https://x.com",
     amountSom: 1000 * (15 - i),
   }));
-  // Page two starts at place 11, not back at 1. Matched with the opening tag
-  // included: "11-o'rin" ends with the literal text "1-o'rin", so a bare
-  // substring check cannot tell the two apart.
-  const page2 = fs_.renderBoard(ads, 2, "uz").text;
-  assert.ok(page2.includes("<b>11-o'rin</b> · /ad_11"), "page two opens at place 11");
-  assert.ok(!page2.includes("<b>1-o'rin</b>"), "and never restarts the numbering");
+  // The top three are shown as full cards, so the list opens at place 4.
+  const page1 = fs_.renderRest(rest, 1, "uz").text;
+  assert.ok(page1.includes("<b>4-O'RIN</b>"), "the list starts where the podium ends");
+  assert.ok(!page1.includes("<b>1-O'RIN</b>"), "and never repeats a podium place");
+
+  // Page two carries on rather than starting over. Matched with the opening
+  // tag included: "14-O'RIN" ends with the text "4-O'RIN", so a bare substring
+  // check cannot tell the two apart.
+  const page2 = fs_.renderRest(rest, 2, "uz").text;
+  assert.ok(page2.includes("<b>14-O'RIN</b>"), "page two carries on at place 14");
+  assert.ok(!page2.includes("<b>4-O'RIN</b>"), "and does not restart");
 });
 
-test("an abandoned draft does not sit in memory forever", () => {
-  fs_.drafts.set("999999", { step: "name", at: Date.now() - fs_.DRAFT_TTL_MS - 1000 });
+test("abandoned drafts and screen positions do not sit in memory forever", () => {
+  fs_.drafts.set("999999", { step: "name", at: Date.now() - fs_.TTL_MS - 1000 });
+  fs_.screens.set("999997", { screen: "board", at: Date.now() - fs_.TTL_MS - 1000 });
   fs_.drafts.set("999998", { step: "name", at: Date.now() });
-  const removed = fs_.sweepDrafts();
-  assert.ok(removed >= 1, "the stale draft must be swept");
+  const removed = fs_.sweepState();
+  assert.ok(removed >= 2, "both stale entries must be swept");
   assert.strictEqual(fs_.drafts.has("999999"), false);
+  assert.strictEqual(fs_.screens.has("999997"), false);
   assert.strictEqual(fs_.drafts.has("999998"), true, "a live draft must survive");
   fs_.drafts.delete("999998");
 });
@@ -369,13 +399,17 @@ test("the promo failing can never block the main menu itself", async () => {
   }
 });
 
-test("the board screen offers both the add and the info buttons", async () => {
+test("the board docks its four buttons under the input box", async () => {
   const u = user("Opener");
   await register(u, { gender: "male", name: "Opener" });
   const sent = await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
-  const cb = callbacks(sent);
-  assert.ok(cb.includes("fs:add"), "add my ad");
-  assert.ok(cb.includes("fs:info"), "what ForStatistic is");
+  const labels = keyboardLabels(sent);
+  // A reply keyboard, not an inline row: the board is a place you stay in and
+  // act from, and an inline row scrolls away the moment anything else arrives.
+  assert.ok(labels.some((l) => l.includes("afishamni")), "add my ad");
+  assert.ok(labels.some((l) => l.includes("Mening afisham")), "my ad");
+  assert.ok(labels.some((l) => l.includes("ma'lumotlari")), "what ForStatistic is");
+  assert.ok(labels.some((l) => l.includes("Orqaga")), "back");
 });
 
 test("the info screen explains the rule and names the channel", async () => {
@@ -590,6 +624,264 @@ test("a non-admin cannot hide an ad, and is not told the command exists", async 
   assert.strictEqual((await db.getAd(adId)).active, true, "the ad must still be on the board");
   assert.ok(!/yashirildi|topilmadi/.test(text), "and nothing may confirm the command exists");
   await db.setAdActive(adId, false);
+});
+
+// --- what each podium place costs -------------------------------------------------
+//
+// This is the number that makes topping up worth doing, so it has to be right
+// in the two ways it can be wrong: counting yourself as an obstacle to
+// yourself, and quoting an amount that only DRAWS with the holder. Ties are
+// broken by who paid first, so matching an amount does not overtake it.
+
+test("the gap to each place is what it takes to OVERTAKE, not to draw", () => {
+  const board = [
+    { id: "1", amountSom: 500000 },
+    { id: "2", amountSom: 300000 },
+    { id: "3", amountSom: 100000 },
+    { id: "9", amountSom: 50000 },
+  ];
+  const gaps = fs_.gapsFor(board, { id: "9", amountSom: 50000 });
+  assert.deepStrictEqual(
+    gaps,
+    [
+      { place: 1, need: 450001 },
+      { place: 2, need: 250001 },
+      { place: 3, need: 50001 },
+    ],
+    "each figure must be one so'm past the holder, not level with them"
+  );
+});
+
+test("your own ad is never counted as standing in your own way", () => {
+  const board = [
+    { id: "7", amountSom: 400000 },
+    { id: "1", amountSom: 300000 },
+    { id: "2", amountSom: 100000 },
+  ];
+  // #7 already holds first place. Places 1..3 among the OTHERS are all below
+  // them, so there is nothing left to buy.
+  assert.deepStrictEqual(fs_.gapsFor(board, { id: "7", amountSom: 400000 }), []);
+});
+
+test("the second-placed ad is quoted only the gap to first", () => {
+  const board = [
+    { id: "1", amountSom: 500000 },
+    { id: "5", amountSom: 300000 },
+    { id: "3", amountSom: 100000 },
+  ];
+  const gaps = fs_.gapsFor(board, { id: "5", amountSom: 300000 });
+  assert.deepStrictEqual(gaps, [{ place: 1, need: 200001 }], "it already beats everyone else");
+});
+
+// --- the podium is shown as cards --------------------------------------------------
+
+test("the top three arrive as full picture cards, the rest as a list", async () => {
+  const u = user("Viewer");
+  await register(u, { gender: "male", name: "Viewer" });
+
+  // Four paid ads, funded above everything earlier tests in this file left on
+  // the board, so these four really are places 1-4 and the podium is theirs.
+  // All four carry a picture: an ad without one falls back to a text card by
+  // design, which would make "count the photo cards" measure the fixtures
+  // rather than the podium.
+  for (const [name, amount] of [["First", 9000000], ["Second", 8000000], ["Third", 7000000], ["Fourth", 6000000]]) {
+    const owner = user(`Own${name}`);
+    await register(owner, { gender: "male", name: `Own${name}` });
+    const id = await db.createAd({ userId: owner.id, name, about: "x", link: "https://x.com", mediaFileId: "PIC" });
+    await db.addAdAmount(id, amount);
+  }
+
+  const sent = await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const cards = sent.filter((c) => c.method === "sendPhoto");
+  assert.strictEqual(cards.length, 3, `the podium is three cards, got ${cards.length}`);
+  assert.ok(cards.some((c) => (c.payload.caption || "").includes("First")));
+
+  // And the fourth is in the list, not a card.
+  const text = said(sent);
+  assert.match(text, /Fourth/, "everyone below the podium is in the list");
+  assert.ok(!cards.some((c) => (c.payload.caption || "").includes("Fourth")), "and not given a card");
+});
+
+// --- my ad ---------------------------------------------------------------------------
+
+test("somebody with no ad is told so and pointed at the way to make one", async () => {
+  const u = user("Adless");
+  await register(u, { gender: "male", name: "Adless" });
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const sent = await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  assert.match(said(sent), /hali afisha yo'q/, "it must say plainly that there is none");
+});
+
+test("my ad shows the owner's own ad with the top-up and edit buttons", async () => {
+  const u = user("Owner2");
+  await register(u, { gender: "male", name: "Owner2" });
+  const id = await db.createAd({ userId: u.id, name: "Mine", about: "x", link: "@minechannel", mediaFileId: "PIC" });
+  await db.addAdAmount(id, 65000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const sent = await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  assert.match(said(sent), /Mine/, "their ad is shown");
+  const labels = keyboardLabels(sent);
+  assert.ok(labels.some((l) => l.includes("To'lov qo'shish")), "add payment");
+  assert.ok(labels.some((l) => l.includes("Tahrirlash")), "edit");
+  assert.ok(labels.some((l) => l.includes("Orqaga")), "back");
+});
+
+// An owner whose ad was taken down has to be able to see that it was, rather
+// than find it simply missing with no explanation.
+test("a hidden ad is still shown to its owner, marked as hidden", async () => {
+  const u = user("Owner3");
+  await register(u, { gender: "male", name: "Owner3" });
+  const id = await db.createAd({ userId: u.id, name: "Taken Down", about: "x", link: "https://x.com" });
+  await db.addAdAmount(id, 55000);
+  await db.setAdActive(id, false);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const text = said(await h.send(M(), h.textUpdate("📌 Mening afisham", u)));
+  assert.match(text, /Taken Down/, "the owner still sees it");
+  assert.match(text, /yashirilgan/, "and is told it is hidden");
+});
+
+test("the top-up screen quotes what each podium place would cost", async () => {
+  const u = user("Climber2");
+  await register(u, { gender: "male", name: "Climber2" });
+  const id = await db.createAd({ userId: u.id, name: "Climbing", about: "x", link: "https://x.com" });
+  await db.addAdAmount(id, 10000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  const text = said(await h.send(M(), h.textUpdate("💰 To'lov qo'shish", u)));
+  assert.match(text, /yetmayapti/, "it must name what is still missing");
+  assert.match(text, /1-o'rin/, "for first place at least");
+});
+
+test("topping up ends on a paywall for the SAME ad, not a new one", async () => {
+  const u = user("TopPay");
+  await register(u, { gender: "male", name: "TopPay" });
+  const id = await db.createAd({ userId: u.id, name: "Existing", about: "x", link: "https://x.com" });
+  await db.addAdAmount(id, 20000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  await h.send(M(), h.textUpdate("💰 To'lov qo'shish", u));
+  const sent = await h.send(M(), h.textUpdate("30000", u));
+
+  const done = callbacks(sent).find((d) => d && d.startsWith("payments:done:"));
+  assert.ok(done, `a top-up must produce a paywall: ${said(sent)}`);
+  const order = await orders.getOrder(done.replace("payments:done:", ""));
+  assert.strictEqual(String(order.targetId), String(id), "the payment must point at the existing ad");
+  assert.strictEqual(order.amount, 30000, "and carry the amount they just named");
+});
+
+// --- editing --------------------------------------------------------------------------
+
+test("an owner can edit one field without touching the others or the money", async () => {
+  const u = user("Editor");
+  await register(u, { gender: "male", name: "Editor" });
+  const id = await db.createAd({ userId: u.id, name: "Old Name", about: "old about", link: "https://old.com" });
+  await db.addAdAmount(id, 45000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
+  await h.send(M(), h.textUpdate("📌 Nomi", u));
+  await h.send(M(), h.textUpdate("Brand New Name", u));
+
+  const ad = await db.getAd(id);
+  assert.strictEqual(ad.name, "Brand New Name", "the name changed");
+  assert.strictEqual(ad.about, "old about", "everything else was left alone");
+  assert.strictEqual(ad.link, "https://old.com");
+  // The amount decides the ranking, so it must only ever move through a payment.
+  assert.strictEqual(ad.amountSom, 45000, "editing must never change the money");
+});
+
+// The whitelist in updateAd, tested where it can actually be reached. The
+// edit screen never offers the amount, so driving this through the bot would
+// only prove the screen -- a future caller passing the field straight in is
+// exactly what the whitelist exists to stop, and money is the one field that
+// decides the ranking everybody paid for.
+test("updateAd refuses to change the money, whatever a caller passes", async () => {
+  const u = user("Tamper");
+  await register(u, { gender: "male", name: "Tamper" });
+  const id = await db.createAd({ userId: u.id, name: "Priced", about: "x", link: "https://x.com" });
+  await db.addAdAmount(id, 45000);
+
+  await db.updateAd(id, { name: "Renamed", amountSom: 99999999, active: true, userId: "999" });
+
+  const ad = await db.getAd(id);
+  assert.strictEqual(ad.name, "Renamed", "an allowed field still changes");
+  assert.strictEqual(ad.amountSom, 45000, "the money must be untouchable through this door");
+  assert.strictEqual(String(ad.userId), String(u.id), "and so must the owner");
+});
+
+test("editing the contact accepts a Telegram handle", async () => {
+  const u = user("Editor2");
+  await register(u, { gender: "male", name: "Editor2" });
+  const id = await db.createAd({ userId: u.id, name: "Contactable", about: "x", link: "https://old.com" });
+  await db.addAdAmount(id, 45000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
+  await h.send(M(), h.textUpdate("🔗 Havolasi", u));
+  await h.send(M(), h.textUpdate("@newchannel", u));
+
+  assert.strictEqual((await db.getAd(id)).link, "@newchannel");
+});
+
+// --- navigation -------------------------------------------------------------------------
+
+test("back steps out one level at a time, not straight home", async () => {
+  const u = user("Walker");
+  await register(u, { gender: "male", name: "Walker" });
+  const id = await db.createAd({ userId: u.id, name: "Walkable", about: "x", link: "https://x.com" });
+  await db.addAdAmount(id, 45000);
+
+  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📌 Mening afisham", u));
+  await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
+
+  // edit -> my ad
+  const toMyAd = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));
+  assert.ok(keyboardLabels(toMyAd).some((l) => l.includes("To'lov qo'shish")), "back from edit lands on my ad");
+
+  // my ad -> board
+  const toBoard = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));
+  assert.ok(keyboardLabels(toBoard).some((l) => l.includes("Mening afisham")), "back from my ad lands on the board");
+
+  // board -> main menu
+  const toMenu = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));
+  assert.ok(keyboardLabels(toMenu).some((l) => l.includes("Yangi tanishuvlar")), "back from the board goes home");
+});
+
+// The back button is shared with the rest of the bot. Somebody who has never
+// opened ForStatistic must have it behave exactly as it always did.
+test("back outside ForStatistic is left to whoever owns it", async () => {
+  const u = user("Elsewhere");
+  await register(u, { gender: "male", name: "Elsewhere" });
+  const sent = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));
+  assert.ok(
+    keyboardLabels(sent).some((l) => l.includes("Yangi tanishuvlar")),
+    "the ordinary back behaviour must survive"
+  );
+});
+
+// --- a phone contact end to end ------------------------------------------------------
+
+test("an ad can be reached by phone number, with no broken link button", async () => {
+  const u = user("Caller");
+  await register(u, { gender: "male", name: "Caller" });
+  const orderId = await addAd(u, {
+    name: "Call Me", link: "+998901112233", about: "Phone only, no website", amount: 12000,
+  });
+  await payOrder(orderId, 12000);
+
+  const order = await orders.getOrder(orderId);
+  const sent = await h.send(M(), h.textUpdate(`/ad_${order.targetId}`, u));
+  const text = said(sent);
+  assert.match(text, /\+998901112233/, "the number is shown");
+  assert.match(text, /📞/, "and marked as a phone rather than a link");
+  assert.strictEqual(urlButtons(sent).length, 0, "a phone gets no URL button -- Telegram refuses tel:");
 });
 
 // --- go ----------------------------------------------------------------------

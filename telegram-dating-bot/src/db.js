@@ -106,6 +106,8 @@ module.exports = {
   addAdAmount: store.addAdAmount,
   setAdActive: store.setAdActive,
   listAllAds: store.listAllAds,
+  listAdsByUser: store.listAdsByUser,
+  updateAd: store.updateAd,
   // Admin + language
   isAdmin: store.isAdmin,
   addAdmin: store.addAdmin,

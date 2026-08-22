@@ -1074,6 +1074,47 @@ async function addAdAmount(id, amountSom) {
   return rowToAd(rows[0]);
 }
 
+// Somebody's own ads, best-funded first. Includes hidden ones on purpose:
+// an owner whose ad was taken down has to be able to see that it was, rather
+// than find their ad simply missing with no explanation.
+async function listAdsByUser(userId) {
+  const { rows } = await query(
+    `SELECT * FROM ads
+      WHERE user_id = $1 AND amount_som > 0
+      ORDER BY amount_som DESC, paid_at`,
+    [String(userId)]
+  );
+  return rows.map(rowToAd);
+}
+
+// Editing changes only what the owner is allowed to change. The amount is
+// deliberately NOT in that set -- it is the one field that decides the
+// ranking, so it can only move through a payment.
+//
+// Built as a COALESCE per column rather than a dynamic column list: the field
+// names then come from this source file only, never from a caller's object
+// keys, so no patch can reach a column it was not meant to.
+async function updateAd(id, patch) {
+  if (!/^\d+$/.test(String(id))) return null;
+  const { rows } = await query(
+    `UPDATE ads
+        SET name          = COALESCE($2, name),
+            about         = COALESCE($3, about),
+            link          = COALESCE($4, link),
+            media_file_id = COALESCE($5, media_file_id)
+      WHERE id = $1
+      RETURNING *`,
+    [
+      String(id),
+      patch.name ?? null,
+      patch.about ?? null,
+      patch.link ?? null,
+      patch.mediaFileId ?? null,
+    ]
+  );
+  return rowToAd(rows[0]);
+}
+
 // Admin moderation. Hiding leaves the record (and the money paid) intact --
 // this is "take it off the board", never "pretend it never happened".
 async function setAdActive(id, active) {
@@ -1332,7 +1373,7 @@ module.exports = {
   listPremiumExpiring, setPremiumNoticeAt, clearRenewedPremiumNotices,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
-  createAd, getAd, listTopAds, addAdAmount, setAdActive, listAllAds,
+  createAd, getAd, listTopAds, addAdAmount, setAdActive, listAllAds, listAdsByUser, updateAd,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
   markTransaction, getSalesRows,
   getPaymeTransaction, getPaymeTransactionByOrder, createPaymeTransaction,
