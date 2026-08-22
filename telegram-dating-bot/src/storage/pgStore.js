@@ -1290,6 +1290,30 @@ async function getSalesRows(sinceIso) {
   return rows.map((r) => ({ type: r.type, amount: Number(r.amount) }));
 }
 
+// Every settled order of one kind, in full, newest first. getSalesRows above
+// returns only type and amount because that is all a total needs; this is for
+// the screen that has to say WHO paid WHAT and WHEN.
+async function listPaidOrdersByType(type, sinceIso, limit = 50) {
+  const { rows } = await query(
+    `SELECT merchant_trans_id, user_id, type, target_id, amount, provider, paid_at
+       FROM click_transactions
+      WHERE status = 'paid' AND type = $1 AND ($2::timestamptz IS NULL OR paid_at >= $2)
+      ORDER BY paid_at DESC
+      LIMIT $3`,
+    [type, sinceIso || null, limit]
+  );
+  return rows.map((r) => ({
+    merchantTransId: r.merchant_trans_id,
+    userId: r.user_id,
+    type: r.type,
+    targetId: r.target_id,
+    // BIGINT arrives as a string; left alone it would sort and add as text.
+    amount: Number(r.amount),
+    provider: r.provider,
+    paidAt: r.paid_at ? r.paid_at.toISOString() : null,
+  }));
+}
+
 // --- payme transactions ------------------------------------------------------
 
 function rowToPaymeTx(row) {
@@ -1375,7 +1399,7 @@ module.exports = {
   createComplaint, getComplaint, listComplaints, setComplaintReply,
   createAd, getAd, listTopAds, addAdAmount, setAdActive, listAllAds, listAdsByUser, updateAd,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
-  markTransaction, getSalesRows,
+  markTransaction, getSalesRows, listPaidOrdersByType,
   getPaymeTransaction, getPaymeTransactionByOrder, createPaymeTransaction,
   setPaymeTransactionState, listPaymeTransactions,
   listUndeliveredOrders, markDelivered, bumpDeliveryAttempts,

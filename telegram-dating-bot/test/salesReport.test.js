@@ -44,7 +44,7 @@ const user = (name) => {
 // fields orders.js itself would have written, at the point in the past the
 // report needs to see.
 let seq = 0;
-function seedPaidOrder(type, amount, daysAgo) {
+function seedPaidOrder(type, amount, daysAgo, extra = {}) {
   seq += 1;
   const id = `${type}_seed${String(seq).padStart(20, "0")}`;
   const paidAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
@@ -57,6 +57,7 @@ function seedPaidOrder(type, amount, daysAgo) {
     provider: "click",
     createdAt: paidAt,
     paidAt,
+    ...extra,
   };
   fs.writeFileSync(TX_PATH, JSON.stringify(all, null, 2));
   return id;
@@ -122,12 +123,12 @@ test("the main screen counts all four orders and shows their total", async () =>
   assert.ok(text.includes(totalRevenue.toLocaleString("uz-UZ")), "the total revenue must be the sum of all four");
 });
 
-test("three period buttons are offered under the main screen", async () => {
+test("the main screen offers the three periods and the ad breakdown", async () => {
   const sent = await h.send(A(), h.textUpdate(SALES, admin));
   const callbacks = periodCallbacks(sent);
   assert.deepStrictEqual(
     callbacks.sort(),
-    ["admin:sales:month", "admin:sales:week", "admin:sales:year"].sort()
+    ["admin:sales:ads", "admin:sales:month", "admin:sales:week", "admin:sales:year"].sort()
   );
 });
 
@@ -237,6 +238,87 @@ test("the ForResult line names the board and quotes no fixed price", () => {
   // It has no price to quote -- the buyer names the amount, which is the
   // whole point of it. A hardcoded figure here would be a lie.
   assert.ok(!/\d/.test(adLine.replace("ForResult", "")), `it must not quote a price: ${adLine}`);
+});
+
+// --- where the ad money actually came from -----------------------------------
+//
+// The aggregate line answers "how much did the board bring in". Without the
+// payment-by-payment view, a jump in that number has no explanation at all --
+// you cannot tell one large advertiser from twenty small ones, or spot a
+// payment against an ad that has since been taken down.
+
+test("the sales screen offers a way into the individual ad payments", async () => {
+  const sent = await h.send(A(), h.textUpdate(SALES, admin));
+  assert.ok(periodCallbacks(sent).includes("admin:sales:ads"), "the button must be on the sales screen");
+});
+
+test("each ad payment is listed with who paid, how much, and against which ad", async () => {
+  const adId = await db.createAd({
+    userId: "555000111", name: "Kofe Xona", about: "x", link: "https://x.com",
+  });
+  await db.addAdAmount(adId, 450000);
+  seedPaidOrder("adboard", 450000, 1, { userId: "555000111", targetId: String(adId) });
+
+  const text = said(await h.send(A(), h.callbackUpdate("admin:sales:ads", admin)));
+  assert.match(text, /Kofe Xona/, "the ad it paid for");
+  assert.match(text, /555000111/, "who paid");
+  assert.ok(text.includes((450000).toLocaleString("uz-UZ")), "how much");
+});
+
+// The money happened even if the ad did not survive. Dropping the row would
+// make the listed payments stop adding up to the reported total.
+test("a payment against a deleted ad is still listed, marked as such", async () => {
+  seedPaidOrder("adboard", 77000, 1, { userId: "444000222", targetId: "99999" });
+  const text = said(await h.send(A(), h.callbackUpdate("admin:sales:ads", admin)));
+  assert.ok(text.includes((77000).toLocaleString("uz-UZ")), "the payment is still shown");
+  assert.match(text, /o'chirilgan/, "and flagged as belonging to an ad that is gone");
+});
+
+// The list is capped so a busy month cannot exceed Telegram's message limit.
+// The headline figures must come from the full summary regardless, or the
+// screen would quietly under-report the moment the cap is reached.
+test("the headline totals count every payment, not just the ones shown", () => {
+  const many = Array.from({ length: adminTest.AD_PAYMENTS_LIMIT }, (_, i) => ({
+    targetId: "1", userId: "7", amount: 1000, provider: "click",
+    paidAt: new Date(Date.now() - i * 1000).toISOString(),
+  }));
+  const text = adminTest.formatAdPayments(many, new Map(), {
+    total: 500,
+    totalRevenue: 9999999,
+    title: "barcha vaqt",
+  });
+  assert.match(text, /To'lovlar: <b>500<\/b> ta/, "the count is the real one");
+  assert.ok(text.includes((9999999).toLocaleString("uz-UZ")), "and so is the revenue");
+  assert.match(text, /oxirgi 20 tasi/, "while saying plainly that the list is capped");
+});
+
+// Driven through the real screen with MORE payments than it can show, which
+// is the only condition under which "count the list" and "count everything"
+// differ -- and therefore the only way to prove the headline is not just the
+// length of the visible list.
+test("past the cap, the headline still counts every payment", async () => {
+  const before = (await getSalesSummary()).adboard.count;
+  const extra = adminTest.AD_PAYMENTS_LIMIT + 2;
+  for (let i = 0; i < extra; i++) {
+    seedPaidOrder("adboard", 1000, 1, { userId: "333000444", targetId: "12345" });
+  }
+  const expected = before + extra;
+
+  const text = said(await h.send(A(), h.callbackUpdate("admin:sales:ads", admin)));
+  assert.match(
+    text,
+    new RegExp(`To'lovlar: <b>${expected}</b> ta`),
+    `the header must count all ${expected}, not just the ${adminTest.AD_PAYMENTS_LIMIT} listed`
+  );
+  assert.match(text, /oxirgi 20 tasi/, "and say the list itself is capped");
+});
+
+test("a non-admin cannot open the ad payments", async () => {
+  const outsider = user("NosyAds");
+  await h.send(h.mainBot(), h.commandUpdate("/start", outsider));
+  await h.send(h.mainBot(), h.callbackUpdate("lang:uz", outsider));
+  const text = said(await h.send(A(), h.callbackUpdate("admin:sales:ads", outsider)));
+  assert.ok(!/afishalar tushumi/i.test(text), "the screen must not open");
 });
 
 // --- go ----------------------------------------------------------------------

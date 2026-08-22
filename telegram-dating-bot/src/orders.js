@@ -164,6 +164,21 @@ async function getSalesRows(sinceIso) {
     .map((tx) => ({ type: tx.type, amount: tx.amount }));
 }
 
+// Every settled order of one kind, in full, newest first. getSalesRows returns
+// only type and amount because a total needs nothing else; this is what the
+// admin screen showing individual payments reads.
+async function listPaidOrders(type, sinceIso, limit = 50) {
+  if (txStore) return txStore.listPaidOrdersByType(type, sinceIso, limit);
+  return Object.entries(readTx())
+    .filter(
+      ([, tx]) =>
+        tx.status === "paid" && tx.type === type && (!sinceIso || (tx.paidAt && tx.paidAt >= sinceIso))
+    )
+    .map(([merchantTransId, tx]) => ({ merchantTransId, ...tx }))
+    .sort((a, b) => String(b.paidAt).localeCompare(String(a.paidAt)))
+    .slice(0, limit);
+}
+
 // --- creating an order -------------------------------------------------------
 
 // `provider` records which checkout the person was sent to. It does NOT
@@ -350,4 +365,5 @@ module.exports = {
   // reporting
   getSalesRows,
   getSalesSummary,
+  listPaidOrders,
 };

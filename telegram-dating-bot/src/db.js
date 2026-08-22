@@ -132,6 +132,7 @@ module.exports = {
         updateTransactionAmount: store.updateTransactionAmount,
         markTransaction: store.markTransaction,
         getSalesRows: store.getSalesRows,
+        listPaidOrdersByType: store.listPaidOrdersByType,
         listUndeliveredOrders: store.listUndeliveredOrders,
         markDelivered: store.markDelivered,
         bumpDeliveryAttempts: store.bumpDeliveryAttempts,

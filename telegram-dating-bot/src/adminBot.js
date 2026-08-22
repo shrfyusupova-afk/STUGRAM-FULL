@@ -9,9 +9,9 @@ const {
   topReferrers, countReferrals,
   countPendingLikers, getLikeNoticeAt,
   listNewProfilesSince,
-  setAdActive,
+  setAdActive, listAllAds,
 } = require("./db");
-const { getOrder, createOrder, priceForType } = require("./orders");
+const { getOrder, createOrder, priceForType, listPaidOrders } = require("./orders");
 const { somToTiyin, ACCOUNT_FIELD, buildCheckoutUrl } = require("./payme");
 const {
   getSalesSummary,
@@ -1317,6 +1317,43 @@ function formatSalesReport(sales, title) {
   );
 }
 
+// How many individual payments the screen carries. The report prints four
+// lines per payment and Telegram refuses a message over 4096 characters, so
+// a busy month would otherwise silently fail to send at all.
+const AD_PAYMENTS_LIMIT = 20;
+
+const stamp = (iso) => (iso ? String(iso).slice(0, 16).replace("T", " ") : "—");
+
+// The aggregate line answers "how much did the board bring in". This answers
+// "where did it come from" -- which payment, from whom, against which ad.
+// Without it a jump in the total has no explanation.
+function formatAdPayments(payments, adsById, { total, totalRevenue, title }) {
+  if (payments.length === 0) {
+    return `📊 <b>ForResult — afishalar tushumi</b>\n\n${title}: hali to'lov bo'lmagan.`;
+  }
+
+  const rows = payments.map((payment, i) => {
+    const ad = adsById.get(String(payment.targetId));
+    // An ad can be deleted after it was paid for. The money still happened,
+    // so the row stays -- it just has an id instead of a name.
+    const name = ad ? escapeHtml(ad.name) : "<i>(afisha o'chirilgan)</i>";
+    return (
+      `${i + 1}. 🕒 ${escapeHtml(stamp(payment.paidAt))}\n` +
+      `📌 ${name} (#${escapeHtml(String(payment.targetId ?? "?"))})\n` +
+      `👤 <code>${escapeHtml(String(payment.userId))}</code>\n` +
+      `💰 <b>${som(payment.amount)}</b>  ·  ${escapeHtml(payment.provider || "click")}`
+    );
+  });
+
+  return (
+    `📊 <b>ForResult — afishalar tushumi</b>\n` +
+    `<i>${title}</i>\n\n` +
+    `🧾 To'lovlar: <b>${total}</b> ta  ·  💰 Jami: <b>${som(totalRevenue)}</b>` +
+    (total > payments.length ? `\n<i>(oxirgi ${payments.length} tasi ko'rsatilmoqda)</i>` : "") +
+    `\n\n${rows.join("\n\n")}`
+  );
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Rolling windows, not calendar week/month/year -- "haftalik" here means
@@ -1337,6 +1374,7 @@ function salesPeriodKeyboard() {
       Markup.button.callback("🗓 Oylik sotuv", "admin:sales:month"),
       Markup.button.callback("📆 Yillik sotuv", "admin:sales:year"),
     ],
+    [Markup.button.callback("📊 Afishalar tushumi", "admin:sales:ads")],
   ]);
 }
 
@@ -1627,6 +1665,47 @@ function createAdminBot(token, mainBotTelegram) {
       leaveComposers(ctx.from.id);
       const sales = await getSalesSummary();
       await ctx.reply(formatSalesReport(sales, "barcha vaqt"), salesPeriodKeyboard());
+    })
+  );
+
+  // Where the board's income came from, payment by payment. Sits beside the
+  // period buttons because it answers the question the total provokes: a jump
+  // in "afishalar tushumi" is meaningless until you can see which payment
+  // caused it.
+  bot.action(
+    "admin:sales:ads",
+    requireAdmin(async (ctx) => {
+      await safeAnswerCbQuery(ctx);
+
+      let payments;
+      let ads;
+      try {
+        // Every settled ad payment, then the ads themselves in ONE read --
+        // looking each ad up per payment would be twenty round trips for a
+        // screen that is only ever glanced at.
+        [payments, ads] = await Promise.all([
+          listPaidOrders("adboard", null, AD_PAYMENTS_LIMIT),
+          listAllAds(200),
+        ]);
+      } catch (err) {
+        console.error("Could not read ForResult payments:", err.message);
+        await ctx.reply(`⚠️ Tushumni o'qib bo'lmadi: ${err.message}`);
+        return;
+      }
+
+      // The totals come from the summary, not from the capped list above --
+      // otherwise a busy month would report only the twenty shown.
+      const sales = await getSalesSummary();
+      const adsById = new Map(ads.map((ad) => [String(ad.id), ad]));
+
+      await ctx.reply(
+        formatAdPayments(payments, adsById, {
+          total: sales.adboard.count,
+          totalRevenue: sales.adboard.totalRevenue,
+          title: "barcha vaqt",
+        }),
+        { parse_mode: "HTML", disable_web_page_preview: true }
+      );
     })
   );
 
@@ -2600,6 +2679,8 @@ module.exports = {
     formatReferralBoard,
     formatSalesReport,
     salesLines,
+    formatAdPayments,
+    AD_PAYMENTS_LIMIT,
     REFERRAL_TOP_N,
     GIFT_UNLOCK_CREDITS,
   },
