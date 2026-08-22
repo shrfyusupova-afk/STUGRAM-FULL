@@ -884,6 +884,96 @@ test("an ad can be reached by phone number, with no broken link button", async (
   assert.strictEqual(urlButtons(sent).length, 0, "a phone gets no URL button -- Telegram refuses tel:");
 });
 
+// --- the two buttons under a half-filled form --------------------------------
+//
+// While a question is on screen the only two useful things are the way back
+// one question and the way out entirely. "Back" stepping out of the whole
+// form instead of one question is the failure worth guarding: somebody who
+// mistyped their name on step 4 would lose everything.
+
+async function startWizard(u) {
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
+  return h.send(M(), h.callbackUpdate("fs:add", u));
+}
+
+test("every wizard step offers exactly back and leave, and nothing else", async () => {
+  const u = user("Former");
+  await register(u, { gender: "male", name: "Former" });
+
+  const step1 = await startWizard(u);
+  const labels = keyboardLabels(step1);
+  assert.ok(labels.some((l) => l.includes("Orqaga")), "back");
+  assert.ok(labels.some((l) => l.includes("Taxtachaga qaytish")), "leave");
+  // Nothing that would abandon a half-filled form without saying so.
+  assert.ok(!labels.some((l) => l.includes("Mening afisham")), "no my-ad button mid-form");
+  assert.ok(!labels.some((l) => l.includes("ma'lumotlari")), "no info button mid-form");
+
+  // And the same two on a later step.
+  await h.send(M(), h.textUpdate("Some Name", u));
+  const step2 = await h.send(M(), h.photoUpdate(u));
+  const later = keyboardLabels(step2);
+  assert.ok(later.some((l) => l.includes("Orqaga")) && later.some((l) => l.includes("Taxtachaga qaytish")));
+});
+
+test("back inside the form re-asks the previous question, keeping the answers", async () => {
+  const u = user("Backer");
+  await register(u, { gender: "male", name: "Backer" });
+  await startWizard(u);
+
+  await h.send(M(), h.textUpdate("Kofe Xona", u));      // name -> photo
+  await h.send(M(), h.photoUpdate(u));                   // photo -> link
+
+  const back1 = said(await h.send(M(), h.textUpdate("⬅️ Orqaga", u)));
+  assert.match(back1, /2\/5/, "back from the link step re-asks for the photo");
+
+  const back2 = said(await h.send(M(), h.textUpdate("⬅️ Orqaga", u)));
+  assert.match(back2, /1\/5/, "and again re-asks for the name");
+
+  // The form is still alive: answering carries on rather than starting over.
+  const forward = said(await h.send(M(), h.textUpdate("Kofe Xona 2", u)));
+  assert.match(forward, /2\/5/, "the form must still be running");
+});
+
+test("back at the very first question leaves the form for the board", async () => {
+  const u = user("FirstBack");
+  await register(u, { gender: "male", name: "FirstBack" });
+  await startWizard(u);
+
+  const sent = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));
+  const labels = keyboardLabels(sent);
+  assert.ok(labels.some((l) => l.includes("Mening afisham")), "it lands back on the board");
+  assert.strictEqual(fs_.drafts.has(String(u.id)), false, "and the form is dropped");
+});
+
+test("the leave button abandons the form from any step", async () => {
+  const u = user("Leaver");
+  await register(u, { gender: "male", name: "Leaver" });
+  await startWizard(u);
+  await h.send(M(), h.textUpdate("Halfway", u));
+
+  const sent = await h.send(M(), h.textUpdate("📊 Taxtachaga qaytish", u));
+  assert.ok(keyboardLabels(sent).some((l) => l.includes("Mening afisham")), "it lands on the board");
+  assert.strictEqual(fs_.drafts.has(String(u.id)), false, "and nothing half-filled is left behind");
+});
+
+// --- after paying ---------------------------------------------------------------
+
+test("the congratulation carries a button straight to the board", async () => {
+  const u = user("Payer2");
+  await register(u, { gender: "male", name: "Payer2" });
+  const orderId = await addAd(u, {
+    name: "Just Paid", link: "@justpaid", about: "Wants to see it live", amount: 8000,
+  });
+
+  const before = h.calls.length;
+  await payOrder(orderId, 8000);
+  const mine = h.calls.slice(before).filter((c) => String(c.payload.chat_id) === String(u.id));
+
+  assert.match(said(mine), /Tabriklaymiz/, "they are congratulated");
+  const cb = mine.flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat()).map((b) => b.callback_data);
+  assert.ok(cb.includes("fs:open"), "with one tap to go and look at it");
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;

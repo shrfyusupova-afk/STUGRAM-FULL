@@ -18,12 +18,14 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync(path.join(DATA_DIR, f));
 
 const h = require("./harness");
+const { __test: adminTest } = require("../src/adminBot");
 const db = require("../src/db");
 const {
   PREMIUM_PRICE_SOM,
   UNLOCK_PRICE_SOM,
   VIP_CHAT_PRICE_SOM,
   ANON_GENDER_PRICE_SOM,
+  getSalesSummary,
 } = require("../src/orders");
 
 const A = () => h.adminBot();
@@ -186,6 +188,55 @@ test("a non-admin gets nothing from the label or the buttons", async () => {
 
   const period = await h.send(A(), h.callbackUpdate("admin:sales:week", outsider));
   assert.ok(!/Sotuvlar hisoboti/.test(said(period)), "and a period button must not work either");
+});
+
+// --- every product needs its own bucket ------------------------------------
+//
+// Premium is the DEFAULT bucket in getSalesSummary: it takes everything not
+// claimed by a named type. So a new product that nobody adds to that list has
+// its income silently reported as Premium revenue -- which is exactly what
+// happened to the ForResult board. These two cases are what makes that
+// mistake loud instead of invisible.
+
+test("ad-board income is reported on its own, not folded into Premium", async () => {
+  seedPaidOrder("adboard", 250000, 1);
+  const sales = await getSalesSummary();
+
+  assert.ok(sales.adboard, "the board needs a bucket of its own");
+  assert.ok(sales.adboard.totalRevenue >= 250000, "and the money has to land in it");
+
+  // The bug this replaces: an unnamed type falls through to Premium, so the
+  // Premium line quietly reports advertising money as subscription money.
+  const premiumRows = PREMIUM_PRICE_SOM * sales.premium.count;
+  assert.strictEqual(
+    sales.premium.totalRevenue,
+    premiumRows,
+    "Premium revenue must be a whole number of Premium subscriptions and nothing else"
+  );
+});
+
+test("every product the report prints is also counted in its total", () => {
+  const lines = adminTest.salesLines();
+  const sales = {};
+  // One so'm per product, so the total is simply "how many products exist" --
+  // any line missing from the sum shows up as an off-by-one.
+  for (const line of lines) sales[line.key] = { count: 1, totalRevenue: 1 };
+
+  const text = adminTest.formatSalesReport(sales, "sinov");
+  for (const line of lines) {
+    assert.ok(text.includes(line.label), `"${line.label}" must appear in the report`);
+  }
+  assert.match(text, new RegExp(`Umumiy sotuv: ${lines.length} ta`), "the total counts every line");
+  assert.ok(text.includes(`Umumiy tushum: ${lines.length} so'm`), "and so does the revenue total");
+});
+
+test("the ForResult line names the board and quotes no fixed price", () => {
+  const labels = adminTest.salesLines().map((l) => l.label);
+  const adLine = labels.find((l) => l.includes("ForResult"));
+  assert.ok(adLine, "the board must be reported by name");
+  // It has no price to quote -- the buyer names the amount, which is the
+  // whole point of it. A hardcoded figure here would be a lie.
+  assert.ok(!/\d/.test(adLine.replace("ForResult", "")), `it must not quote a price: ${adLine}`);
 });
 
 // --- go ----------------------------------------------------------------------

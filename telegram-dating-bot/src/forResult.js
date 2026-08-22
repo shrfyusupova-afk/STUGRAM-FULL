@@ -209,6 +209,15 @@ function myAdKeyboard(lang) {
     .persistent();
 }
 
+// While a question is on screen, the only two things worth offering are the
+// way back one question and the way out entirely. Anything else here would be
+// a button that abandons a half-filled form without saying so.
+function wizardKeyboard(lang) {
+  return Markup.keyboard([[t(lang, "backButton"), t(lang, "forResultToBoardButton")]])
+    .resize()
+    .persistent();
+}
+
 function editKeyboard(lang) {
   return Markup.keyboard([
     [t(lang, "forResultEditNameButton"), t(lang, "forResultEditPhotoButton")],
@@ -545,9 +554,61 @@ function alertAboutAd(ad, { edited = false } = {}) {
 
 const STEP = { NAME: "name", PHOTO: "photo", LINK: "link", ABOUT: "about", AMOUNT: "amount" };
 
+// The order questions are asked in, and the prompt that belongs to each --
+// which is what lets "back" re-ask the previous one rather than throwing the
+// whole half-filled form away.
+const CREATE_STEPS = [STEP.NAME, STEP.PHOTO, STEP.LINK, STEP.ABOUT, STEP.AMOUNT];
+const PROMPT_FOR = {
+  [STEP.NAME]: "forResultAskName",
+  [STEP.PHOTO]: "forResultAskPhoto",
+  [STEP.LINK]: "forResultAskLink",
+  [STEP.ABOUT]: "forResultAskAbout",
+};
+
+async function askStep(ctx, lang, step) {
+  // The amount question is the one that needs live numbers in it, so it is
+  // rebuilt rather than replayed from a fixed string.
+  if (step === STEP.AMOUNT) {
+    const top = (await listTopAds(1))[0];
+    await ctx.reply(
+      t(lang, "forResultAskAmount")({
+        minMoney: money(AD_MIN_SOM, lang),
+        topMoney: top ? money(top.amountSom, lang) : null,
+      }),
+      { parse_mode: "HTML", ...wizardKeyboard(lang) }
+    );
+    return;
+  }
+  await ctx.reply(t(lang, PROMPT_FOR[step]), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    ...wizardKeyboard(lang),
+  });
+}
+
+// One question back. Editing and topping up ask a single question, so for
+// those "back" means leaving; at the very first question there is nothing
+// behind it, so that leaves too.
+async function stepBack(ctx, lang, draft) {
+  if (draft.mode !== "create") {
+    clearDraft(ctx.from.id);
+    await showMyAd(ctx, lang);
+    return;
+  }
+  const index = CREATE_STEPS.indexOf(draft.step);
+  if (index <= 0) {
+    clearDraft(ctx.from.id);
+    await showBoard(ctx, lang, 1);
+    return;
+  }
+  const previous = CREATE_STEPS[index - 1];
+  setDraft(ctx.from.id, { step: previous });
+  await askStep(ctx, lang, previous);
+}
+
 async function startWizard(ctx, lang) {
   setDraft(ctx.from.id, { mode: "create", step: STEP.NAME });
-  await ctx.reply(t(lang, "forResultAskName"), { parse_mode: "HTML" });
+  await askStep(ctx, lang, STEP.NAME);
 }
 
 // Applies one answer to whichever field the draft is collecting, in either
@@ -569,6 +630,11 @@ function registerForResultHandlers(bot) {
   const menuLabels = Object.values(STRINGS).map((dict) => dict.menu.forResult);
   const backLabels = new Set(Object.values(STRINGS).map((dict) => dict.backButton));
   const label = (key) => Object.values(STRINGS).map((dict) => dict[key]);
+  // The two buttons that sit under a half-filled form. Unlike every other
+  // label, these must reach their own handlers with the draft still INTACT:
+  // "back" has to know which question to return to, and clearing it first
+  // would turn stepping back into starting over.
+  const navLabels = new Set([...backLabels, ...label("forResultToBoardButton")]);
 
   // --- text, before every bot.hears -------------------------------------------
   //
@@ -586,6 +652,7 @@ function registerForResultHandlers(bot) {
     // means "I changed my mind, take me there", never "file this label as my
     // answer". The draft is dropped and the update carries on to whichever
     // handler owns that button.
+    if (navLabels.has(text)) return next();
     if (MENU_LABELS.has(text) || FS_BUTTON_LABELS.has(text)) {
       clearDraft(ctx.from.id);
       return next();
@@ -598,7 +665,7 @@ function registerForResultHandlers(bot) {
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { name: text });
       setDraft(ctx.from.id, { step: STEP.PHOTO, name: text });
-      await ctx.reply(t(lang, "forResultAskPhoto"), { parse_mode: "HTML" });
+      await askStep(ctx, lang, STEP.PHOTO);
       return;
     }
 
@@ -615,7 +682,7 @@ function registerForResultHandlers(bot) {
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { link: contact.value });
       setDraft(ctx.from.id, { step: STEP.ABOUT, link: contact.value });
-      await ctx.reply(t(lang, "forResultAskAbout"), { parse_mode: "HTML" });
+      await askStep(ctx, lang, STEP.ABOUT);
       return;
     }
 
@@ -626,14 +693,7 @@ function registerForResultHandlers(bot) {
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { about: text });
       setDraft(ctx.from.id, { step: STEP.AMOUNT, about: text });
-      const top = (await listTopAds(1))[0];
-      await ctx.reply(
-        t(lang, "forResultAskAmount")({
-          minMoney: money(AD_MIN_SOM, lang),
-          topMoney: top ? money(top.amountSom, lang) : null,
-        }),
-        { parse_mode: "HTML" }
-      );
+      await askStep(ctx, lang, STEP.AMOUNT);
       return;
     }
 
@@ -701,10 +761,7 @@ function registerForResultHandlers(bot) {
     if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { mediaFileId: fileId });
 
     setDraft(ctx.from.id, { step: STEP.LINK, mediaFileId: fileId });
-    await ctx.reply(t(lang, "forResultAskLink"), {
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    });
+    await askStep(ctx, lang, STEP.LINK);
   });
 
   // --- getting in and out --------------------------------------------------------
@@ -725,11 +782,17 @@ function registerForResultHandlers(bot) {
   // Falls through for anybody who is not inside ForResult at all, so the
   // same button keeps working everywhere else it is used.
   bot.hears([...backLabels], async (ctx, next) => {
+    const draft = getDraft(ctx.from.id);
     const screen = getScreen(ctx.from.id);
-    if (!screen) return next();
+    if (!draft && !screen) return next();
 
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
-    clearDraft(ctx.from.id);
+
+    // Mid-form, back is one question, not the whole form.
+    if (draft) {
+      await stepBack(ctx, lang, draft);
+      return;
+    }
 
     if (screen.screen === "edit") {
       setScreen(ctx.from.id, { screen: "myad" });
@@ -782,6 +845,12 @@ function registerForResultHandlers(bot) {
   });
 
   // --- my ad ---------------------------------------------------------------------
+
+  bot.hears(label("forResultToBoardButton"), async (ctx) => {
+    const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
+    clearDraft(ctx.from.id);
+    await showBoard(ctx, lang, 1);
+  });
 
   bot.hears(label("forResultMyAdButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;

@@ -299,18 +299,25 @@ async function deliverOrder(merchantTransId, paidOrder, onPaid) {
   }
 }
 
+// Premium is the DEFAULT bucket here -- it takes everything not claimed by a
+// named type -- so every new product has to be named in this list as well as
+// given its own line. Miss one and its income is silently reported as Premium
+// revenue, which is exactly what happened to the ForResult board until this
+// list caught up with it.
+const SALES_TYPES = ["unlock", "vipchat", "anongender", "adboard"];
+
 async function getSalesSummary(sinceIso) {
   const paid = await getSalesRows(sinceIso);
-  const specialTypes = ["unlock", "vipchat", "anongender"];
-  const premiumPaid = paid.filter((tx) => !specialTypes.includes(tx.type));
-  const unlockPaid = paid.filter((tx) => tx.type === "unlock");
-  const vipchatPaid = paid.filter((tx) => tx.type === "vipchat");
-  const anongenderPaid = paid.filter((tx) => tx.type === "anongender");
+  const bucket = (rows) => ({
+    count: rows.length,
+    totalRevenue: rows.reduce((sum, tx) => sum + tx.amount, 0),
+  });
   return {
-    premium: { count: premiumPaid.length, totalRevenue: premiumPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    unlock: { count: unlockPaid.length, totalRevenue: unlockPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    vipchat: { count: vipchatPaid.length, totalRevenue: vipchatPaid.reduce((sum, tx) => sum + tx.amount, 0) },
-    anongender: { count: anongenderPaid.length, totalRevenue: anongenderPaid.reduce((sum, tx) => sum + tx.amount, 0) },
+    premium: bucket(paid.filter((tx) => !SALES_TYPES.includes(tx.type))),
+    unlock: bucket(paid.filter((tx) => tx.type === "unlock")),
+    vipchat: bucket(paid.filter((tx) => tx.type === "vipchat")),
+    anongender: bucket(paid.filter((tx) => tx.type === "anongender")),
+    adboard: bucket(paid.filter((tx) => tx.type === "adboard")),
   };
 }
 

@@ -674,7 +674,16 @@ if (webhookDomain) {
             place,
             money: `${Number(ad.amountSom).toLocaleString("uz-UZ")} so'm`,
           }),
-          { parse_mode: "HTML" }
+          {
+            parse_mode: "HTML",
+            // The one thing somebody wants immediately after paying is to see
+            // their ad standing where they just bought it. Without this they
+            // would have to find the menu button again to check the purchase
+            // actually landed.
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback(t(lang, "forResultSeeBoardButton"), "fs:open")],
+            ]),
+          }
         );
 
         // Every ad is a link and a picture chosen by a member of the public,

@@ -1277,27 +1277,40 @@ function som(n) {
 // One block per product, then a total. The total is computed here rather
 // than added as a fifth field on getSalesSummary() -- it is nothing but the
 // other four added up, and a report is the only place that ever needs it.
+// The products, in the order they are reported. Written as data rather than
+// as one long string so the total below is summed from the SAME list that is
+// printed -- a hand-written total is how a newly added product ends up
+// missing from the bottom line while appearing above it.
+//
+// Prices come from the constants, never retyped here: a hardcoded copy
+// silently goes stale the moment a price changes. The ForResult board has no
+// price to quote at all -- the buyer names the amount, which is the whole
+// point of it.
+function salesLines() {
+  return [
+    { key: "premium", label: "💎 Premium obuna" },
+    { key: "unlock", label: `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona)` },
+    { key: "vipchat", label: `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona)` },
+    { key: "anongender", label: `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)})` },
+    { key: "adboard", label: "📊 ForResult afishalari (summani mijoz o'zi belgilaydi)" },
+  ];
+}
+
 function formatSalesReport(sales, title) {
-  const totalCount = sales.premium.count + sales.unlock.count + sales.vipchat.count + sales.anongender.count;
-  const totalRevenue =
-    sales.premium.totalRevenue + sales.unlock.totalRevenue + sales.vipchat.totalRevenue + sales.anongender.totalRevenue;
+  const lines = salesLines();
+  const totalCount = lines.reduce((sum, line) => sum + (sales[line.key]?.count || 0), 0);
+  const totalRevenue = lines.reduce((sum, line) => sum + (sales[line.key]?.totalRevenue || 0), 0);
+
+  const body = lines
+    .map((line) => {
+      const bucket = sales[line.key] || { count: 0, totalRevenue: 0 };
+      return `${line.label}:\n✅ Sotilgan: ${bucket.count} ta\n💵 Jami tushum: ${som(bucket.totalRevenue)}`;
+    })
+    .join("\n\n");
 
   return (
     `💰 Sotuvlar hisoboti — ${title}\n\n` +
-    `💎 Premium obuna:\n` +
-    `✅ Sotilgan: ${sales.premium.count} ta\n` +
-    `💵 Jami tushum: ${som(sales.premium.totalRevenue)}\n\n` +
-    // Prices come from the constants, never retyped here -- a hardcoded
-    // copy silently goes stale the moment a price changes.
-    `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona):\n` +
-    `✅ Sotilgan: ${sales.unlock.count} ta\n` +
-    `💵 Jami tushum: ${som(sales.unlock.totalRevenue)}\n\n` +
-    `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona):\n` +
-    `✅ Sotilgan: ${sales.vipchat.count} ta\n` +
-    `💵 Jami tushum: ${som(sales.vipchat.totalRevenue)}\n\n` +
-    `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)}):\n` +
-    `✅ Sotilgan: ${sales.anongender.count} ta\n` +
-    `💵 Jami tushum: ${som(sales.anongender.totalRevenue)}\n\n` +
+    `${body}\n\n` +
     `━━━━━━━━━━━━━━\n` +
     `📊 Umumiy sotuv: ${totalCount} ta\n` +
     `💰 Umumiy tushum: ${som(totalRevenue)}`
@@ -2585,6 +2598,8 @@ module.exports = {
     paymeSamplePaste,
     PAYME_SAMPLE_TYPES,
     formatReferralBoard,
+    formatSalesReport,
+    salesLines,
     REFERRAL_TOP_N,
     GIFT_UNLOCK_CREDITS,
   },
