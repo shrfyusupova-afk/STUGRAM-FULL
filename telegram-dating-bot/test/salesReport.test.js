@@ -321,6 +321,101 @@ test("a non-admin cannot open the ad payments", async () => {
   assert.ok(!/afishalar tushumi/i.test(text), "the screen must not open");
 });
 
+// --- the OTHER report has to agree ---------------------------------------------
+//
+// "📈 To'liq hisobot" summed its revenue from a hand-written list of four
+// products and printed a hand-written breakdown of the same four. The board
+// was in neither, so its income vanished from that screen's bottom line while
+// appearing correctly on the sales screen -- two reports over one ledger
+// disagreeing, which is worse than either being wrong on its own.
+//
+// Both now derive from salesLines(); these cases hold them to it.
+
+function snapshotWith(perProduct) {
+  const lines = adminTest.salesLines();
+  const bucket = (i) => ({ count: i + 1, totalRevenue: perProduct * (i + 1) });
+  const sales = {};
+  lines.forEach((line, i) => (sales[line.key] = bucket(i)));
+  return {
+    generatedAt: new Date().toISOString(),
+    profiles: { total: 10, male: 6, female: 4, active: 9, premiumNow: 2, pendingAnketa: 0 },
+    newRegistrationsLast30Days: { total: 5, male: 3, female: 2 },
+    newRegistrationsPrior30Days: { total: 4 },
+    salesAllTime: sales,
+    salesLast30Days: sales,
+    complaints: { total: 0, answered: 0, pending: 0 },
+  };
+}
+
+test("the full report lists every product the sales screen knows about", () => {
+  const text = adminTest.formatFullReport(snapshotWith(1000));
+  for (const line of adminTest.salesLines()) {
+    assert.ok(text.includes(line.short), `"${line.short}" is missing from the full report`);
+  }
+});
+
+test("the full report's revenue total counts every product", () => {
+  const lines = adminTest.salesLines();
+  const snapshot = snapshotWith(1000);
+  const expected = lines.reduce((sum, line) => sum + snapshot.salesAllTime[line.key].totalRevenue, 0);
+
+  const text = adminTest.formatFullReport(snapshot);
+  assert.ok(
+    text.includes(expected.toLocaleString("uz-UZ")),
+    `the all-time total must be ${expected}, summed over all ${lines.length} products`
+  );
+});
+
+// Driven through the admin bot rather than the formatter, so it covers the
+// snapshot reaching the report as well as the arithmetic inside it.
+test("a real ad payment shows up in the full report too", async () => {
+  const text = said(await h.send(A(), h.textUpdate("📈 To'liq hisobot", admin)));
+  assert.match(text, /ForResult afishalari/, "the board must be one of the products listed");
+
+  const sales = await getSalesSummary();
+  assert.ok(sales.adboard.count > 0, "the fixtures above must have left real ad payments behind");
+  assert.ok(
+    text.includes(sales.adboard.totalRevenue.toLocaleString("uz-UZ")),
+    "and its revenue must be the real figure from the ledger"
+  );
+});
+
+// --- looking one payment up by its id ------------------------------------------
+//
+// Pasting an order id into the admin search is the "where did this person's
+// money go" screen. It recognises ids by a pattern listing the order types --
+// and the board's type was missing from it, so an ad payment was the one kind
+// of receipt that could not be looked up at all.
+
+test("an ad order id is recognised, like every other kind", () => {
+  const adId = "adboard_72126265cf6932485742fe2f";
+  assert.match(adId, adminTest.ORDER_ID_RE, "an ad receipt must be searchable");
+
+  // The other four must keep working.
+  for (const type of ["premium", "unlock", "vipchat", "anongender"]) {
+    assert.match(`${type}_72126265cf6932485742fe2f`, adminTest.ORDER_ID_RE, type);
+  }
+  // And it must still be a pattern, not a catch-all.
+  assert.ok(!adminTest.ORDER_ID_RE.test("nonsense_72126265cf6932485742fe2f"));
+  assert.ok(!adminTest.ORDER_ID_RE.test("adboard_nothex"));
+});
+
+test("an ad order is shown by name, not by its raw type", () => {
+  const text = adminTest.formatOrder("adboard_72126265cf6932485742fe2f", {
+    userId: "42",
+    type: "adboard",
+    amount: 450000,
+    status: "paid",
+    provider: "click",
+    createdAt: "2026-08-22T03:40:00.000Z",
+    paidAt: "2026-08-22T03:41:00.000Z",
+    delivered: true,
+  });
+  assert.match(text, /ForResult/, "it must be labelled, not left as the internal type");
+  assert.ok(!/Nima: adboard/.test(text), "the raw type must not leak onto an operator's screen");
+  assert.ok(text.includes((450000).toLocaleString("uz-UZ")), "and the amount must be there");
+});
+
 // --- go ----------------------------------------------------------------------
 (async () => {
   let failed = 0;

@@ -767,13 +767,17 @@ async function userCard(id, profile) {
 // hex characters. That is exactly what Click's own receipt shows the customer
 // as "Buyurtma raqami", so pasting it here is the shortest path from "my
 // payment is stuck" to knowing whose side it is stuck on.
-const ORDER_ID_RE = /^(premium|unlock|vipchat|anongender)_[0-9a-f]{16,32}$/;
+// Every order type the bot can issue. A type missing here means an admin
+// pasting that order id gets nothing back -- on the one screen whose entire
+// job is answering "where did this person's money go".
+const ORDER_ID_RE = /^(premium|unlock|vipchat|anongender|adboard)_[0-9a-f]{16,32}$/;
 
 const ORDER_TYPE_LABEL = {
   premium: "💎 Premium",
   unlock: "🔐 Profil ochish",
   vipchat: "👑 VIP chat",
   anongender: "🕵️ Anonim jins filtri",
+  adboard: "📊 ForResult afisha",
 };
 
 // What the ledger knows, and -- more useful -- what that MEANS about where
@@ -1288,11 +1292,23 @@ function som(n) {
 // point of it.
 function salesLines() {
   return [
-    { key: "premium", label: "💎 Premium obuna" },
-    { key: "unlock", label: `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona)` },
-    { key: "vipchat", label: `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona)` },
-    { key: "anongender", label: `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)})` },
-    { key: "adboard", label: "📊 ForResult afishalari (summani mijoz o'zi belgilaydi)" },
+    { key: "premium", label: "💎 Premium obuna", short: "Premium" },
+    {
+      key: "unlock",
+      label: `🔐 Sotilgan akkauntlar (profil ko'rish, ${som(UNLOCK_PRICE_SOM)}/dona)`,
+      short: "Profil ochish",
+    },
+    { key: "vipchat", label: `📢 VIP chat (yigitlar, ${som(VIP_CHAT_PRICE_SOM)}/dona)`, short: "VIP chat" },
+    {
+      key: "anongender",
+      label: `🕵️ Anonim chat -- jins tanlash (haftalik, ${som(ANON_GENDER_PRICE_SOM)})`,
+      short: "Anonim (jins tanlash)",
+    },
+    {
+      key: "adboard",
+      label: "📊 ForResult afishalari (summani mijoz o'zi belgilaydi)",
+      short: "ForResult afishalari",
+    },
   ];
 }
 
@@ -1395,16 +1411,19 @@ function formatFullReport(snapshot) {
         : "0.0%";
   const dailyAvg = (last30.total / 30).toFixed(1);
 
-  const allRevenue =
-    snapshot.salesAllTime.premium.totalRevenue +
-    snapshot.salesAllTime.unlock.totalRevenue +
-    snapshot.salesAllTime.vipchat.totalRevenue +
-    snapshot.salesAllTime.anongender.totalRevenue;
-  const last30Revenue =
-    snapshot.salesLast30Days.premium.totalRevenue +
-    snapshot.salesLast30Days.unlock.totalRevenue +
-    snapshot.salesLast30Days.vipchat.totalRevenue +
-    snapshot.salesLast30Days.anongender.totalRevenue;
+  // Summed from the same list the breakdown below prints, so a product can
+  // never appear in one and be missing from the other.
+  const productLines = salesLines();
+  const revenueOf = (sales) =>
+    productLines.reduce((sum, line) => sum + (sales?.[line.key]?.totalRevenue || 0), 0);
+  const allRevenue = revenueOf(snapshot.salesAllTime);
+  const last30Revenue = revenueOf(snapshot.salesLast30Days);
+  const salesBreakdown = productLines
+    .map((line) => {
+      const bucket = snapshot.salesAllTime?.[line.key] || { count: 0, totalRevenue: 0 };
+      return `• ${line.short}: ${bucket.count} ta — ${som(bucket.totalRevenue)}`;
+    })
+    .join("\n");
 
   return (
     `📈 ForOne — To'liq hisobot\n` +
@@ -1423,10 +1442,7 @@ function formatFullReport(snapshot) {
     `• O'sish: ${growthPercent}\n` +
     `• Kunlik o'rtacha: ${dailyAvg} ta/kun\n\n` +
     `💰 Sotuvlar (jami vaqt davomida)\n` +
-    `• Premium: ${snapshot.salesAllTime.premium.count} ta — ${som(snapshot.salesAllTime.premium.totalRevenue)}\n` +
-    `• Profil ochish: ${snapshot.salesAllTime.unlock.count} ta — ${som(snapshot.salesAllTime.unlock.totalRevenue)}\n` +
-    `• VIP chat: ${snapshot.salesAllTime.vipchat.count} ta — ${som(snapshot.salesAllTime.vipchat.totalRevenue)}\n` +
-    `• Anonim (jins tanlash): ${snapshot.salesAllTime.anongender.count} ta — ${som(snapshot.salesAllTime.anongender.totalRevenue)}\n` +
+    `${salesBreakdown}\n` +
     `• Jami tushum: ${som(allRevenue)}\n\n` +
     `💵 Sotuvlar (so'nggi 30 kun)\n` +
     `• Jami tushum: ${som(last30Revenue)} (jami tushumning ${pct(last30Revenue, allRevenue)})\n\n` +
