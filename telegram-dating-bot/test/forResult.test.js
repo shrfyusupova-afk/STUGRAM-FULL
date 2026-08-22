@@ -1,4 +1,4 @@
-// ForStatistic -- the paid advertising board.
+// ForResult -- the paid advertising board.
 //
 // The whole product is one rule: the ranking is "who has put in the most",
 // and paying again ADDS to your total rather than replacing it. Everything
@@ -32,7 +32,7 @@ const h = require("./harness");
 const db = require("../src/db");
 const floodGuard = require("../src/floodGuard");
 const orders = require("../src/orders");
-const { __test: fs_ } = require("../src/forStatistic");
+const { __test: fs_ } = require("../src/forResult");
 
 const BASE = "http://127.0.0.1:45999";
 const M = () => h.mainBot();
@@ -352,11 +352,11 @@ test("hiding an ad removes it from the board without destroying the record", asy
 
 // --- through the bot ----------------------------------------------------------
 
-test("the main menu carries the ForStatistic button", async () => {
+test("the main menu carries the ForResult button", async () => {
   const u = user("Menu");
   const sent = await register(u, { gender: "male", name: "Menu" });
   assert.ok(
-    keyboardLabels(sent).some((l) => l && l.includes("ForStatistic")),
+    keyboardLabels(sent).some((l) => l && l.includes("ForResult")),
     "the button must be on the main keyboard"
   );
 });
@@ -402,13 +402,13 @@ test("the promo failing can never block the main menu itself", async () => {
 test("the board docks its four buttons under the input box", async () => {
   const u = user("Opener");
   await register(u, { gender: "male", name: "Opener" });
-  const sent = await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const sent = await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   const labels = keyboardLabels(sent);
   // A reply keyboard, not an inline row: the board is a place you stay in and
   // act from, and an inline row scrolls away the moment anything else arrives.
   assert.ok(labels.some((l) => l.includes("afishamni")), "add my ad");
   assert.ok(labels.some((l) => l.includes("Mening afisham")), "my ad");
-  assert.ok(labels.some((l) => l.includes("ma'lumotlari")), "what ForStatistic is");
+  assert.ok(labels.some((l) => l.includes("ma'lumotlari")), "what ForResult is");
   assert.ok(labels.some((l) => l.includes("Orqaga")), "back");
 });
 
@@ -588,7 +588,7 @@ test("a non-admin gets nothing from the moderation command", async () => {
   const nosy = user("Nosy");
   await register(nosy, { gender: "male", name: "Nosy" });
   const text = said(await h.send(M(), h.textUpdate(fs_.ADS_COMMAND, nosy)));
-  assert.ok(!/ForStatistic afishalari/.test(text), "the screen must not open");
+  assert.ok(!/ForResult afishalari/.test(text), "the screen must not open");
   assert.ok(!/adhide_/.test(text), "and no ad ids may leak");
 });
 
@@ -691,7 +691,7 @@ test("the top three arrive as full picture cards, the rest as a list", async () 
     await db.addAdAmount(id, amount);
   }
 
-  const sent = await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const sent = await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   const cards = sent.filter((c) => c.method === "sendPhoto");
   assert.strictEqual(cards.length, 3, `the podium is three cards, got ${cards.length}`);
   assert.ok(cards.some((c) => (c.payload.caption || "").includes("First")));
@@ -707,7 +707,7 @@ test("the top three arrive as full picture cards, the rest as a list", async () 
 test("somebody with no ad is told so and pointed at the way to make one", async () => {
   const u = user("Adless");
   await register(u, { gender: "male", name: "Adless" });
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   const sent = await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   assert.match(said(sent), /hali afisha yo'q/, "it must say plainly that there is none");
 });
@@ -718,7 +718,7 @@ test("my ad shows the owner's own ad with the top-up and edit buttons", async ()
   const id = await db.createAd({ userId: u.id, name: "Mine", about: "x", link: "@minechannel", mediaFileId: "PIC" });
   await db.addAdAmount(id, 65000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   const sent = await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   assert.match(said(sent), /Mine/, "their ad is shown");
   const labels = keyboardLabels(sent);
@@ -736,7 +736,7 @@ test("a hidden ad is still shown to its owner, marked as hidden", async () => {
   await db.addAdAmount(id, 55000);
   await db.setAdActive(id, false);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   const text = said(await h.send(M(), h.textUpdate("📌 Mening afisham", u)));
   assert.match(text, /Taken Down/, "the owner still sees it");
   assert.match(text, /yashirilgan/, "and is told it is hidden");
@@ -748,7 +748,7 @@ test("the top-up screen quotes what each podium place would cost", async () => {
   const id = await db.createAd({ userId: u.id, name: "Climbing", about: "x", link: "https://x.com" });
   await db.addAdAmount(id, 10000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   const text = said(await h.send(M(), h.textUpdate("💰 To'lov qo'shish", u)));
   assert.match(text, /yetmayapti/, "it must name what is still missing");
@@ -761,7 +761,7 @@ test("topping up ends on a paywall for the SAME ad, not a new one", async () => 
   const id = await db.createAd({ userId: u.id, name: "Existing", about: "x", link: "https://x.com" });
   await db.addAdAmount(id, 20000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   await h.send(M(), h.textUpdate("💰 To'lov qo'shish", u));
   const sent = await h.send(M(), h.textUpdate("30000", u));
@@ -781,7 +781,7 @@ test("an owner can edit one field without touching the others or the money", asy
   const id = await db.createAd({ userId: u.id, name: "Old Name", about: "old about", link: "https://old.com" });
   await db.addAdAmount(id, 45000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
   await h.send(M(), h.textUpdate("📌 Nomi", u));
@@ -820,7 +820,7 @@ test("editing the contact accepts a Telegram handle", async () => {
   const id = await db.createAd({ userId: u.id, name: "Contactable", about: "x", link: "https://old.com" });
   await db.addAdAmount(id, 45000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
   await h.send(M(), h.textUpdate("🔗 Havolasi", u));
@@ -837,7 +837,7 @@ test("back steps out one level at a time, not straight home", async () => {
   const id = await db.createAd({ userId: u.id, name: "Walkable", about: "x", link: "https://x.com" });
   await db.addAdAmount(id, 45000);
 
-  await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  await h.send(M(), h.textUpdate("📊 ForResult — reklama taxtasi", u));
   await h.send(M(), h.textUpdate("📌 Mening afisham", u));
   await h.send(M(), h.textUpdate("✏️ Tahrirlash", u));
 
@@ -855,8 +855,8 @@ test("back steps out one level at a time, not straight home", async () => {
 });
 
 // The back button is shared with the rest of the bot. Somebody who has never
-// opened ForStatistic must have it behave exactly as it always did.
-test("back outside ForStatistic is left to whoever owns it", async () => {
+// opened ForResult must have it behave exactly as it always did.
+test("back outside ForResult is left to whoever owns it", async () => {
   const u = user("Elsewhere");
   await register(u, { gender: "male", name: "Elsewhere" });
   const sent = await h.send(M(), h.textUpdate("⬅️ Orqaga", u));

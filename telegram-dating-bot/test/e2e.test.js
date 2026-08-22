@@ -105,7 +105,7 @@ test("a new user can register and lands on the main menu", async () => {
   assert.deepStrictEqual(labels, [
     "🔍 Yangi tanishuvlar",
     "⚙️ Anketa sozlamalari",
-    "📊 ForStatistic — reklama taxtasi",
+    "📊 ForResult — reklama taxtasi",
     "💌 Kimlar yoqtirdi",
     "👑 VIP suhbat",
     "💎 Premium",
@@ -122,7 +122,7 @@ test("every main menu button answers", async () => {
   for (const label of [
     "🔍 Yangi tanishuvlar",
     "⚙️ Anketa sozlamalari",
-    "📊 ForStatistic — reklama taxtasi",
+    "📊 ForResult — reklama taxtasi",
     "💌 Kimlar yoqtirdi",
     "👑 VIP suhbat",
     "💎 Premium",

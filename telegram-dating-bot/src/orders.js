@@ -27,7 +27,7 @@ const VIP_CHAT_PRICE_SOM = 21900;
 const ANON_GENDER_PRICE_SOM = 12900;
 const ANON_GENDER_DAYS = 7;
 
-// The ForStatistic board is the one thing here with no fixed price: the buyer
+// The ForResult board is the one thing here with no fixed price: the buyer
 // names the amount, because the amount IS the product -- it decides their
 // place in the ranking. That makes it the single exception to "nothing ever
 // takes an amount from a client request", so it gets its own explicit list
@@ -172,7 +172,7 @@ async function getSalesRows(sinceIso) {
 // there for reporting, and so a reused pending order can be re-pointed.
 //
 // `amountSom` is honoured ONLY for the variable-price types listed above
-// (the ForStatistic board, where the buyer names the figure because the
+// (the ForResult board, where the buyer names the figure because the
 // figure is what they are buying). For everything else it is ignored
 // entirely and the price comes from the constants, so a call site passing a
 // wrong amount can never change what Premium costs.

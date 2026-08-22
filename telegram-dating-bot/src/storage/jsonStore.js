@@ -659,7 +659,7 @@ async function hasVipChat(userId) {
   return !!readJson(VIP_CHAT_PATH)[String(userId)];
 }
 
-// --- ForStatistic ads --------------------------------------------------------
+// --- ForResult ads --------------------------------------------------------
 //
 // A paid billboard: anyone can buy a slot, and the ranking is simply "who has
 // put in the most". Money accumulates on the ad rather than replacing the

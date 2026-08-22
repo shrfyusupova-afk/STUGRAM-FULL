@@ -11,7 +11,7 @@ const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard, attemptJoin } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
-const { registerForStatisticHandlers, BOARD_LIMIT: FS_BOARD_LIMIT } = require("./forStatistic");
+const { registerForResultHandlers, BOARD_LIMIT: FR_BOARD_LIMIT } = require("./forResult");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { registerMiniApp } = require("./miniApp");
 const {
@@ -376,7 +376,7 @@ registerComplaintHandlers(bot);
 // reach that step rather than being matched against a menu label. It falls
 // through with next() for everybody who has no draft open, which is almost
 // everybody almost all of the time.
-registerForStatisticHandlers(bot);
+registerForResultHandlers(bot);
 // The buttons under an "your account was deleted / hidden" notice. That
 // message is sent by the admin bot but delivered through THIS bot, so this is
 // where the taps arrive.
@@ -660,16 +660,16 @@ if (webhookDomain) {
           // was taken, so this must not look like success -- leaving the
           // order undelivered puts it in front of the retry sweep and, when
           // that keeps failing, in front of a person.
-          throw new Error(`ForStatistic ad ${order.targetId} no longer exists`);
+          throw new Error(`ForResult ad ${order.targetId} no longer exists`);
         }
 
-        const board = await listTopAds(FS_BOARD_LIMIT);
+        const board = await listTopAds(FR_BOARD_LIMIT);
         const index = board.findIndex((row) => String(row.id) === String(ad.id));
         const place = index === -1 ? board.length : index + 1;
 
         await bot.telegram.sendMessage(
           order.userId,
-          t(lang, "forStatisticPaidCongrats")({
+          t(lang, "forResultPaidCongrats")({
             mark: place === 1 ? "🥇" : place === 2 ? "🥈" : place === 3 ? "🥉" : "🔸",
             place,
             money: `${Number(ad.amountSom).toLocaleString("uz-UZ")} so'm`,
@@ -682,7 +682,7 @@ if (webhookDomain) {
         // had gone live until somebody complained about it, so the operator
         // is told as it happens, with what they need to judge it.
         alert(
-          `📊 ForStatistic: yangi afisha #${ad.id}\n` +
+          `📊 ForResult: yangi afisha #${ad.id}\n` +
             `👤 ${order.userId}\n` +
             `📌 ${ad.name}\n` +
             `🔗 ${ad.link}\n` +
@@ -691,7 +691,7 @@ if (webhookDomain) {
           { bypassThrottle: true }
         ).catch(() => {});
 
-        console.log(`ForStatistic ad ${ad.id} funded by ${order.userId} (+${order.amount} so'm, now ${ad.amountSom}, place ${place})`);
+        console.log(`ForResult ad ${ad.id} funded by ${order.userId} (+${order.amount} so'm, now ${ad.amountSom}, place ${place})`);
         return;
       }
 

@@ -16,7 +16,7 @@ function mainMenuKeyboard(lang) {
     // Its own full-width row, high up: it is the one screen here that people
     // are meant to arrive at without already knowing it exists, and a
     // half-width button in the fifth row is not something anybody discovers.
-    [m.forStatistic],
+    [m.forResult],
     [m.likes, m.vip],
     [m.premium, m.anonChat],
     // Invite sits next to the complaint row rather than at the top: it is the
@@ -41,13 +41,13 @@ async function sendMainMenu(ctx, lang) {
   //
   // Required lazily and failure-tolerant on purpose: this is a promo, and a
   // promo that fails must never be the reason somebody cannot get back to
-  // their menu. Lazy because forStatistic.js needs mainMenuKeyboard from
+  // their menu. Lazy because forResult.js needs mainMenuKeyboard from
   // here, and a top-level require in both directions is a cycle -- the same
   // pattern vipChat.js/vipInvite.js already use.
   try {
-    await require("./forStatistic").sendPromo(ctx, lang);
+    await require("./forResult").sendPromo(ctx, lang);
   } catch (err) {
-    console.error("ForStatistic promo failed (ignored):", err.message);
+    console.error("ForResult promo failed (ignored):", err.message);
   }
 }
 

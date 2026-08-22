@@ -1,4 +1,4 @@
-// ForStatistic -- a paid advertising board anyone can buy a place on.
+// ForResult -- a paid advertising board anyone can buy a place on.
 //
 // The whole product is one rule: the ranking is "who has put in the most",
 // and paying again ADDS to your total rather than replacing it. Everything
@@ -69,15 +69,15 @@ function labelsOf(...keys) {
   return new Set(Object.values(STRINGS).flatMap((dict) => keys.map((k) => dict[k])).filter(Boolean));
 }
 const FS_BUTTON_LABELS = labelsOf(
-  "forStatisticAddButton",
-  "forStatisticInfoButton",
-  "forStatisticMyAdButton",
-  "forStatisticTopUpButton",
-  "forStatisticEditButton",
-  "forStatisticEditNameButton",
-  "forStatisticEditPhotoButton",
-  "forStatisticEditLinkButton",
-  "forStatisticEditAboutButton",
+  "forResultAddButton",
+  "forResultInfoButton",
+  "forResultMyAdButton",
+  "forResultTopUpButton",
+  "forResultEditButton",
+  "forResultEditNameButton",
+  "forResultEditPhotoButton",
+  "forResultEditLinkButton",
+  "forResultEditAboutButton",
   "backButton"
 );
 
@@ -193,8 +193,8 @@ const clearDraft = (userId) => drafts.delete(String(userId));
 
 function boardKeyboard(lang) {
   return Markup.keyboard([
-    [t(lang, "forStatisticAddButton"), t(lang, "forStatisticMyAdButton")],
-    [t(lang, "forStatisticInfoButton"), t(lang, "backButton")],
+    [t(lang, "forResultAddButton"), t(lang, "forResultMyAdButton")],
+    [t(lang, "forResultInfoButton"), t(lang, "backButton")],
   ])
     .resize()
     .persistent();
@@ -202,7 +202,7 @@ function boardKeyboard(lang) {
 
 function myAdKeyboard(lang) {
   return Markup.keyboard([
-    [t(lang, "forStatisticTopUpButton"), t(lang, "forStatisticEditButton")],
+    [t(lang, "forResultTopUpButton"), t(lang, "forResultEditButton")],
     [t(lang, "backButton")],
   ])
     .resize()
@@ -211,8 +211,8 @@ function myAdKeyboard(lang) {
 
 function editKeyboard(lang) {
   return Markup.keyboard([
-    [t(lang, "forStatisticEditNameButton"), t(lang, "forStatisticEditPhotoButton")],
-    [t(lang, "forStatisticEditLinkButton"), t(lang, "forStatisticEditAboutButton")],
+    [t(lang, "forResultEditNameButton"), t(lang, "forResultEditPhotoButton")],
+    [t(lang, "forResultEditLinkButton"), t(lang, "forResultEditAboutButton")],
     [t(lang, "backButton")],
   ])
     .resize()
@@ -250,12 +250,12 @@ function renderRest(rest, page, lang) {
   const slice = rest.slice(start, start + PAGE_SIZE);
 
   const body = slice
-    .map((ad, i) => t(lang, "forStatisticEntry")(entryFields(ad, TOP_CARDS + start + i + 1, lang, { short: true })))
+    .map((ad, i) => t(lang, "forResultEntry")(entryFields(ad, TOP_CARDS + start + i + 1, lang, { short: true })))
     .join("\n");
 
   const text =
-    `${t(lang, "forStatisticRestTitle")}\n${body}\n` +
-    t(lang, "forStatisticBoardFooter")(current, pages, rest.length + Math.min(TOP_CARDS, rest.length ? TOP_CARDS : 0));
+    `${t(lang, "forResultRestTitle")}\n${body}\n` +
+    t(lang, "forResultBoardFooter")(current, pages, rest.length + Math.min(TOP_CARDS, rest.length ? TOP_CARDS : 0));
 
   return { text, pages, page: current };
 }
@@ -264,8 +264,8 @@ function restKeyboard(lang, { page, pages, admin = false }) {
   const rows = [];
   if (pages > 1) {
     const nav = [];
-    if (page > 1) nav.push(Markup.button.callback(t(lang, "forStatisticPrevButton"), `fs:page:${page - 1}`));
-    if (page < pages) nav.push(Markup.button.callback(t(lang, "forStatisticNextButton"), `fs:page:${page + 1}`));
+    if (page > 1) nav.push(Markup.button.callback(t(lang, "forResultPrevButton"), `fs:page:${page - 1}`));
+    if (page < pages) nav.push(Markup.button.callback(t(lang, "forResultNextButton"), `fs:page:${page + 1}`));
     rows.push(nav);
   }
   // Added only for an admin, so moderation is reachable from the screen the
@@ -277,10 +277,10 @@ function restKeyboard(lang, { page, pages, admin = false }) {
 // One ad as a full card: its picture, its details, and a button straight to
 // whatever contact it carries.
 async function sendAdCard(ctx, ad, place, lang, { extraRows = [] } = {}) {
-  const caption = t(lang, "forStatisticDetail")(entryFields(ad, place, lang));
+  const caption = t(lang, "forResultDetail")(entryFields(ad, place, lang));
   const url = contactUrl(ad.link);
   const rows = [
-    ...(url ? [[Markup.button.url(t(lang, "forStatisticOpenLinkButton"), url)]] : []),
+    ...(url ? [[Markup.button.url(t(lang, "forResultOpenLinkButton"), url)]] : []),
     ...extraRows,
   ];
   const extra = {
@@ -297,7 +297,7 @@ async function sendAdCard(ctx, ad, place, lang, { extraRows = [] } = {}) {
       // A file_id can stop resolving (Telegram expiring it, the original
       // message deleted). The ad was paid for, so it still has to be
       // readable -- text without the picture beats an error.
-      console.error(`ForStatistic: photo for ad ${ad.id} failed, falling back to text:`, err.message);
+      console.error(`ForResult: photo for ad ${ad.id} failed, falling back to text:`, err.message);
     }
   }
   await ctx.reply(caption, extra);
@@ -308,7 +308,7 @@ async function showBoard(ctx, lang, page = 1) {
   const ads = await listTopAds(BOARD_LIMIT);
 
   if (ads.length === 0) {
-    await ctx.reply(t(lang, "forStatisticBoardEmpty"), {
+    await ctx.reply(t(lang, "forResultBoardEmpty"), {
       parse_mode: "HTML",
       ...boardKeyboard(lang),
     });
@@ -321,7 +321,7 @@ async function showBoard(ctx, lang, page = 1) {
   // Page one leads with the podium. Later pages are the list alone -- resending
   // three photos every time somebody taps "next" would be noise.
   if (page <= 1) {
-    await ctx.reply(t(lang, "forStatisticTop3Title"), { parse_mode: "HTML", ...boardKeyboard(lang) });
+    await ctx.reply(t(lang, "forResultTop3Title"), { parse_mode: "HTML", ...boardKeyboard(lang) });
     for (const [i, ad] of ads.slice(0, TOP_CARDS).entries()) {
       await sendAdCard(ctx, ad, i + 1, lang);
     }
@@ -340,9 +340,9 @@ async function showBoard(ctx, lang, page = 1) {
 // --- the promo that rides along with the main menu --------------------------------
 
 async function sendPromo(ctx, lang) {
-  await ctx.reply(t(lang, "forStatisticPromo"), {
+  await ctx.reply(t(lang, "forResultPromo"), {
     parse_mode: "HTML",
-    ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "forStatisticPromoButton"), "fs:open")]]),
+    ...Markup.inlineKeyboard([[Markup.button.callback(t(lang, "forResultPromoButton"), "fs:open")]]),
   });
 }
 
@@ -364,12 +364,12 @@ async function showMyAd(ctx, lang) {
 
   if (mine.length === 0) {
     setScreen(ctx.from.id, { screen: "board", adId: null });
-    await ctx.reply(t(lang, "forStatisticNoAd"), { parse_mode: "HTML", ...boardKeyboard(lang) });
+    await ctx.reply(t(lang, "forResultNoAd"), { parse_mode: "HTML", ...boardKeyboard(lang) });
     return;
   }
 
   setScreen(ctx.from.id, { screen: "myad", adId: mine[0].id });
-  await ctx.reply(t(lang, "forStatisticMyAdTitle"), { parse_mode: "HTML", ...myAdKeyboard(lang) });
+  await ctx.reply(t(lang, "forResultMyAdTitle"), { parse_mode: "HTML", ...myAdKeyboard(lang) });
 
   const board = await listTopAds(BOARD_LIMIT);
   for (const ad of mine) {
@@ -379,10 +379,10 @@ async function showMyAd(ctx, lang) {
     // with no explanation is worse than being told it was taken down.
     const extraRows =
       mine.length > 1
-        ? [[Markup.button.callback(t(lang, "forStatisticPickAdButton"), `fs:pick:${ad.id}`)]]
+        ? [[Markup.button.callback(t(lang, "forResultPickAdButton"), `fs:pick:${ad.id}`)]]
         : [];
     await sendAdCard(ctx, ad, place, lang, { extraRows });
-    if (!ad.active) await ctx.reply(t(lang, "forStatisticMyAdHidden"), { parse_mode: "HTML" });
+    if (!ad.active) await ctx.reply(t(lang, "forResultMyAdHidden"), { parse_mode: "HTML" });
   }
 }
 
@@ -418,11 +418,11 @@ async function askTopUp(ctx, lang) {
 
   const gapsBlock =
     gaps.length === 0
-      ? t(lang, "forStatisticAlreadyTop")
-      : t(lang, "forStatisticGapsHeader") +
+      ? t(lang, "forResultAlreadyTop")
+      : t(lang, "forResultGapsHeader") +
         gaps
           .map((gap) =>
-            t(lang, "forStatisticGapLine")({
+            t(lang, "forResultGapLine")({
               mark: rankMark(gap.place - 1),
               place: gap.place,
               need: money(gap.need, lang),
@@ -433,7 +433,7 @@ async function askTopUp(ctx, lang) {
 
   setDraft(ctx.from.id, { mode: "topup", step: "amount", adId: ad.id });
   await ctx.reply(
-    t(lang, "forStatisticTopUpAsk")({
+    t(lang, "forResultTopUpAsk")({
       name: escapeHtml(ad.name),
       money: money(ad.amountSom, lang),
       place,
@@ -455,7 +455,7 @@ async function sendPaywall(ctx, lang, { adId, amountSom, name, about, link }) {
     t,
   });
 
-  const summary = t(lang, "forStatisticDraftReady")({
+  const summary = t(lang, "forResultDraftReady")({
     name: escapeHtml(name),
     about: escapeHtml(about),
     link: escapeHtml(link),
@@ -488,7 +488,7 @@ const ADS_COMMAND = "/afishalar";
 
 function formatAdList(ads, total) {
   if (ads.length === 0) {
-    return "📊 <b>ForStatistic afishalari</b>\n\nHozircha to'langan afisha yo'q.";
+    return "📊 <b>ForResult afishalari</b>\n\nHozircha to'langan afisha yo'q.";
   }
   const rows = ads.map((ad, i) => {
     const state = ad.active ? "✅ Ko'rinmoqda" : "🚫 Yashirilgan";
@@ -503,7 +503,7 @@ function formatAdList(ads, total) {
     );
   });
   return (
-    `📊 <b>ForStatistic afishalari</b>\n\n` +
+    `📊 <b>ForResult afishalari</b>\n\n` +
     `Jami: <b>${total}</b> ta` +
     (total > ads.length ? ` (eng yuqori ${ads.length} tasi ko'rsatilmoqda)` : "") +
     `\n\n${rows.join("\n\n")}`
@@ -515,7 +515,7 @@ async function showAdList(ctx) {
   try {
     ads = await listAllAds(100);
   } catch (err) {
-    console.error("Could not list ForStatistic ads:", err.message);
+    console.error("Could not list ForResult ads:", err.message);
     await ctx.reply(`⚠️ Afishalarni o'qib bo'lmadi: ${err.message}`);
     return;
   }
@@ -530,7 +530,7 @@ async function showAdList(ctx) {
 // harmless, then edit it into a scam" is free.
 function alertAboutAd(ad, { edited = false } = {}) {
   alert(
-    `📊 ForStatistic: ${edited ? "afisha TAHRIRLANDI" : "yangi afisha"} #${ad.id}\n` +
+    `📊 ForResult: ${edited ? "afisha TAHRIRLANDI" : "yangi afisha"} #${ad.id}\n` +
       `👤 ${ad.userId}\n` +
       `📌 ${ad.name}\n` +
       `${contactIcon(ad.link)} ${ad.link}\n` +
@@ -547,7 +547,7 @@ const STEP = { NAME: "name", PHOTO: "photo", LINK: "link", ABOUT: "about", AMOUN
 
 async function startWizard(ctx, lang) {
   setDraft(ctx.from.id, { mode: "create", step: STEP.NAME });
-  await ctx.reply(t(lang, "forStatisticAskName"), { parse_mode: "HTML" });
+  await ctx.reply(t(lang, "forResultAskName"), { parse_mode: "HTML" });
 }
 
 // Applies one answer to whichever field the draft is collecting, in either
@@ -555,13 +555,18 @@ async function startWizard(ctx, lang) {
 async function applyEdit(ctx, lang, draft, patch) {
   const ad = await updateAd(draft.adId, patch);
   clearDraft(ctx.from.id);
-  await ctx.reply(t(lang, "forStatisticEditSaved"), { parse_mode: "HTML" });
+  await ctx.reply(t(lang, "forResultEditSaved"), { parse_mode: "HTML" });
   if (ad) alertAboutAd(ad, { edited: true });
   await showMyAd(ctx, lang);
 }
 
-function registerForStatisticHandlers(bot) {
-  const menuLabels = Object.values(STRINGS).map((dict) => dict.menu.forStatistic);
+// The callback_data prefix stays "fs:" even though the product is now called
+// ForResult. It is never shown to anybody, and every promo message already
+// sitting in a chat carries "fs:open" on its button -- renaming the prefix
+// would turn all of those into buttons that do nothing when tapped. A name
+// change is not worth breaking the history it appears in.
+function registerForResultHandlers(bot) {
+  const menuLabels = Object.values(STRINGS).map((dict) => dict.menu.forResult);
   const backLabels = new Set(Object.values(STRINGS).map((dict) => dict.backButton));
   const label = (key) => Object.values(STRINGS).map((dict) => dict[key]);
 
@@ -588,42 +593,42 @@ function registerForStatisticHandlers(bot) {
 
     if (draft.step === STEP.NAME) {
       if (text.length < 2 || text.length > NAME_MAX) {
-        await ctx.reply(t(lang, "forStatisticErrName"));
+        await ctx.reply(t(lang, "forResultErrName"));
         return;
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { name: text });
       setDraft(ctx.from.id, { step: STEP.PHOTO, name: text });
-      await ctx.reply(t(lang, "forStatisticAskPhoto"), { parse_mode: "HTML" });
+      await ctx.reply(t(lang, "forResultAskPhoto"), { parse_mode: "HTML" });
       return;
     }
 
     if (draft.step === STEP.PHOTO) {
-      await ctx.reply(t(lang, "forStatisticErrPhoto"), { parse_mode: "HTML" });
+      await ctx.reply(t(lang, "forResultErrPhoto"), { parse_mode: "HTML" });
       return;
     }
 
     if (draft.step === STEP.LINK) {
       const contact = normaliseContact(text);
       if (!contact) {
-        await ctx.reply(t(lang, "forStatisticErrLink"), { parse_mode: "HTML" });
+        await ctx.reply(t(lang, "forResultErrLink"), { parse_mode: "HTML" });
         return;
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { link: contact.value });
       setDraft(ctx.from.id, { step: STEP.ABOUT, link: contact.value });
-      await ctx.reply(t(lang, "forStatisticAskAbout"), { parse_mode: "HTML" });
+      await ctx.reply(t(lang, "forResultAskAbout"), { parse_mode: "HTML" });
       return;
     }
 
     if (draft.step === STEP.ABOUT) {
       if (text.length < 5 || text.length > ABOUT_MAX) {
-        await ctx.reply(t(lang, "forStatisticErrAbout"));
+        await ctx.reply(t(lang, "forResultErrAbout"));
         return;
       }
       if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { about: text });
       setDraft(ctx.from.id, { step: STEP.AMOUNT, about: text });
       const top = (await listTopAds(1))[0];
       await ctx.reply(
-        t(lang, "forStatisticAskAmount")({
+        t(lang, "forResultAskAmount")({
           minMoney: money(AD_MIN_SOM, lang),
           topMoney: top ? money(top.amountSom, lang) : null,
         }),
@@ -636,7 +641,7 @@ function registerForStatisticHandlers(bot) {
       const amount = parseAmount(text);
       if (!isValidAdAmount(amount)) {
         await ctx.reply(
-          t(lang, "forStatisticErrAmount")({
+          t(lang, "forResultErrAmount")({
             minMoney: money(AD_MIN_SOM, lang),
             maxMoney: money(AD_MAX_SOM, lang),
           }),
@@ -696,7 +701,7 @@ function registerForStatisticHandlers(bot) {
     if (draft.mode === "edit") return applyEdit(ctx, lang, draft, { mediaFileId: fileId });
 
     setDraft(ctx.from.id, { step: STEP.LINK, mediaFileId: fileId });
-    await ctx.reply(t(lang, "forStatisticAskLink"), {
+    await ctx.reply(t(lang, "forResultAskLink"), {
       parse_mode: "HTML",
       disable_web_page_preview: true,
     });
@@ -717,7 +722,7 @@ function registerForStatisticHandlers(bot) {
 
   // Back means one step out, not all the way home: out of the edit menu to
   // your ad, out of your ad to the board, out of the board to the main menu.
-  // Falls through for anybody who is not inside ForStatistic at all, so the
+  // Falls through for anybody who is not inside ForResult at all, so the
   // same button keeps working everywhere else it is used.
   bot.hears([...backLabels], async (ctx, next) => {
     const screen = getScreen(ctx.from.id);
@@ -745,9 +750,9 @@ function registerForStatisticHandlers(bot) {
     await showBoard(ctx, lang, Number(ctx.match[1]));
   });
 
-  bot.hears(label("forStatisticInfoButton"), async (ctx) => {
+  bot.hears(label("forResultInfoButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
-    await ctx.reply(t(lang, "forStatisticInfo"), {
+    await ctx.reply(t(lang, "forResultInfo"), {
       parse_mode: "HTML",
       disable_web_page_preview: true,
       ...boardKeyboard(lang),
@@ -758,14 +763,14 @@ function registerForStatisticHandlers(bot) {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await safeAnswerCbQuery(ctx);
     setScreen(ctx.from.id, { screen: "board" });
-    await ctx.reply(t(lang, "forStatisticInfo"), {
+    await ctx.reply(t(lang, "forResultInfo"), {
       parse_mode: "HTML",
       disable_web_page_preview: true,
       ...boardKeyboard(lang),
     });
   });
 
-  bot.hears(label("forStatisticAddButton"), async (ctx) => {
+  bot.hears(label("forResultAddButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await startWizard(ctx, lang);
   });
@@ -778,7 +783,7 @@ function registerForStatisticHandlers(bot) {
 
   // --- my ad ---------------------------------------------------------------------
 
-  bot.hears(label("forStatisticMyAdButton"), async (ctx) => {
+  bot.hears(label("forResultMyAdButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await showMyAd(ctx, lang);
   });
@@ -791,18 +796,18 @@ function registerForStatisticHandlers(bot) {
     // technically capable client can set to anything.
     if (!ad || String(ad.userId) !== String(ctx.from.id)) return;
     setScreen(ctx.from.id, { screen: "myad", adId: ad.id });
-    await ctx.reply(t(lang, "forStatisticAdSelected")(escapeHtml(ad.name)), {
+    await ctx.reply(t(lang, "forResultAdSelected")(escapeHtml(ad.name)), {
       parse_mode: "HTML",
       ...myAdKeyboard(lang),
     });
   });
 
-  bot.hears(label("forStatisticTopUpButton"), async (ctx) => {
+  bot.hears(label("forResultTopUpButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     await askTopUp(ctx, lang);
   });
 
-  bot.hears(label("forStatisticEditButton"), async (ctx) => {
+  bot.hears(label("forResultEditButton"), async (ctx) => {
     const lang = (await getLanguage(ctx.from.id)) || DEFAULT_LANG;
     const { ad } = await selectedAdFor(ctx.from.id);
     if (!ad) {
@@ -810,7 +815,7 @@ function registerForStatisticHandlers(bot) {
       return;
     }
     setScreen(ctx.from.id, { screen: "edit", adId: ad.id });
-    await ctx.reply(t(lang, "forStatisticEditPick"), { parse_mode: "HTML", ...editKeyboard(lang) });
+    await ctx.reply(t(lang, "forResultEditPick"), { parse_mode: "HTML", ...editKeyboard(lang) });
   });
 
   // One prompt per field. The draft carries mode:"edit", so the text handler
@@ -828,10 +833,10 @@ function registerForStatisticHandlers(bot) {
       await ctx.reply(t(lang, promptKey), { parse_mode: "HTML", disable_web_page_preview: true });
     });
 
-  editField("forStatisticEditNameButton", STEP.NAME, "forStatisticAskName");
-  editField("forStatisticEditPhotoButton", STEP.PHOTO, "forStatisticAskPhoto");
-  editField("forStatisticEditLinkButton", STEP.LINK, "forStatisticAskLink");
-  editField("forStatisticEditAboutButton", STEP.ABOUT, "forStatisticAskAbout");
+  editField("forResultEditNameButton", STEP.NAME, "forResultAskName");
+  editField("forResultEditPhotoButton", STEP.PHOTO, "forResultAskPhoto");
+  editField("forResultEditLinkButton", STEP.LINK, "forResultAskLink");
+  editField("forResultEditAboutButton", STEP.ABOUT, "forResultAskAbout");
 
   // --- moderation, admin only -------------------------------------------------
   const adminOnly = (handler) => async (ctx, next) => {
@@ -855,7 +860,7 @@ function registerForStatisticHandlers(bot) {
       const id = ctx.match[1];
       const ad = await setAdActive(id, false);
       await ctx.reply(ad ? `🚫 Afisha #${id} yashirildi.` : `Afisha #${id} topilmadi.`);
-      if (ad) console.log(`ForStatistic ad ${id} hidden by admin ${ctx.from.id}`);
+      if (ad) console.log(`ForResult ad ${id} hidden by admin ${ctx.from.id}`);
     })
   );
 
@@ -865,7 +870,7 @@ function registerForStatisticHandlers(bot) {
       const id = ctx.match[1];
       const ad = await setAdActive(id, true);
       await ctx.reply(ad ? `✅ Afisha #${id} qaytarildi.` : `Afisha #${id} topilmadi.`);
-      if (ad) console.log(`ForStatistic ad ${id} shown by admin ${ctx.from.id}`);
+      if (ad) console.log(`ForResult ad ${id} shown by admin ${ctx.from.id}`);
     })
   );
 
@@ -877,7 +882,7 @@ function registerForStatisticHandlers(bot) {
     // A hidden ad is answered exactly like one that never existed: an ad
     // taken off the board by a moderator must not stay reachable by id.
     if (!ad || !ad.active || ad.amountSom <= 0) {
-      await ctx.reply(t(lang, "forStatisticAdGone"));
+      await ctx.reply(t(lang, "forResultAdGone"));
       return;
     }
 
@@ -888,7 +893,7 @@ function registerForStatisticHandlers(bot) {
 }
 
 module.exports = {
-  registerForStatisticHandlers,
+  registerForResultHandlers,
   sendPromo,
   showBoard,
   BOARD_LIMIT,

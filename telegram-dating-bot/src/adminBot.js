@@ -1753,7 +1753,7 @@ function createAdminBot(token, mainBotTelegram) {
   // confirm. Handing something to every user at once is not undoable, so the
   // last screen shows exactly what is about to happen, to how many people,
   // before anything is granted.
-  // --- ForStatistic moderation ---------------------------------------------
+  // --- ForResult moderation ---------------------------------------------
   //
   // Every ad on the board is a picture and a link chosen by a member of the
   // public and shown to every user of the bot. Payment is friction, not
@@ -1772,14 +1772,14 @@ function createAdminBot(token, mainBotTelegram) {
     const id = ctx.match[1];
     const ad = await setAdActive(id, false);
     await ctx.reply(ad ? `🚫 Afisha #${id} yashirildi.` : `Afisha #${id} topilmadi.`);
-    if (ad) console.log(`ForStatistic ad ${id} hidden by admin ${ctx.from.id}`);
+    if (ad) console.log(`ForResult ad ${id} hidden by admin ${ctx.from.id}`);
   }));
 
   bot.hears(/^\/adshow_(\d+)$/, requireAdmin(async (ctx) => {
     const id = ctx.match[1];
     const ad = await setAdActive(id, true);
     await ctx.reply(ad ? `✅ Afisha #${id} qaytarildi.` : `Afisha #${id} topilmadi.`);
-    if (ad) console.log(`ForStatistic ad ${id} shown by admin ${ctx.from.id}`);
+    if (ad) console.log(`ForResult ad ${id} shown by admin ${ctx.from.id}`);
   }));
 
   bot.hears(

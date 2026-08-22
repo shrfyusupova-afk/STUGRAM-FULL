@@ -99,7 +99,7 @@ module.exports = {
   getComplaint: store.getComplaint,
   listComplaints: store.listComplaints,
   setComplaintReply: store.setComplaintReply,
-  // ForStatistic -- the paid advertising board.
+  // ForResult -- the paid advertising board.
   createAd: store.createAd,
   getAd: store.getAd,
   listTopAds: store.listTopAds,

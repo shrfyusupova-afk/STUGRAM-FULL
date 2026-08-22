@@ -222,7 +222,7 @@ async function init() {
   // either in total or within the last 24 hours for the daily cap.
   await query(`CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals (referrer_id, created_at)`);
 
-  // ForStatistic: the paid billboard. Anyone buys a slot, and the ranking is
+  // ForResult: the paid billboard. Anyone buys a slot, and the ranking is
   // simply "who has put in the most".
   //
   // amount_som ACCUMULATES rather than being replaced -- topping up has to
@@ -1003,7 +1003,7 @@ async function setLanguage(userId, lang) {
 
 // --- Complaints ------------------------------------------------------------
 
-// --- ForStatistic ads --------------------------------------------------------
+// --- ForResult ads --------------------------------------------------------
 
 function rowToAd(row) {
   if (!row) return null;
