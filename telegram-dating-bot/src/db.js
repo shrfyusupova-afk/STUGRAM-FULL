@@ -99,6 +99,13 @@ module.exports = {
   getComplaint: store.getComplaint,
   listComplaints: store.listComplaints,
   setComplaintReply: store.setComplaintReply,
+  // ForStatistic -- the paid advertising board.
+  createAd: store.createAd,
+  getAd: store.getAd,
+  listTopAds: store.listTopAds,
+  addAdAmount: store.addAdAmount,
+  setAdActive: store.setAdActive,
+  listAllAds: store.listAllAds,
   // Admin + language
   isAdmin: store.isAdmin,
   addAdmin: store.addAdmin,

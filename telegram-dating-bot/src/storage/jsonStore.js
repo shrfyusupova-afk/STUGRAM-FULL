@@ -12,6 +12,7 @@ const VIP_CHAT_PATH = path.join(__dirname, "..", "..", "data", "vipChatAccess.js
 const COMPLAINTS_PATH = path.join(__dirname, "..", "..", "data", "complaints.json");
 const REFERRALS_PATH = path.join(__dirname, "..", "..", "data", "referrals.json");
 const PAYME_PATH = path.join(__dirname, "..", "..", "data", "paymeTransactions.json");
+const ADS_PATH = path.join(__dirname, "..", "..", "data", "ads.json");
 
 // Null-prototype objects, not plain {} -- every ID here (candidateId,
 // targetId) can originate from callback_data or a /start deep-link payload,
@@ -658,6 +659,97 @@ async function hasVipChat(userId) {
   return !!readJson(VIP_CHAT_PATH)[String(userId)];
 }
 
+// --- ForStatistic ads --------------------------------------------------------
+//
+// A paid billboard: anyone can buy a slot, and the ranking is simply "who has
+// put in the most". Money accumulates on the ad rather than replacing the
+// previous figure, so topping up moves you UP the board instead of resetting
+// you to whatever you paid last -- which is what makes buying a higher place
+// possible at all.
+//
+// An ad is created BEFORE payment (amount_som 0, inactive) so the order can
+// point at it by id; it only becomes visible once money actually lands.
+
+// Short, sequential, human-readable -- the board prints this id and people
+// type it back to open one, so a 24-character hex string would be unusable.
+function nextAdId(all) {
+  let max = 0;
+  for (const key of Object.keys(all)) {
+    const n = Number(key);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
+async function createAd(ad) {
+  const all = readJson(ADS_PATH);
+  const id = nextAdId(all);
+  all[id] = {
+    id,
+    userId: String(ad.userId),
+    name: ad.name,
+    about: ad.about,
+    link: ad.link,
+    mediaFileId: ad.mediaFileId || null,
+    amountSom: 0,
+    active: false,
+    createdAt: new Date().toISOString(),
+    paidAt: null,
+  };
+  writeJson(ADS_PATH, all);
+  return id;
+}
+
+async function getAd(id) {
+  return readJson(ADS_PATH)[String(id)] || null;
+}
+
+// The board itself. Only ads that have actually been paid for and have not
+// been hidden by an admin -- an unpaid draft must never occupy a slot.
+//
+// Ties broken by who got there first: two people who paid the same amount
+// would otherwise swap places on every refresh, which reads as a bug and, for
+// something people paid for, as being cheated.
+async function listTopAds(limit = 50) {
+  return Object.values(readJson(ADS_PATH))
+    .filter((ad) => ad.active && ad.amountSom > 0)
+    .sort((a, b) => b.amountSom - a.amountSom || String(a.paidAt).localeCompare(String(b.paidAt)))
+    .slice(0, limit);
+}
+
+// Adds to what is already there and switches the ad on. Returns the updated
+// row so the caller can report the new total without a second read.
+async function addAdAmount(id, amountSom) {
+  const all = readJson(ADS_PATH);
+  const ad = all[String(id)];
+  if (!ad) return null;
+  ad.amountSom = (ad.amountSom || 0) + Number(amountSom);
+  ad.active = true;
+  ad.paidAt = ad.paidAt || new Date().toISOString();
+  writeJson(ADS_PATH, all);
+  return { ...ad };
+}
+
+// Admin moderation. Hiding leaves the record (and the money paid) intact --
+// this is "take it off the board", never "pretend it never happened".
+async function setAdActive(id, active) {
+  const all = readJson(ADS_PATH);
+  const ad = all[String(id)];
+  if (!ad) return null;
+  ad.active = !!active;
+  writeJson(ADS_PATH, all);
+  return { ...ad };
+}
+
+// Everything, hidden ones included -- the admin view, where the whole point
+// is seeing what the public board is not showing.
+async function listAllAds(limit = 100) {
+  return Object.values(readJson(ADS_PATH))
+    .filter((ad) => ad.amountSom > 0)
+    .sort((a, b) => b.amountSom - a.amountSom || String(a.paidAt).localeCompare(String(b.paidAt)))
+    .slice(0, limit);
+}
+
 // --- Complaints ------------------------------------------------------------
 // Keyed by the short code the reporter is told, so the code they quote back is
 // literally the lookup key.
@@ -864,4 +956,10 @@ module.exports = {
   getComplaint,
   listComplaints,
   setComplaintReply,
+  createAd,
+  getAd,
+  listTopAds,
+  addAdAmount,
+  setAdActive,
+  listAllAds,
 };

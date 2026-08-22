@@ -27,7 +27,33 @@ const VIP_CHAT_PRICE_SOM = 21900;
 const ANON_GENDER_PRICE_SOM = 12900;
 const ANON_GENDER_DAYS = 7;
 
-function priceForType(type) {
+// The ForStatistic board is the one thing here with no fixed price: the buyer
+// names the amount, because the amount IS the product -- it decides their
+// place in the ranking. That makes it the single exception to "nothing ever
+// takes an amount from a client request", so it gets its own explicit list
+// rather than a general "trust the caller's amount" flag. Anything not named
+// here is priced from the constants above no matter what a caller passes,
+// so a bug in a fixed-price call site can never change what Premium costs.
+const VARIABLE_PRICE_TYPES = new Set(["adboard"]);
+
+// Bounds on a named amount. The floor keeps the board from filling with
+// 100-so'm entries that cost more in payment fees than they bring in; the
+// ceiling is a typo guard -- somebody meaning 50 000 who holds the 0 key is
+// otherwise charged tens of millions.
+const AD_MIN_SOM = 5000;
+const AD_MAX_SOM = 100000000;
+
+function isValidAdAmount(som) {
+  return Number.isInteger(som) && som >= AD_MIN_SOM && som <= AD_MAX_SOM;
+}
+
+function priceForType(type, requestedSom) {
+  if (VARIABLE_PRICE_TYPES.has(type)) {
+    if (!isValidAdAmount(Number(requestedSom))) {
+      throw new Error(`Invalid amount for ${type}: ${requestedSom}`);
+    }
+    return Number(requestedSom);
+  }
   if (type === "unlock") return UNLOCK_PRICE_SOM;
   if (type === "vipchat") return VIP_CHAT_PRICE_SOM;
   if (type === "anongender") return ANON_GENDER_PRICE_SOM;
@@ -144,8 +170,14 @@ async function getSalesRows(sinceIso) {
 // restrict who may settle the order: somebody can open a Click checkout,
 // change their mind and pay with Payme instead, and that must work. It is
 // there for reporting, and so a reused pending order can be re-pointed.
-async function createOrder(userId, { type = "premium", targetId, provider = "click" } = {}) {
-  const amount = priceForType(type);
+//
+// `amountSom` is honoured ONLY for the variable-price types listed above
+// (the ForStatistic board, where the buyer names the figure because the
+// figure is what they are buying). For everything else it is ignored
+// entirely and the price comes from the constants, so a call site passing a
+// wrong amount can never change what Premium costs.
+async function createOrder(userId, { type = "premium", targetId, provider = "click", amountSom } = {}) {
+  const amount = priceForType(type, amountSom);
 
   // Reopening the same paywall without paying (e.g. tapping the paywall link
   // again) reuses the still-pending order instead of piling up an abandoned
@@ -292,6 +324,9 @@ module.exports = {
   VIP_CHAT_PRICE_SOM,
   ANON_GENDER_PRICE_SOM,
   ANON_GENDER_DAYS,
+  AD_MIN_SOM,
+  AD_MAX_SOM,
+  isValidAdAmount,
   // ledger
   createOrder,
   getOrder,

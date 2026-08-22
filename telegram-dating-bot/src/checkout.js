@@ -35,7 +35,14 @@ const PROVIDERS = [
 // provider that is not configured simply contributes no button rather than a
 // dead one.
 async function buildPaymentOptions(userId, { type, targetId, amountSom, lang, t }) {
-  const orderId = await createOrder(userId, { type, targetId });
+  // amountSom is passed on to createOrder as well as used for the checkout
+  // URL. For every fixed-price product it is ignored there and the price
+  // comes from the constants (see orders.js), so this changes nothing for
+  // them; it is what lets the ForStatistic board, where the buyer names the
+  // figure, store the amount the provider will actually be asked for. The
+  // two MUST come from one value: a URL asking for one amount while the
+  // ledger expects another is a payment the callback then rejects.
+  const orderId = await createOrder(userId, { type, targetId, amountSom });
 
   const options = [];
   for (const provider of PROVIDERS) {

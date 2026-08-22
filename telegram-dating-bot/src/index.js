@@ -11,6 +11,7 @@ const { registerPremiumHandlers } = require("./premium");
 const { registerVipChatHandlers } = require("./vipChat");
 const { registerAnonChatHandlers, leaveAnonQueueOrChat, anonSubmenuKeyboard, attemptJoin } = require("./anonChat");
 const { registerComplaintHandlers } = require("./complaints");
+const { registerForStatisticHandlers, BOARD_LIMIT: FS_BOARD_LIMIT } = require("./forStatistic");
 const { registerAccountNoticeHandlers } = require("./accountNotices");
 const { registerMiniApp } = require("./miniApp");
 const {
@@ -41,6 +42,7 @@ const {
   getProfile, getLanguage, setLanguage, setPremiumUntil, setAnonGenderFilterUntil,
   grantUnlock, grantVipChat, setTelegramUsername, initStorage, closeStorage, usePostgres,
   backfillMatchUnlocks, touchLastSeen, markBotBlocked,
+  addAdAmount, listTopAds,
 } = require("./db");
 const { LANGUAGES, DEFAULT_LANG, t } = require("./i18n");
 const { setUsername, setPublicUrl } = require("./botInfo");
@@ -369,6 +371,12 @@ registerAnonChatHandlers(bot);
 // their complaint must have that message taken as the complaint, not matched
 // against a menu label that happens to appear in what they wrote.
 registerComplaintHandlers(bot);
+// Third, and for the same reason again: someone partway through composing an
+// ad is answering a question ("what is it called?"), so their message must
+// reach that step rather than being matched against a menu label. It falls
+// through with next() for everybody who has no draft open, which is almost
+// everybody almost all of the time.
+registerForStatisticHandlers(bot);
 // The buttons under an "your account was deleted / hidden" notice. That
 // message is sent by the admin bot but delivered through THIS bot, so this is
 // where the taps arrive.
@@ -637,6 +645,53 @@ if (webhookDomain) {
           parse_mode: "HTML",
         });
         console.log(`VIP chat access granted to ${order.userId} (${order.amount} so'm via Click)`);
+        return;
+      }
+
+      if (order.type === "adboard" && order.targetId) {
+        // The money goes ON TOP of whatever the ad already holds, which is
+        // what makes buying a higher place possible: a second payment has to
+        // move you up, not reset you to whatever the latest single payment
+        // was. This is also the step that makes the ad visible at all -- it
+        // was written inactive at 0 so'm when the order was created.
+        const ad = await addAdAmount(order.targetId, order.amount);
+        if (!ad) {
+          // The ad row is gone (deleted between paying and settling). Money
+          // was taken, so this must not look like success -- leaving the
+          // order undelivered puts it in front of the retry sweep and, when
+          // that keeps failing, in front of a person.
+          throw new Error(`ForStatistic ad ${order.targetId} no longer exists`);
+        }
+
+        const board = await listTopAds(FS_BOARD_LIMIT);
+        const index = board.findIndex((row) => String(row.id) === String(ad.id));
+        const place = index === -1 ? board.length : index + 1;
+
+        await bot.telegram.sendMessage(
+          order.userId,
+          t(lang, "forStatisticPaidCongrats")({
+            mark: place === 1 ? "🥇" : place === 2 ? "🥈" : place === 3 ? "🥉" : "🔸",
+            place,
+            money: `${Number(ad.amountSom).toLocaleString("uz-UZ")} so'm`,
+          }),
+          { parse_mode: "HTML" }
+        );
+
+        // Every ad is a link and a picture chosen by a member of the public,
+        // shown to every user of the bot. Nobody would otherwise find out one
+        // had gone live until somebody complained about it, so the operator
+        // is told as it happens, with what they need to judge it.
+        alert(
+          `📊 ForStatistic: yangi afisha #${ad.id}\n` +
+            `👤 ${order.userId}\n` +
+            `📌 ${ad.name}\n` +
+            `🔗 ${ad.link}\n` +
+            `💰 ${Number(ad.amountSom).toLocaleString("uz-UZ")} so'm (${place}-o'rin)\n\n` +
+            `Yashirish: /adhide_${ad.id}`,
+          { bypassThrottle: true }
+        ).catch(() => {});
+
+        console.log(`ForStatistic ad ${ad.id} funded by ${order.userId} (+${order.amount} so'm, now ${ad.amountSom}, place ${place})`);
         return;
       }
 

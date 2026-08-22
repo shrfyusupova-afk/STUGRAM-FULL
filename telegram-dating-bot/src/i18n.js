@@ -91,6 +91,7 @@ const STRINGS = {
       anonChat: "🕵️ Anonim chat",
       complaint: "🚨 Shikoyat qilmoqchiman",
       referral: "🎁 Do'st taklif qilish",
+      forStatistic: "📊 ForStatistic — reklama taxtasi",
     },
     anonChatIntro:
       "🕵️ Anonim chat\n\n" +
@@ -339,6 +340,120 @@ const STRINGS = {
     // provider that doesn't work for them, every paywall says plainly that
     // there is another way through -- a human, not just another button.
     paymentAdminHelpNote: "(Agar sizda Click bo'lmasa bu muammo emas 😊 adminimizga murojaat qiling @ForOnebest)",
+    // --- ForStatistic: the paid advertising board ---------------------------
+    //
+    // Written to sell, because that is what the screen is for -- but every
+    // number in it comes from the real board, never from a fixed example, so
+    // it cannot promise a position somebody does not actually get.
+    forStatisticBoardTitle: "📊 <b>ForStatistic — bugungi TOP</b>\n\n💰 Kim ko'p kiritsa — o'sha yuqorida!\n",
+    forStatisticBoardEmpty:
+      "📊 <b>ForStatistic — reklama taxtasi</b>\n\n" +
+      "🎉 Taxta hozircha <b>bo'sh</b>!\n\n" +
+      "Ya'ni birinchi bo'lib afishangizni qo'shsangiz, hech kim bilan raqobatlashmasdan " +
+      "to'g'ridan-to'g'ri <b>🥇 1-o'rinni</b> egallaysiz.\n\n" +
+      "Bunday imkoniyat uzoq turmaydi 👇",
+    forStatisticEntry: (e) =>
+      `${e.mark} <b>${e.place}-o'rin</b> · ${e.command}\n` +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 <b>${e.money}</b>\n`,
+    forStatisticBoardFooter: (page, pages, total) =>
+      `━━━━━━━━━━━━━━\n📄 Sahifa <b>${page}</b> / ${pages}  ·  jami <b>${total}</b> ta afisha\n\n` +
+      `👆 Batafsil ko'rish uchun afisha ustidagi <b>/ad_raqam</b> ga bosing`,
+    forStatisticAddButton: "➕ O'z afishamni qo'shish",
+    forStatisticInfoButton: "ℹ️ ForStatistic ma'lumotlari",
+    forStatisticPrevButton: "⬅️ Orqaga",
+    forStatisticNextButton: "➡️ Keyingisi",
+    forStatisticBoardButton: "📊 Taxtaga qaytish",
+    forStatisticOpenLinkButton: "🔗 Havolani ochish",
+    forStatisticDetail: (e) =>
+      `${e.mark} <b>${e.place}-o'rin</b>\n\n` +
+      `📌 <b>${e.name}</b>\n\n` +
+      `💬 ${e.about}\n\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Kiritilgan summa: <b>${e.money}</b>\n` +
+      `🆔 <code>${e.id}</code>`,
+    forStatisticAdGone:
+      "🔍 Bunday afisha topilmadi.\n\nU o'chirilgan yoki raqam noto'g'ri bo'lishi mumkin.",
+    forStatisticInfo:
+      "📊 <b>ForStatistic nima?</b>\n\n" +
+      "Bu — ochiq <b>reklama taxtasi</b>. Bu yerda har kim o'z o'rnini sotib olishi mumkin 💰\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>⚙️ Qanday ishlaydi?</b>\n\n" +
+      "1️⃣ Afishangizni qo'shasiz — nomi, rasmi, havolasi va qisqacha ma'lumot\n" +
+      "2️⃣ O'zingiz xohlagan summani kiritasiz — yuqori chegara yo'q\n" +
+      "3️⃣ Summangiz qancha katta bo'lsa, o'rningiz shuncha yuqori bo'ladi\n\n" +
+      "🥇 Eng ko'p to'lagan — <b>1-o'rinda</b>\n" +
+      "🥈 Undan keyingisi — 2-o'rinda\n" +
+      "🥉 Va hokazo, <b>TOP 50</b> gacha\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>🔥 Nega bu foydali?</b>\n\n" +
+      "👀 TOP 50 ro'yxatni botimizning har bir foydalanuvchisi ko'radi\n" +
+      "🔁 Har safar asosiy menyuga qaytganda afisha eslatib turiladi\n" +
+      "📣 <b>Har kungi o'rinlar @foroneforever kanalimizda ham reklama qilib boriladi</b>\n" +
+      "🔗 Havolangiz to'g'ridan-to'g'ri bosiladi — mijoz bir bosishda sizda\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>📈 O'rningizni ko'tarish</b>\n\n" +
+      "Istalgan vaqtda yana to'lov qilsangiz, summangiz <b>ustiga qo'shiladi</b> " +
+      "va shu zahoti yuqoriga chiqasiz. Ya'ni 1-o'rin doim ochiq — kim ko'proq " +
+      "qadr qilsa, o'sha egallaydi.\n\n" +
+      "💡 Biznes, blog, kanal, do'kon, xizmat — nima bo'lsa ham shu yerda ko'rinadi.\n\n" +
+      "Hoziroq boshlang 👇",
+    forStatisticPromo:
+      "📣 <b>O'z biznesingizni yoki blogingizni reklama qilishingiz mumkin!</b>\n\n" +
+      "👀 Bugungi afishamizda kim birinchi o'rinda ekanini ko'ring 👇",
+    forStatisticPromoButton: "📊 ForStatistic",
+    forStatisticAskName:
+      "📌 <b>1/5 — Afishangiz nomi</b>\n\n" +
+      "Nomi nima bo'lsin?\n\n" +
+      "Qisqa va yorqin bo'lsin — bu odamlar birinchi o'qiydigan narsa.\n\n" +
+      "<i>Masalan: «Kofe Xona» yoki «Aziz Blog»</i>",
+    forStatisticErrName: "⚠️ Nom 2 tadan 40 tagacha belgi bo'lishi kerak. Qaytadan yozing:",
+    forStatisticAskPhoto:
+      "🖼 <b>2/5 — Afishangiz rasmi</b>\n\n" +
+      "Endi rasm yuboring.\n\n" +
+      "Chiroyli va aniq rasm tanlang — taxtada eng ko'p e'tibor tortadigan narsa aynan shu.",
+    forStatisticErrPhoto: "⚠️ Iltimos, <b>rasm</b> yuboring (fayl yoki matn emas).",
+    forStatisticAskLink:
+      "🔗 <b>3/5 — Afishangiz havolasi</b>\n\n" +
+      "Odam afishangizni bosganda qayerga o'tsin?\n\n" +
+      "<i>Masalan:</i>\n" +
+      "https://t.me/sizning_kanalingiz\n" +
+      "https://instagram.com/sizning_sahifangiz",
+    forStatisticErrLink:
+      "⚠️ Havola <b>https://</b> yoki <b>http://</b> bilan boshlanishi kerak.\n\n" +
+      "Masalan: https://t.me/foroneforever",
+    forStatisticAskAbout:
+      "💬 <b>4/5 — Qisqacha ma'lumot</b>\n\n" +
+      "Afishangiz haqida qisqacha yozing — nima taklif qilasiz?\n\n" +
+      "⚠️ Maksimal <b>100 ta belgi</b>. Qisqa va aniq bo'lgani yaxshiroq ishlaydi.",
+    forStatisticErrAbout: "⚠️ Ma'lumot 5 tadan 100 tagacha belgi bo'lishi kerak. Qaytadan yozing:",
+    forStatisticAskAmount: (e) =>
+      "💰 <b>5/5 — Eng qiziq qismi!</b>\n\n" +
+      "Qancha summa kiritmoqchisiz?\n\n" +
+      (e.topMoney
+        ? `📊 Hozir <b>🥇 1-o'rinda</b>: ${e.topMoney}\n` +
+          `👉 Undan ko'p kiritsangiz, <b>siz 1-o'rinda</b> bo'lasiz!\n\n`
+        : "🎉 Taxta hozircha bo'sh — istalgan summa bilan <b>🥇 1-o'rinni</b> egallaysiz!\n\n") +
+      `Faqat raqam yozing (eng kami <b>${e.minMoney}</b>):`,
+    forStatisticErrAmount: (e) =>
+      `⚠️ Summa ${e.minMoney} dan ${e.maxMoney} gacha bo'lishi kerak.\n\nFaqat raqam yozing:`,
+    forStatisticDraftReady: (e) =>
+      "✅ <b>Afishangiz tayyor!</b>\n\n" +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Summa: <b>${e.money}</b>\n\n` +
+      "━━━━━━━━━━━━━━\n" +
+      "To'lov amalga oshgach, afishangiz <b>shu zahoti</b> taxtada paydo bo'ladi 🚀",
+    forStatisticPaidCongrats: (e) =>
+      "🎉 <b>Tabriklaymiz! Afishangiz taxtada!</b>\n\n" +
+      `${e.mark} Hozirgi o'rningiz: <b>${e.place}-o'rin</b>\n` +
+      `💰 Jami kiritilgan: <b>${e.money}</b>\n\n` +
+      "📣 Bugungi o'rinlar @foroneforever kanalimizda ham e'lon qilinadi.\n\n" +
+      "💡 Yuqoriroq chiqmoqchimisiz? Yana to'lov qiling — summangiz ustiga qo'shiladi!",
+    forStatisticCancelled: "❌ Bekor qilindi. Afisha qo'shilmadi.",
     unexpectedError:
       "⚠️ Kutilmagan xatolik yuz berdi — amal bajarilmadi.\n\n" +
       "Iltimos, bir necha soniyadan so'ng qayta urinib ko'ring. Takrorlansa, «🚨 Shikoyat» orqali bizga yozing.",
@@ -534,6 +649,7 @@ const STRINGS = {
       anonChat: "🕵️ Анонимный чат",
       complaint: "🚨 Хочу пожаловаться",
       referral: "🎁 Пригласить друга",
+      forStatistic: "📊 ForStatistic — доска рекламы",
     },
     anonChatIntro:
       "🕵️ Анонимный чат\n\n" +
@@ -751,6 +867,116 @@ const STRINGS = {
       "3️⃣ Затем нажмите «✅ Я оплатил»\n\n" +
       "⏳ После подтверждения оплаты функция включится за несколько секунд.",
     paymentAdminHelpNote: "(Если у вас нет Click — это не проблема 😊 обратитесь к нашему админу @ForOnebest)",
+    // --- ForStatistic: the paid advertising board ---------------------------
+    forStatisticBoardTitle: "📊 <b>ForStatistic — ТОП дня</b>\n\n💰 Кто вложил больше — тот выше!\n",
+    forStatisticBoardEmpty:
+      "📊 <b>ForStatistic — доска рекламы</b>\n\n" +
+      "🎉 Доска пока <b>пуста</b>!\n\n" +
+      "То есть если вы добавите объявление первым, то займёте <b>🥇 1-е место</b> " +
+      "без всякой конкуренции.\n\n" +
+      "Такая возможность держится недолго 👇",
+    forStatisticEntry: (e) =>
+      `${e.mark} <b>${e.place}-е место</b> · ${e.command}\n` +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 <b>${e.money}</b>\n`,
+    forStatisticBoardFooter: (page, pages, total) =>
+      `━━━━━━━━━━━━━━\n📄 Страница <b>${page}</b> / ${pages}  ·  всего <b>${total}</b> объявлений\n\n` +
+      `👆 Чтобы посмотреть подробнее, нажмите на <b>/ad_номер</b> над объявлением`,
+    forStatisticAddButton: "➕ Добавить своё объявление",
+    forStatisticInfoButton: "ℹ️ О ForStatistic",
+    forStatisticPrevButton: "⬅️ Назад",
+    forStatisticNextButton: "➡️ Далее",
+    forStatisticBoardButton: "📊 Вернуться к доске",
+    forStatisticOpenLinkButton: "🔗 Открыть ссылку",
+    forStatisticDetail: (e) =>
+      `${e.mark} <b>${e.place}-е место</b>\n\n` +
+      `📌 <b>${e.name}</b>\n\n` +
+      `💬 ${e.about}\n\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Вложено: <b>${e.money}</b>\n` +
+      `🆔 <code>${e.id}</code>`,
+    forStatisticAdGone:
+      "🔍 Такое объявление не найдено.\n\nВозможно, оно удалено или номер указан неверно.",
+    forStatisticInfo:
+      "📊 <b>Что такое ForStatistic?</b>\n\n" +
+      "Это открытая <b>доска рекламы</b>. Здесь каждый может купить своё место 💰\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>⚙️ Как это работает?</b>\n\n" +
+      "1️⃣ Вы добавляете объявление — название, фото, ссылку и краткое описание\n" +
+      "2️⃣ Вводите любую сумму — верхнего предела нет\n" +
+      "3️⃣ Чем больше сумма, тем выше ваше место\n\n" +
+      "🥇 Кто заплатил больше всех — <b>на 1-м месте</b>\n" +
+      "🥈 Следующий — на 2-м\n" +
+      "🥉 И так далее, до <b>ТОП 50</b>\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>🔥 Почему это выгодно?</b>\n\n" +
+      "👀 Список ТОП 50 видит каждый пользователь нашего бота\n" +
+      "🔁 Каждый раз при возврате в главное меню о доске напоминают\n" +
+      "📣 <b>Места дня дополнительно рекламируются в нашем канале @foroneforever</b>\n" +
+      "🔗 Ваша ссылка кликабельна — клиент у вас в одно нажатие\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>📈 Поднять своё место</b>\n\n" +
+      "Заплатите ещё в любой момент — сумма <b>прибавится к вашей</b>, " +
+      "и вы сразу подниметесь выше. То есть 1-е место всегда открыто: " +
+      "его занимает тот, кто ценит его больше.\n\n" +
+      "💡 Бизнес, блог, канал, магазин, услуга — что угодно будет видно здесь.\n\n" +
+      "Начните прямо сейчас 👇",
+    forStatisticPromo:
+      "📣 <b>Вы можете прорекламировать свой бизнес или блог!</b>\n\n" +
+      "👀 Посмотрите, кто сегодня на первом месте нашей доски 👇",
+    forStatisticPromoButton: "📊 ForStatistic",
+    forStatisticAskName:
+      "📌 <b>1/5 — Название объявления</b>\n\n" +
+      "Как назовём?\n\n" +
+      "Пусть будет коротко и ярко — это первое, что прочитают люди.\n\n" +
+      "<i>Например: «Кофейня» или «Блог Азиза»</i>",
+    forStatisticErrName: "⚠️ Название должно быть от 2 до 40 символов. Напишите ещё раз:",
+    forStatisticAskPhoto:
+      "🖼 <b>2/5 — Фото объявления</b>\n\n" +
+      "Теперь отправьте фото.\n\n" +
+      "Выберите красивое и чёткое — именно оно привлекает больше всего внимания на доске.",
+    forStatisticErrPhoto: "⚠️ Пожалуйста, отправьте <b>фото</b> (не файл и не текст).",
+    forStatisticAskLink:
+      "🔗 <b>3/5 — Ссылка</b>\n\n" +
+      "Куда попадёт человек, нажав на объявление?\n\n" +
+      "<i>Например:</i>\n" +
+      "https://t.me/ваш_канал\n" +
+      "https://instagram.com/ваша_страница",
+    forStatisticErrLink:
+      "⚠️ Ссылка должна начинаться с <b>https://</b> или <b>http://</b>.\n\n" +
+      "Например: https://t.me/foroneforever",
+    forStatisticAskAbout:
+      "💬 <b>4/5 — Краткое описание</b>\n\n" +
+      "Напишите коротко — что вы предлагаете?\n\n" +
+      "⚠️ Максимум <b>100 символов</b>. Коротко и по делу работает лучше.",
+    forStatisticErrAbout: "⚠️ Описание должно быть от 5 до 100 символов. Напишите ещё раз:",
+    forStatisticAskAmount: (e) =>
+      "💰 <b>5/5 — Самое интересное!</b>\n\n" +
+      "Какую сумму хотите вложить?\n\n" +
+      (e.topMoney
+        ? `📊 Сейчас на <b>🥇 1-м месте</b>: ${e.topMoney}\n` +
+          `👉 Вложите больше — и <b>1-е место ваше</b>!\n\n`
+        : "🎉 Доска пока пуста — с любой суммой вы займёте <b>🥇 1-е место</b>!\n\n") +
+      `Напишите только число (минимум <b>${e.minMoney}</b>):`,
+    forStatisticErrAmount: (e) =>
+      `⚠️ Сумма должна быть от ${e.minMoney} до ${e.maxMoney}.\n\nНапишите только число:`,
+    forStatisticDraftReady: (e) =>
+      "✅ <b>Ваше объявление готово!</b>\n\n" +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Сумма: <b>${e.money}</b>\n\n` +
+      "━━━━━━━━━━━━━━\n" +
+      "После оплаты объявление появится на доске <b>сразу же</b> 🚀",
+    forStatisticPaidCongrats: (e) =>
+      "🎉 <b>Поздравляем! Ваше объявление на доске!</b>\n\n" +
+      `${e.mark} Ваше место сейчас: <b>${e.place}-е</b>\n` +
+      `💰 Всего вложено: <b>${e.money}</b>\n\n` +
+      "📣 Места дня также объявляются в нашем канале @foroneforever.\n\n" +
+      "💡 Хотите выше? Заплатите ещё — сумма прибавится к вашей!",
+    forStatisticCancelled: "❌ Отменено. Объявление не добавлено.",
     unexpectedError:
       "⚠️ Произошла непредвиденная ошибка — действие не выполнено.\n\n" +
       "Попробуйте ещё раз через несколько секунд. Если повторится, напишите нам через «🚨 Жалоба».",
@@ -942,6 +1168,7 @@ const STRINGS = {
       anonChat: "🕵️ Anonymous chat",
       complaint: "🚨 I want to report",
       referral: "🎁 Invite a friend",
+      forStatistic: "📊 ForStatistic — ad board",
     },
     anonChatIntro:
       "🕵️ Anonymous chat\n\n" +
@@ -1158,6 +1385,115 @@ const STRINGS = {
       "3️⃣ Then tap “✅ I have paid”\n\n" +
       "⏳ Once the payment is confirmed, the feature turns on within seconds.",
     paymentAdminHelpNote: "(No Click? No problem 😊 message our admin @ForOnebest)",
+    // --- ForStatistic: the paid advertising board ---------------------------
+    forStatisticBoardTitle: "📊 <b>ForStatistic — today's TOP</b>\n\n💰 The more you put in, the higher you sit!\n",
+    forStatisticBoardEmpty:
+      "📊 <b>ForStatistic — the ad board</b>\n\n" +
+      "🎉 The board is <b>empty</b> right now!\n\n" +
+      "Which means if you add the first ad, you take <b>🥇 1st place</b> " +
+      "with nobody to outbid.\n\n" +
+      "That window doesn't stay open long 👇",
+    forStatisticEntry: (e) =>
+      `${e.mark} <b>#${e.place}</b> · ${e.command}\n` +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 <b>${e.money}</b>\n`,
+    forStatisticBoardFooter: (page, pages, total) =>
+      `━━━━━━━━━━━━━━\n📄 Page <b>${page}</b> / ${pages}  ·  <b>${total}</b> ads in total\n\n` +
+      `👆 Tap the <b>/ad_number</b> above an ad to see it in full`,
+    forStatisticAddButton: "➕ Add my ad",
+    forStatisticInfoButton: "ℹ️ About ForStatistic",
+    forStatisticPrevButton: "⬅️ Back",
+    forStatisticNextButton: "➡️ Next",
+    forStatisticBoardButton: "📊 Back to the board",
+    forStatisticOpenLinkButton: "🔗 Open the link",
+    forStatisticDetail: (e) =>
+      `${e.mark} <b>#${e.place}</b>\n\n` +
+      `📌 <b>${e.name}</b>\n\n` +
+      `💬 ${e.about}\n\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Paid in: <b>${e.money}</b>\n` +
+      `🆔 <code>${e.id}</code>`,
+    forStatisticAdGone: "🔍 No such ad.\n\nIt may have been removed, or the number is wrong.",
+    forStatisticInfo:
+      "📊 <b>What is ForStatistic?</b>\n\n" +
+      "An open <b>ad board</b>. Anyone can buy their place on it 💰\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>⚙️ How it works</b>\n\n" +
+      "1️⃣ You add your ad — a name, a photo, a link and a short description\n" +
+      "2️⃣ You name the amount — there is no upper limit\n" +
+      "3️⃣ The bigger the amount, the higher your place\n\n" +
+      "🥇 Whoever paid the most sits at <b>#1</b>\n" +
+      "🥈 Next one at #2\n" +
+      "🥉 And so on, all the way to the <b>TOP 50</b>\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>🔥 Why it's worth it</b>\n\n" +
+      "👀 Every user of this bot sees the TOP 50\n" +
+      "🔁 The board is put in front of them again on every return to the main menu\n" +
+      "📣 <b>Each day's places are also advertised in our @foroneforever channel</b>\n" +
+      "🔗 Your link is one tap away — a customer reaches you immediately\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "<b>📈 Moving up</b>\n\n" +
+      "Pay again whenever you like and the amount is <b>added on top of yours</b>, " +
+      "moving you up straight away. #1 is always open — it belongs to whoever " +
+      "values it most.\n\n" +
+      "💡 A business, a blog, a channel, a shop, a service — whatever it is, it shows here.\n\n" +
+      "Start right now 👇",
+    forStatisticPromo:
+      "📣 <b>You can advertise your business or your blog here!</b>\n\n" +
+      "👀 See who's sitting at number one on today's board 👇",
+    forStatisticPromoButton: "📊 ForStatistic",
+    forStatisticAskName:
+      "📌 <b>1/5 — Your ad's name</b>\n\n" +
+      "What should it be called?\n\n" +
+      "Keep it short and bright — it's the first thing people read.\n\n" +
+      "<i>For example: \"Coffee House\" or \"Aziz's Blog\"</i>",
+    forStatisticErrName: "⚠️ The name must be 2 to 40 characters. Try again:",
+    forStatisticAskPhoto:
+      "🖼 <b>2/5 — Your ad's photo</b>\n\n" +
+      "Now send a photo.\n\n" +
+      "Pick a sharp, good-looking one — it's what draws the most attention on the board.",
+    forStatisticErrPhoto: "⚠️ Please send a <b>photo</b> (not a file, not text).",
+    forStatisticAskLink:
+      "🔗 <b>3/5 — Your link</b>\n\n" +
+      "Where should someone land when they tap your ad?\n\n" +
+      "<i>For example:</i>\n" +
+      "https://t.me/your_channel\n" +
+      "https://instagram.com/your_page",
+    forStatisticErrLink:
+      "⚠️ The link has to start with <b>https://</b> or <b>http://</b>.\n\n" +
+      "For example: https://t.me/foroneforever",
+    forStatisticAskAbout:
+      "💬 <b>4/5 — Short description</b>\n\n" +
+      "In a line or two — what are you offering?\n\n" +
+      "⚠️ <b>100 characters</b> maximum. Short and specific works better.",
+    forStatisticErrAbout: "⚠️ The description must be 5 to 100 characters. Try again:",
+    forStatisticAskAmount: (e) =>
+      "💰 <b>5/5 — the interesting part!</b>\n\n" +
+      "How much would you like to put in?\n\n" +
+      (e.topMoney
+        ? `📊 <b>🥇 1st place</b> currently sits at: ${e.topMoney}\n` +
+          `👉 Put in more and <b>#1 is yours</b>!\n\n`
+        : "🎉 The board is empty — any amount takes <b>🥇 1st place</b>!\n\n") +
+      `Send the number only (minimum <b>${e.minMoney}</b>):`,
+    forStatisticErrAmount: (e) =>
+      `⚠️ The amount must be between ${e.minMoney} and ${e.maxMoney}.\n\nSend the number only:`,
+    forStatisticDraftReady: (e) =>
+      "✅ <b>Your ad is ready!</b>\n\n" +
+      `📌 <b>${e.name}</b>\n` +
+      `💬 ${e.about}\n` +
+      `🔗 ${e.link}\n` +
+      `💰 Amount: <b>${e.money}</b>\n\n` +
+      "━━━━━━━━━━━━━━\n" +
+      "The moment the payment goes through, your ad appears on the board 🚀",
+    forStatisticPaidCongrats: (e) =>
+      "🎉 <b>Congratulations! Your ad is on the board!</b>\n\n" +
+      `${e.mark} Your place right now: <b>#${e.place}</b>\n` +
+      `💰 Paid in altogether: <b>${e.money}</b>\n\n` +
+      "📣 Today's places are announced in our @foroneforever channel too.\n\n" +
+      "💡 Want to go higher? Pay again — it adds on top of what you already put in!",
+    forStatisticCancelled: "❌ Cancelled. The ad was not added.",
     unexpectedError:
       "⚠️ Something went wrong -- that didn't go through.\n\n" +
       "Please try again in a few seconds. If it keeps happening, report it with \u201c\ud83d\udea8 Report\u201d.",

@@ -1,0 +1,528 @@
+// ForStatistic -- the paid advertising board.
+//
+// The whole product is one rule: the ranking is "who has put in the most",
+// and paying again ADDS to your total rather than replacing it. Everything
+// worth protecting here follows from that rule being true, and from money
+// having changed hands over it:
+//
+//   * an unpaid draft must never occupy a slot -- the board is what people
+//     are buying, so a free entry on it is theft from everyone who paid
+//   * a top-up must move you UP, not reset you to the latest single payment,
+//     or buying a higher place is impossible
+//   * equal amounts must not swap places on refresh, which for something
+//     people paid for reads as being cheated
+//   * an ad hidden by a moderator must be gone from the board AND unreachable
+//     by its id, or hiding it does nothing
+//   * every field is public text somebody typed, rendered into HTML -- one
+//     unescaped ampersand in a business name breaks the board for everyone
+const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+process.env.CLICK_MERCHANT_ID = "1111";
+process.env.CLICK_SERVICE_ID = "2222";
+process.env.CLICK_SECRET_KEY = "TOPSECRET";
+
+const DATA_DIR = path.join(__dirname, "..", "data");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync(path.join(DATA_DIR, f));
+
+const h = require("./harness");
+const db = require("../src/db");
+const floodGuard = require("../src/floodGuard");
+const orders = require("../src/orders");
+const { __test: fs_ } = require("../src/forStatistic");
+
+const BASE = "http://127.0.0.1:45999";
+const M = () => h.mainBot();
+const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
+
+function resetFloodGuard() {
+  floodGuard.__test.sweep(Date.now() + floodGuard.__test.WINDOW_MS + 1);
+}
+
+let nextId = 993000;
+const user = (name) => {
+  nextId += 1;
+  return { id: nextId, is_bot: false, first_name: name, username: `${name.toLowerCase()}${nextId}` };
+};
+
+async function register(u, { gender = "male", name = "T" } = {}) {
+  await h.send(M(), h.commandUpdate("/start", u));
+  await h.send(M(), h.callbackUpdate("lang:uz", u));
+  await h.send(M(), h.textUpdate(name, u));
+  await h.send(M(), h.textUpdate("22", u));
+  await h.send(M(), h.callbackUpdate(`gender:${gender}`, u));
+  await h.send(M(), h.photoUpdate(u));
+  await h.send(M(), h.textUpdate("Toshkent", u));
+  await h.send(M(), h.textUpdate("Salom", u));
+  await h.send(M(), h.contactUpdate(`+9989${u.id}`, u));
+  return h.send(M(), h.textUpdate("✅ Ha", u));
+}
+
+const said = (sent) =>
+  sent
+    .filter((c) => c.method !== "sendChatAction")
+    .map((c) => c.payload.text || c.payload.caption || "")
+    .join("\n");
+
+const callbacks = (sent) =>
+  sent.flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat()).map((b) => b.callback_data);
+
+const urlButtons = (sent) =>
+  sent.flatMap((c) => (c.payload.reply_markup?.inline_keyboard || []).flat()).filter((b) => b.url);
+
+const keyboardLabels = (sent) => {
+  const out = [];
+  for (const c of sent) {
+    const kb = c.payload.reply_markup?.keyboard;
+    if (kb) for (const row of kb) for (const b of row) out.push(typeof b === "string" ? b : b.text);
+  }
+  return out;
+};
+
+// Pays an order for real, through Click's own Prepare + Complete callbacks,
+// so the ad going live is driven by the same delivery path production uses
+// rather than by reaching into the database from the test.
+const SIGN_TIME = "2026-08-11 10:00:00";
+const prepareSign = (o) => md5(`${o.click_trans_id}${o.service_id}TOPSECRET${o.merchant_trans_id}${o.amount}${o.action}${o.sign_time}`);
+const completeSign = (o) =>
+  md5(`${o.click_trans_id}${o.service_id}TOPSECRET${o.merchant_trans_id}${o.merchant_prepare_id}${o.amount}${o.action}${o.sign_time}`);
+
+let clickTx = 5000;
+async function payOrder(orderId, amountSom) {
+  clickTx += 1;
+  const common = {
+    click_trans_id: String(clickTx),
+    service_id: "2222",
+    merchant_trans_id: orderId,
+    amount: String(amountSom),
+    sign_time: SIGN_TIME,
+  };
+  const post = (pathname, body) =>
+    fetch(BASE + pathname, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body).toString(),
+    }).then((r) => r.json());
+
+  const prep = { ...common, action: "0" };
+  await post("/click/prepare", { ...prep, sign_string: prepareSign(prep) });
+  const comp = { ...common, action: "1", merchant_prepare_id: orderId };
+  return post("/click/complete", { ...comp, sign_string: completeSign(comp) });
+}
+
+// Drives the real wizard end to end and returns the order id the paywall
+// created, so the test can then settle it.
+async function addAd(u, { name, link, about, amount }) {
+  await h.send(M(), h.callbackUpdate("fs:add", u));
+  await h.send(M(), h.textUpdate(name, u));
+  await h.send(M(), h.photoUpdate(u));
+  await h.send(M(), h.textUpdate(link, u));
+  await h.send(M(), h.textUpdate(about, u));
+  const sent = await h.send(M(), h.textUpdate(String(amount), u));
+  const done = callbacks(sent).find((d) => d && d.startsWith("payments:done:"));
+  assert.ok(done, `the wizard must end on a paywall, got: ${said(sent)}`);
+  return done.replace("payments:done:", "");
+}
+
+const tests = [];
+const test = (name, fn) => tests.push({ name, fn });
+
+// --- pure logic ---------------------------------------------------------------
+
+test("only http and https links are accepted", () => {
+  assert.ok(fs_.normaliseLink("https://t.me/foroneforever"));
+  assert.ok(fs_.normaliseLink("http://example.com/page"));
+  // A link on this board is shown to every user and is one tap from opening.
+  assert.strictEqual(fs_.normaliseLink("javascript:alert(1)"), null);
+  assert.strictEqual(fs_.normaliseLink("data:text/html,<script>x</script>"), null);
+  assert.strictEqual(fs_.normaliseLink("ftp://example.com"), null);
+  assert.strictEqual(fs_.normaliseLink("not a link"), null);
+  assert.strictEqual(fs_.normaliseLink(""), null);
+  assert.strictEqual(fs_.normaliseLink("https://x.com/" + "a".repeat(300)), null, "over the length cap");
+});
+
+test("an amount is read out of whatever shape somebody types it in", () => {
+  assert.strictEqual(fs_.parseAmount("50000"), 50000);
+  assert.strictEqual(fs_.parseAmount("50 000"), 50000);
+  assert.strictEqual(fs_.parseAmount("50,000 so'm"), 50000);
+  assert.strictEqual(fs_.parseAmount("abc"), null);
+  assert.strictEqual(fs_.parseAmount(""), null);
+});
+
+test("the amount is bounded at both ends", () => {
+  assert.strictEqual(orders.isValidAdAmount(orders.AD_MIN_SOM), true);
+  assert.strictEqual(orders.isValidAdAmount(orders.AD_MAX_SOM), true);
+  assert.strictEqual(orders.isValidAdAmount(orders.AD_MIN_SOM - 1), false);
+  // The ceiling is a typo guard: somebody meaning 50 000 who holds the zero
+  // key would otherwise be charged tens of millions.
+  assert.strictEqual(orders.isValidAdAmount(orders.AD_MAX_SOM + 1), false);
+  assert.strictEqual(orders.isValidAdAmount(1.5), false);
+});
+
+test("a name or description containing HTML cannot break the board", () => {
+  const rendered = fs_.renderBoard(
+    [{ id: "1", name: "Kofe & Co <b>", about: "a > b & c", link: "https://x.com", amountSom: 5000 }],
+    1,
+    "uz"
+  ).text;
+  assert.ok(!rendered.includes("Kofe & Co <b>"), "the raw markup must not survive into the message");
+  assert.ok(rendered.includes("Kofe &amp; Co &lt;b&gt;"), "it must be escaped instead");
+});
+
+test("ten full-length ads still fit inside Telegram's message limit", () => {
+  const ads = Array.from({ length: 10 }, (_, i) => ({
+    id: String(1000 + i),
+    name: "N".repeat(fs_.NAME_MAX),
+    about: "A".repeat(fs_.ABOUT_MAX),
+    link: `https://example.com/${"L".repeat(180)}`,
+    amountSom: 999999999,
+  }));
+  const { text } = fs_.renderBoard(ads, 1, "uz");
+  assert.ok(text.length < 4096, `a full page must not exceed 4096 characters, got ${text.length}`);
+});
+
+test("the board pages ten at a time", () => {
+  const ads = Array.from({ length: 25 }, (_, i) => ({
+    id: String(i + 1),
+    name: `Ad ${i + 1}`,
+    about: "x",
+    link: "https://x.com",
+    amountSom: 1000 * (25 - i),
+  }));
+  const p1 = fs_.renderBoard(ads, 1, "uz");
+  assert.strictEqual(p1.pages, 3);
+  assert.ok(p1.text.includes("/ad_1") && p1.text.includes("/ad_10"));
+  assert.ok(!p1.text.includes("/ad_11"), "page one must stop at ten");
+
+  const p3 = fs_.renderBoard(ads, 3, "uz");
+  assert.ok(p3.text.includes("/ad_21") && p3.text.includes("/ad_25"));
+
+  // A page number beyond the end (a stale button from an older, longer board)
+  // must clamp rather than render an empty screen.
+  assert.strictEqual(fs_.renderBoard(ads, 99, "uz").page, 3);
+});
+
+test("places are numbered continuously across pages", () => {
+  const ads = Array.from({ length: 15 }, (_, i) => ({
+    id: String(i + 1),
+    name: `Ad ${i + 1}`,
+    about: "x",
+    link: "https://x.com",
+    amountSom: 1000 * (15 - i),
+  }));
+  // Page two starts at place 11, not back at 1. Matched with the opening tag
+  // included: "11-o'rin" ends with the literal text "1-o'rin", so a bare
+  // substring check cannot tell the two apart.
+  const page2 = fs_.renderBoard(ads, 2, "uz").text;
+  assert.ok(page2.includes("<b>11-o'rin</b> · /ad_11"), "page two opens at place 11");
+  assert.ok(!page2.includes("<b>1-o'rin</b>"), "and never restarts the numbering");
+});
+
+test("an abandoned draft does not sit in memory forever", () => {
+  fs_.drafts.set("999999", { step: "name", at: Date.now() - fs_.DRAFT_TTL_MS - 1000 });
+  fs_.drafts.set("999998", { step: "name", at: Date.now() });
+  const removed = fs_.sweepDrafts();
+  assert.ok(removed >= 1, "the stale draft must be swept");
+  assert.strictEqual(fs_.drafts.has("999999"), false);
+  assert.strictEqual(fs_.drafts.has("999998"), true, "a live draft must survive");
+  fs_.drafts.delete("999998");
+});
+
+// --- the order carries the amount the buyer named -----------------------------
+
+test("an ad order stores the buyer's own amount, not a fixed price", async () => {
+  const buyer = user("Amounter");
+  await register(buyer, { gender: "male", name: "Amounter" });
+  const adId = await db.createAd({
+    userId: buyer.id, name: "X", about: "y", link: "https://x.com", mediaFileId: null,
+  });
+  const orderId = await orders.createOrder(buyer.id, { type: "adboard", targetId: adId, amountSom: 77000 });
+  const order = await orders.getOrder(orderId);
+  assert.strictEqual(order.amount, 77000);
+});
+
+// The guard that keeps "the buyer names the amount" from leaking into
+// everything else priced by a constant.
+test("a fixed-price product ignores any amount a caller passes", async () => {
+  const buyer = user("Fixed");
+  await register(buyer, { gender: "male", name: "Fixed" });
+  const orderId = await orders.createOrder(buyer.id, { type: "premium", amountSom: 1 });
+  const order = await orders.getOrder(orderId);
+  assert.strictEqual(order.amount, orders.PREMIUM_PRICE_SOM, "Premium must still cost what Premium costs");
+});
+
+test("an ad order with no amount, or a nonsense one, is refused outright", async () => {
+  const buyer = user("NoAmount");
+  await register(buyer, { gender: "male", name: "NoAmount" });
+  await assert.rejects(() => orders.createOrder(buyer.id, { type: "adboard", targetId: "1" }));
+  await assert.rejects(() => orders.createOrder(buyer.id, { type: "adboard", targetId: "1", amountSom: 10 }));
+});
+
+// --- storage: the ranking rule ------------------------------------------------
+
+test("an ad is invisible until it is actually paid for", async () => {
+  const owner = user("Unpaid");
+  await register(owner, { gender: "male", name: "Unpaid" });
+  const adId = await db.createAd({
+    userId: owner.id, name: "Draft", about: "not paid", link: "https://x.com", mediaFileId: null,
+  });
+  const board = await db.listTopAds(50);
+  assert.ok(!board.some((ad) => String(ad.id) === String(adId)), "an unpaid ad must not occupy a slot");
+});
+
+test("paying again ADDS to the total and moves the ad up", async () => {
+  const owner = user("TopUp");
+  await register(owner, { gender: "male", name: "TopUp" });
+  const adId = await db.createAd({
+    userId: owner.id, name: "Climber", about: "x", link: "https://x.com", mediaFileId: null,
+  });
+  const first = await db.addAdAmount(adId, 10000);
+  assert.strictEqual(first.amountSom, 10000);
+  assert.strictEqual(first.active, true, "money makes it visible");
+
+  const second = await db.addAdAmount(adId, 25000);
+  assert.strictEqual(second.amountSom, 35000, "a top-up must accumulate, not replace");
+});
+
+test("the board is ordered by money, highest first", async () => {
+  const owner = user("Ranker");
+  await register(owner, { gender: "male", name: "Ranker" });
+  const small = await db.createAd({ userId: owner.id, name: "Small", about: "x", link: "https://x.com" });
+  const big = await db.createAd({ userId: owner.id, name: "Big", about: "x", link: "https://x.com" });
+  await db.addAdAmount(small, 6000);
+  await db.addAdAmount(big, 900000);
+
+  const board = await db.listTopAds(50);
+  assert.strictEqual(String(board[0].id), String(big), "the biggest spender sits at the top");
+  const smallPlace = board.findIndex((ad) => String(ad.id) === String(small));
+  const bigPlace = board.findIndex((ad) => String(ad.id) === String(big));
+  assert.ok(bigPlace < smallPlace);
+});
+
+test("hiding an ad removes it from the board without destroying the record", async () => {
+  const owner = user("Hidden");
+  await register(owner, { gender: "male", name: "Hidden" });
+  const adId = await db.createAd({ userId: owner.id, name: "Naughty", about: "x", link: "https://x.com" });
+  await db.addAdAmount(adId, 50000);
+  assert.ok((await db.listTopAds(50)).some((a) => String(a.id) === String(adId)));
+
+  await db.setAdActive(adId, false);
+  assert.ok(!(await db.listTopAds(50)).some((a) => String(a.id) === String(adId)), "hidden means off the board");
+
+  // The money and the row survive, so a wrongly hidden ad can be restored.
+  const still = await db.getAd(adId);
+  assert.strictEqual(still.amountSom, 50000);
+  await db.setAdActive(adId, true);
+  assert.ok((await db.listTopAds(50)).some((a) => String(a.id) === String(adId)), "and it can come back");
+  await db.setAdActive(adId, false);
+});
+
+// --- through the bot ----------------------------------------------------------
+
+test("the main menu carries the ForStatistic button", async () => {
+  const u = user("Menu");
+  const sent = await register(u, { gender: "male", name: "Menu" });
+  assert.ok(
+    keyboardLabels(sent).some((l) => l && l.includes("ForStatistic")),
+    "the button must be on the main keyboard"
+  );
+});
+
+// Deliberately a RETURN, not the end of registration: a brand-new user
+// already gets a welcome, a channel invite and possibly a referral notice at
+// that moment, and a fourth message on top would bury all of them. The promo
+// rides with every genuine return to the menu instead -- /start when already
+// registered, the Back button out of browsing, and so on.
+test("returning to the main menu advertises the board", async () => {
+  const u = user("Promo");
+  await register(u, { gender: "male", name: "Promo" });
+
+  // /start re-offers the language picker; picking one is what actually
+  // returns an already-registered person to their menu.
+  await h.send(M(), h.commandUpdate("/start", u));
+  const sent = await h.send(M(), h.callbackUpdate("lang:uz", u));
+  assert.ok(callbacks(sent).includes("fs:open"), "the promo and its button must ride along with the menu");
+  assert.match(said(sent), /reklama qilishingiz mumkin/, "and it must pitch, not just link");
+});
+
+test("the promo failing can never block the main menu itself", async () => {
+  const u = user("PromoFail");
+  await register(u, { gender: "male", name: "PromoFail" });
+
+  // The promo is an advert. If sending it breaks, the person must still get
+  // their menu -- the alternative is a bot that cannot be navigated because
+  // an ad failed to render.
+  h.failApi((method, payload) =>
+    method === "sendMessage" && /reklama qilishingiz mumkin/.test(payload.text || "")
+      ? "Bad Request: simulated"
+      : null
+  );
+  try {
+    await h.send(M(), h.commandUpdate("/start", u));
+    const sent = await h.send(M(), h.callbackUpdate("lang:uz", u));
+    assert.match(said(sent), /menyu|Asosiy/i, "the main menu still has to arrive");
+  } finally {
+    h.failApi(null);
+  }
+});
+
+test("the board screen offers both the add and the info buttons", async () => {
+  const u = user("Opener");
+  await register(u, { gender: "male", name: "Opener" });
+  const sent = await h.send(M(), h.textUpdate("📊 ForStatistic — reklama taxtasi", u));
+  const cb = callbacks(sent);
+  assert.ok(cb.includes("fs:add"), "add my ad");
+  assert.ok(cb.includes("fs:info"), "what ForStatistic is");
+});
+
+test("the info screen explains the rule and names the channel", async () => {
+  const u = user("Curious");
+  await register(u, { gender: "male", name: "Curious" });
+  const text = said(await h.send(M(), h.callbackUpdate("fs:info", u)));
+  assert.match(text, /@foroneforever/, "the daily channel promotion is part of the pitch");
+  assert.match(text, /1-o'rin/, "it must state that the top spot is bought");
+});
+
+test("the wizard walks all five steps and ends on a paywall", async () => {
+  const u = user("Advertiser");
+  await register(u, { gender: "male", name: "Advertiser" });
+
+  const start = said(await h.send(M(), h.callbackUpdate("fs:add", u)));
+  assert.match(start, /1\/5/, "step one asks for the name");
+
+  const afterName = said(await h.send(M(), h.textUpdate("Kofe Xona", u)));
+  assert.match(afterName, /2\/5/, "step two asks for the photo");
+
+  const afterPhoto = said(await h.send(M(), h.photoUpdate(u)));
+  assert.match(afterPhoto, /3\/5/, "step three asks for the link");
+
+  const afterLink = said(await h.send(M(), h.textUpdate("https://t.me/kofexona", u)));
+  assert.match(afterLink, /4\/5/, "step four asks for the description");
+
+  const afterAbout = said(await h.send(M(), h.textUpdate("Eng mazali kofe", u)));
+  assert.match(afterAbout, /5\/5/, "step five asks for the amount");
+
+  const sent = await h.send(M(), h.textUpdate("60000", u));
+  assert.ok(
+    callbacks(sent).some((d) => d && d.startsWith("payments:done:")),
+    "the last step must produce a real paywall"
+  );
+  assert.ok(urlButtons(sent).length >= 1, "with a provider button on it");
+});
+
+test("each step refuses a bad answer instead of accepting it", async () => {
+  const u = user("Sloppy");
+  await register(u, { gender: "male", name: "Sloppy" });
+  await h.send(M(), h.callbackUpdate("fs:add", u));
+
+  assert.match(said(await h.send(M(), h.textUpdate("x", u))), /2 tadan 40/, "a one-character name");
+  await h.send(M(), h.textUpdate("Good Name", u));
+
+  // Text where a photo is required.
+  assert.match(said(await h.send(M(), h.textUpdate("not a photo", u))), /rasm/i);
+  await h.send(M(), h.photoUpdate(u));
+
+  assert.match(said(await h.send(M(), h.textUpdate("javascript:alert(1)", u))), /https/i, "a non-http link");
+  await h.send(M(), h.textUpdate("https://t.me/x", u));
+
+  assert.match(said(await h.send(M(), h.textUpdate("hi", u))), /5 tadan 100/, "too short a description");
+  await h.send(M(), h.textUpdate("A real description", u));
+
+  assert.match(said(await h.send(M(), h.textUpdate("10", u))), /so'm/, "an amount under the floor");
+});
+
+test("tapping a menu button mid-wizard leaves the wizard instead of being filed as an answer", async () => {
+  const u = user("Changed");
+  await register(u, { gender: "male", name: "Changed" });
+  await h.send(M(), h.callbackUpdate("fs:add", u));
+
+  const sent = await h.send(M(), h.textUpdate("💎 Premium", u));
+  const text = said(sent);
+  assert.match(text, /Premium/, "the Premium screen must actually open");
+  assert.ok(!/2\/5/.test(text), "and the name step must not have swallowed the tap");
+  assert.strictEqual(fs_.drafts.has(String(u.id)), false, "the draft is dropped");
+});
+
+// --- payment puts the ad on the board -----------------------------------------
+
+test("paying for an ad puts it on the board at the place the money bought", async () => {
+  const u = user("Payer");
+  await register(u, { gender: "male", name: "Payer" });
+
+  const orderId = await addAd(u, {
+    name: "Big Spender",
+    link: "https://t.me/bigspender",
+    about: "The most expensive ad on this board",
+    amount: 5000000,
+  });
+  const res = await payOrder(orderId, 5000000);
+  assert.strictEqual(res.error, 0, `the payment must be accepted: ${JSON.stringify(res)}`);
+
+  const board = await db.listTopAds(50);
+  assert.strictEqual(board[0].name, "Big Spender", "the biggest payment takes first place");
+  assert.strictEqual(board[0].amountSom, 5000000);
+});
+
+test("the buyer is told where they landed", async () => {
+  const u = user("Told");
+  await register(u, { gender: "male", name: "Told" });
+  const orderId = await addAd(u, {
+    name: "Modest", link: "https://t.me/modest", about: "A modest little ad", amount: 7000,
+  });
+
+  const before = h.calls.length;
+  await payOrder(orderId, 7000);
+  const text = said(h.calls.slice(before).filter((c) => String(c.payload.chat_id) === String(u.id)));
+  assert.match(text, /Tabriklaymiz/, "a congratulation");
+  assert.match(text, /o'rin/, "naming the place they got");
+});
+
+test("/ad_<id> opens one entry in full, and a hidden one is gone", async () => {
+  const u = user("Reader");
+  await register(u, { gender: "male", name: "Reader" });
+  const orderId = await addAd(u, {
+    name: "Readable", link: "https://t.me/readable", about: "Something worth reading", amount: 9000,
+  });
+  await payOrder(orderId, 9000);
+
+  const order = await orders.getOrder(orderId);
+  const adId = order.targetId;
+
+  const shown = await h.send(M(), h.textUpdate(`/ad_${adId}`, u));
+  assert.match(said(shown), /Readable/, "the ad opens");
+  assert.ok(urlButtons(shown).some((b) => b.url === "https://t.me/readable"), "with its link one tap away");
+
+  // Once a moderator takes it down it must be unreachable by id too --
+  // otherwise hiding it only removes it from a list it was never found in.
+  await db.setAdActive(adId, false);
+  const gone = await h.send(M(), h.textUpdate(`/ad_${adId}`, u));
+  assert.match(said(gone), /topilmadi/, "a hidden ad reads as not there");
+  assert.ok(!/Readable/.test(said(gone)), "and none of its content leaks");
+});
+
+test("an ad id that was never issued is answered, not crashed on", async () => {
+  const u = user("Prober");
+  await register(u, { gender: "male", name: "Prober" });
+  const sent = await h.send(M(), h.textUpdate("/ad_99999999", u));
+  assert.match(said(sent), /topilmadi/);
+});
+
+// --- go ----------------------------------------------------------------------
+(async () => {
+  let failed = 0;
+  for (const { name, fn } of tests) {
+    try {
+      resetFloodGuard();
+      await fn();
+      console.log(`ok   - ${name}`);
+    } catch (err) {
+      failed++;
+      console.log(`FAIL - ${name}\n       ${err.message}`);
+    }
+  }
+  console.log(`\n${tests.length - failed}/${tests.length} passed`);
+  process.exit(failed ? 1 : 0);
+})();

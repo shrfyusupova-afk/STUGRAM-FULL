@@ -222,6 +222,36 @@ async function init() {
   // either in total or within the last 24 hours for the daily cap.
   await query(`CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals (referrer_id, created_at)`);
 
+  // ForStatistic: the paid billboard. Anyone buys a slot, and the ranking is
+  // simply "who has put in the most".
+  //
+  // amount_som ACCUMULATES rather than being replaced -- topping up has to
+  // move you up the board, not reset you to whatever the latest single
+  // payment was, or buying a higher place would be impossible.
+  //
+  // A row is created BEFORE payment (amount_som 0, active false) so the order
+  // can reference it by id; it becomes visible only once money lands. BIGSERIAL
+  // because this id is printed on the board and typed back by people to open
+  // an entry -- a 24-character hex string would be unusable for that.
+  await query(`
+    CREATE TABLE IF NOT EXISTS ads (
+      id            BIGSERIAL PRIMARY KEY,
+      user_id       TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      about         TEXT NOT NULL,
+      link          TEXT NOT NULL,
+      media_file_id TEXT,
+      amount_som    BIGINT NOT NULL DEFAULT 0,
+      active        BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at       TIMESTAMPTZ
+    )`);
+  // The board's only query: paid, visible, best-funded first.
+  await query(
+    `CREATE INDEX IF NOT EXISTS ads_board_idx ON ads (amount_som DESC, paid_at)
+       WHERE active = TRUE AND amount_som > 0`
+  );
+
   // Free profile views, earned by inviting people. An INTEGER on the profile
   // rather than a ledger table: the only questions ever asked are "how many
   // are left" and "take one", and both are a single row update. DEFAULT 0
@@ -973,6 +1003,101 @@ async function setLanguage(userId, lang) {
 
 // --- Complaints ------------------------------------------------------------
 
+// --- ForStatistic ads --------------------------------------------------------
+
+function rowToAd(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    userId: row.user_id,
+    name: row.name,
+    about: row.about,
+    link: row.link,
+    mediaFileId: row.media_file_id,
+    // BIGINT comes back from pg as a STRING, not a number -- left as-is it
+    // sorts and adds as text ("9" > "80000"), which on a board ranked by money
+    // would put the smallest payment on top.
+    amountSom: Number(row.amount_som),
+    active: row.active,
+    createdAt: row.created_at ? row.created_at.toISOString() : undefined,
+    paidAt: row.paid_at ? row.paid_at.toISOString() : null,
+  };
+}
+
+async function createAd(ad) {
+  const { rows } = await query(
+    `INSERT INTO ads (user_id, name, about, link, media_file_id)
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING id`,
+    [String(ad.userId), ad.name, ad.about, ad.link, ad.mediaFileId || null]
+  );
+  return String(rows[0].id);
+}
+
+async function getAd(id) {
+  // The id arrives from callback_data and from what a person typed, so it is
+  // not necessarily a number at all -- and a non-numeric value handed to a
+  // BIGINT comparison is a query error, not an empty result.
+  if (!/^\d+$/.test(String(id))) return null;
+  const { rows } = await query(`SELECT * FROM ads WHERE id = $1`, [String(id)]);
+  return rowToAd(rows[0]);
+}
+
+// Ties broken by who got there first: two ads on the same amount would
+// otherwise swap places on every refresh, which reads as a bug and -- for
+// something people paid for -- as being cheated.
+async function listTopAds(limit = 50) {
+  const { rows } = await query(
+    `SELECT * FROM ads
+      WHERE active = TRUE AND amount_som > 0
+      ORDER BY amount_som DESC, paid_at
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map(rowToAd);
+}
+
+// Adds to the running total and switches the ad on, in ONE statement -- two
+// people topping up the same ad at once would otherwise read-then-write over
+// each other and lose a payment.
+async function addAdAmount(id, amountSom) {
+  if (!/^\d+$/.test(String(id))) return null;
+  const { rows } = await query(
+    `UPDATE ads
+        SET amount_som = amount_som + $2,
+            active = TRUE,
+            paid_at = COALESCE(paid_at, NOW())
+      WHERE id = $1
+      RETURNING *`,
+    [String(id), Number(amountSom)]
+  );
+  return rowToAd(rows[0]);
+}
+
+// Admin moderation. Hiding leaves the record (and the money paid) intact --
+// this is "take it off the board", never "pretend it never happened".
+async function setAdActive(id, active) {
+  if (!/^\d+$/.test(String(id))) return null;
+  const { rows } = await query(`UPDATE ads SET active = $2 WHERE id = $1 RETURNING *`, [
+    String(id),
+    !!active,
+  ]);
+  return rowToAd(rows[0]);
+}
+
+// Everything paid for, hidden ones included -- the admin view, where the
+// whole point is seeing what the public board is not showing.
+async function listAllAds(limit = 100) {
+  const { rows } = await query(
+    `SELECT * FROM ads
+      WHERE amount_som > 0
+      ORDER BY amount_som DESC, paid_at
+      LIMIT $1`,
+    [limit]
+  );
+  return rows.map(rowToAd);
+}
+
 function rowToComplaint(row) {
   if (!row) return null;
   return {
@@ -1207,6 +1332,7 @@ module.exports = {
   listPremiumExpiring, setPremiumNoticeAt, clearRenewedPremiumNotices,
   recordDislike, getDislikes, getDiscoverState, setDiscoverState, clearDiscoverState,
   createComplaint, getComplaint, listComplaints, setComplaintReply,
+  createAd, getAd, listTopAds, addAdAmount, setAdActive, listAllAds,
   getTransaction, findPendingOrder, createTransaction, updateTransactionAmount,
   markTransaction, getSalesRows,
   getPaymeTransaction, getPaymeTransactionByOrder, createPaymeTransaction,
