@@ -9,33 +9,36 @@ const { t } = require("./i18n");
 // Menu button beside the input box (set once in index.js via
 // setChatMenuButton), which is where Telegram itself puts a Mini App, so
 // duplicating it in the keyboard only made this menu longer.
-// Button colours (Bot API 9.4). Deliberately NOT applied to everything: if
-// every button is coloured then colour carries no information and the eye has
-// nothing to land on. Blue marks the paid routes, green the two free things
-// worth pushing people towards, red the one destructive action -- and the
-// everyday buttons stay plain, which is what lets the coloured ones stand out.
+// Button colour (Bot API 9.4) is spent on exactly ONE button per keyboard --
+// not "important things are blue, free things are green, danger is red".
+// A screen with six half-meaningful colours gives the eye nowhere to land,
+// which is the exact complaint a multi-colour version of this menu drew. One
+// consistent accent on the single action a screen is FOR reads as "tap this"
+// at a glance; everything else stays exactly as it always looked.
 //
-// An older Telegram client that doesn't know the field simply renders a plain
-// button, so this degrades to exactly what was here before.
-const PRIMARY = "primary";
-const SUCCESS = "success";
-const DANGER = "danger";
-const styled = (text, style) => (style ? { text, style } : { text });
+// "Yangi tanishuvlar" carries it here because it is the one loop the whole
+// app is built around -- every other screen is a detour from it and a way
+// back to it.
+//
+// A client too old to know the field renders a plain button, so this
+// degrades to exactly what was here before.
+const ACCENT = "primary";
+const styled = (text, accent) => (accent ? { text, style: ACCENT } : { text });
 
 function mainMenuKeyboard(lang) {
   const m = t(lang, "menu");
   return Markup.keyboard([
-    [styled(m.discover, PRIMARY), styled(m.profile)],
+    [styled(m.discover, true), styled(m.profile)],
     // Its own full-width row, high up: it is the one screen here that people
     // are meant to arrive at without already knowing it exists, and a
     // half-width button in the fifth row is not something anybody discovers.
-    [styled(m.forResult, SUCCESS)],
-    [styled(m.likes), styled(m.vip, PRIMARY)],
-    [styled(m.premium, PRIMARY), styled(m.anonChat)],
+    [styled(m.forResult)],
+    [styled(m.likes), styled(m.vip)],
+    [styled(m.premium), styled(m.anonChat)],
     // Invite sits next to the complaint row rather than at the top: it is the
     // free route to a paid feature, so it should be findable without being
     // the first thing pushed at someone who just arrived.
-    [styled(m.referral, SUCCESS), styled(m.complaint, DANGER)],
+    [styled(m.referral), styled(m.complaint)],
   ])
     .resize()
     .persistent();

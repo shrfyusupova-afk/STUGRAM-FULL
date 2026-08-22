@@ -572,21 +572,17 @@ test("no button carries a style Telegram would silently ignore", () => {
   }
 });
 
-// Colour is only a signal while some buttons lack it. This is the property
-// that a well-meaning "let's brighten it up" change would quietly destroy.
-test("the main menu colours some buttons and deliberately leaves others plain", () => {
-  const rows = mainMenuKeyboard("uz").reply_markup.keyboard;
-  const buttons = rows.flat();
+// Colour is only a signal while almost nothing carries it. A menu with six
+// half-meaningful colours is what this replaced -- the fix is ONE consistent
+// accent on the ONE action a screen is for, nothing else. This holds both
+// halves: exactly one button lit, and it's the right one.
+test("the main menu has exactly one accented button, and it's the core loop", () => {
+  const buttons = mainMenuKeyboard("uz").reply_markup.keyboard.flat();
   const coloured = buttons.filter((b) => b.style);
-  const plain = buttons.filter((b) => !b.style);
 
-  assert.ok(coloured.length > 0, "the paid and important routes must be marked");
-  assert.ok(plain.length > 0, "and the everyday ones must stay plain, or colour means nothing");
-
-  // The one destructive action is the only red thing on the screen.
-  const red = buttons.filter((b) => b.style === "danger");
-  assert.strictEqual(red.length, 1, "exactly one red button");
-  assert.match(red[0].text, /Shikoyat/, "and it is the complaint one");
+  assert.strictEqual(coloured.length, 1, `expected exactly one accented button, got ${coloured.length}`);
+  assert.match(coloured[0].text, /Yangi tanishuvlar/, "the accent belongs on the core discovery loop");
+  assert.strictEqual(coloured[0].style, "primary", "one accent colour, not a mix of meanings");
 });
 
 // --- go ----------------------------------------------------------------------

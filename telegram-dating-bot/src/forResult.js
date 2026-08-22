@@ -191,18 +191,17 @@ const clearDraft = (userId) => drafts.delete(String(userId));
 // attached to one message: the board is a place you stay in and act from, and
 // an inline row scrolls away the moment anything else is sent.
 
-// Colour (Bot API 9.4) is spent only where it means something. Green on the
-// one action this whole screen exists to produce, blue on the person's own
-// ad, and nothing on the two that are merely how you read and leave -- if
-// every button is coloured, colour stops being a signal. Older Telegram
-// clients ignore the field and render plain buttons, so nothing breaks.
-const PRIMARY = "primary";
-const SUCCESS = "success";
-const styled = (text, style) => (style ? { text, style } : { text });
+// One accent, one button per keyboard -- the single action that screen is
+// FOR, nothing else. Matches menu.js's rule exactly, for the same reason:
+// several half-meaningful colours give the eye nowhere to land, one
+// consistent accent reads as "tap this" without having to be decoded.
+const ACCENT = "primary";
+const styled = (text, accent) => (accent ? { text, style: ACCENT } : { text });
 
 function boardKeyboard(lang) {
   return Markup.keyboard([
-    [styled(t(lang, "forResultAddButton"), SUCCESS), styled(t(lang, "forResultMyAdButton"), PRIMARY)],
+    // Adding an ad is what this whole screen exists to produce.
+    [styled(t(lang, "forResultAddButton"), true), styled(t(lang, "forResultMyAdButton"))],
     [styled(t(lang, "forResultInfoButton")), styled(t(lang, "backButton"))],
   ])
     .resize()
@@ -211,8 +210,8 @@ function boardKeyboard(lang) {
 
 function myAdKeyboard(lang) {
   return Markup.keyboard([
-    // Paying is the action worth marking; editing is routine.
-    [styled(t(lang, "forResultTopUpButton"), PRIMARY), styled(t(lang, "forResultEditButton"))],
+    // Paying is the action this screen is FOR; editing is a detour from it.
+    [styled(t(lang, "forResultTopUpButton"), true), styled(t(lang, "forResultEditButton"))],
     [styled(t(lang, "backButton"))],
   ])
     .resize()
