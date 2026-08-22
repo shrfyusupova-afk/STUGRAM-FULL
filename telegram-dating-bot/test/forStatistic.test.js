@@ -375,7 +375,7 @@ test("returning to the main menu advertises the board", async () => {
   await h.send(M(), h.commandUpdate("/start", u));
   const sent = await h.send(M(), h.callbackUpdate("lang:uz", u));
   assert.ok(callbacks(sent).includes("fs:open"), "the promo and its button must ride along with the menu");
-  assert.match(said(sent), /reklama qilishingiz mumkin/, "and it must pitch, not just link");
+  assert.match(said(sent), /afishangizni yuklang/, "and it must pitch, not just link");
 });
 
 test("the promo failing can never block the main menu itself", async () => {
@@ -386,7 +386,7 @@ test("the promo failing can never block the main menu itself", async () => {
   // their menu -- the alternative is a bot that cannot be navigated because
   // an ad failed to render.
   h.failApi((method, payload) =>
-    method === "sendMessage" && /reklama qilishingiz mumkin/.test(payload.text || "")
+    method === "sendMessage" && /afishangizni yuklang/.test(payload.text || "")
       ? "Bad Request: simulated"
       : null
   );

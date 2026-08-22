@@ -400,10 +400,11 @@ const STRINGS = {
       "va shu zahoti yuqoriga chiqasiz. Ya'ni 1-o'rin doim ochiq — kim ko'proq " +
       "qadr qilsa, o'sha egallaydi.\n\n" +
       "💡 Biznes, blog, kanal, do'kon, xizmat — nima bo'lsa ham shu yerda ko'rinadi.\n\n" +
-      "Hoziroq boshlang 👇",
+      "Hoziroq boshlang 👇\n\n" +
+      "<i>📅 20-avgust kuni asos solindi · 21-avgust kuni soat 00:00 da ishga tushirildi</i>",
     forStatisticPromo:
-      "📣 <b>O'z biznesingizni yoki blogingizni reklama qilishingiz mumkin!</b>\n\n" +
-      "👀 Bugungi afishamizda kim birinchi o'rinda ekanini ko'ring 👇",
+      "🔥 <b>ForStatistic — bugun kim birinchi o'rinda?</b>\n\n" +
+      "👀 Bugungi afishalar bilan tanishing yoki o'z afishangizni yuklang 🤭👇",
     forStatisticPromoButton: "📊 ForStatistic",
     forStatisticAskName:
       "📌 <b>1/5 — Afishangiz nomi</b>\n\n" +
@@ -962,10 +963,11 @@ const STRINGS = {
       "и вы сразу подниметесь выше. То есть 1-е место всегда открыто: " +
       "его занимает тот, кто ценит его больше.\n\n" +
       "💡 Бизнес, блог, канал, магазин, услуга — что угодно будет видно здесь.\n\n" +
-      "Начните прямо сейчас 👇",
+      "Начните прямо сейчас 👇\n\n" +
+      "<i>📅 Основан 20 августа · запущен 21 августа в 00:00</i>",
     forStatisticPromo:
-      "📣 <b>Вы можете прорекламировать свой бизнес или блог!</b>\n\n" +
-      "👀 Посмотрите, кто сегодня на первом месте нашей доски 👇",
+      "🔥 <b>ForStatistic — кто сегодня на первом месте?</b>\n\n" +
+      "👀 Посмотрите сегодняшние объявления или разместите своё 🤭👇",
     forStatisticPromoButton: "📊 ForStatistic",
     forStatisticAskName:
       "📌 <b>1/5 — Название объявления</b>\n\n" +
@@ -1517,10 +1519,11 @@ const STRINGS = {
       "moving you up straight away. #1 is always open — it belongs to whoever " +
       "values it most.\n\n" +
       "💡 A business, a blog, a channel, a shop, a service — whatever it is, it shows here.\n\n" +
-      "Start right now 👇",
+      "Start right now 👇\n\n" +
+      "<i>📅 Founded 20 August · launched 21 August at 00:00</i>",
     forStatisticPromo:
-      "📣 <b>You can advertise your business or your blog here!</b>\n\n" +
-      "👀 See who's sitting at number one on today's board 👇",
+      "🔥 <b>ForStatistic — who's number one today?</b>\n\n" +
+      "👀 Have a look at today's ads, or put yours up 🤭👇",
     forStatisticPromoButton: "📊 ForStatistic",
     forStatisticAskName:
       "📌 <b>1/5 — Your ad's name</b>\n\n" +
