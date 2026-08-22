@@ -191,10 +191,19 @@ const clearDraft = (userId) => drafts.delete(String(userId));
 // attached to one message: the board is a place you stay in and act from, and
 // an inline row scrolls away the moment anything else is sent.
 
+// Colour (Bot API 9.4) is spent only where it means something. Green on the
+// one action this whole screen exists to produce, blue on the person's own
+// ad, and nothing on the two that are merely how you read and leave -- if
+// every button is coloured, colour stops being a signal. Older Telegram
+// clients ignore the field and render plain buttons, so nothing breaks.
+const PRIMARY = "primary";
+const SUCCESS = "success";
+const styled = (text, style) => (style ? { text, style } : { text });
+
 function boardKeyboard(lang) {
   return Markup.keyboard([
-    [t(lang, "forResultAddButton"), t(lang, "forResultMyAdButton")],
-    [t(lang, "forResultInfoButton"), t(lang, "backButton")],
+    [styled(t(lang, "forResultAddButton"), SUCCESS), styled(t(lang, "forResultMyAdButton"), PRIMARY)],
+    [styled(t(lang, "forResultInfoButton")), styled(t(lang, "backButton"))],
   ])
     .resize()
     .persistent();
@@ -202,8 +211,9 @@ function boardKeyboard(lang) {
 
 function myAdKeyboard(lang) {
   return Markup.keyboard([
-    [t(lang, "forResultTopUpButton"), t(lang, "forResultEditButton")],
-    [t(lang, "backButton")],
+    // Paying is the action worth marking; editing is routine.
+    [styled(t(lang, "forResultTopUpButton"), PRIMARY), styled(t(lang, "forResultEditButton"))],
+    [styled(t(lang, "backButton"))],
   ])
     .resize()
     .persistent();

@@ -9,20 +9,33 @@ const { t } = require("./i18n");
 // Menu button beside the input box (set once in index.js via
 // setChatMenuButton), which is where Telegram itself puts a Mini App, so
 // duplicating it in the keyboard only made this menu longer.
+// Button colours (Bot API 9.4). Deliberately NOT applied to everything: if
+// every button is coloured then colour carries no information and the eye has
+// nothing to land on. Blue marks the paid routes, green the two free things
+// worth pushing people towards, red the one destructive action -- and the
+// everyday buttons stay plain, which is what lets the coloured ones stand out.
+//
+// An older Telegram client that doesn't know the field simply renders a plain
+// button, so this degrades to exactly what was here before.
+const PRIMARY = "primary";
+const SUCCESS = "success";
+const DANGER = "danger";
+const styled = (text, style) => (style ? { text, style } : { text });
+
 function mainMenuKeyboard(lang) {
   const m = t(lang, "menu");
   return Markup.keyboard([
-    [m.discover, m.profile],
+    [styled(m.discover, PRIMARY), styled(m.profile)],
     // Its own full-width row, high up: it is the one screen here that people
     // are meant to arrive at without already knowing it exists, and a
     // half-width button in the fifth row is not something anybody discovers.
-    [m.forResult],
-    [m.likes, m.vip],
-    [m.premium, m.anonChat],
+    [styled(m.forResult, SUCCESS)],
+    [styled(m.likes), styled(m.vip, PRIMARY)],
+    [styled(m.premium, PRIMARY), styled(m.anonChat)],
     // Invite sits next to the complaint row rather than at the top: it is the
     // free route to a paid feature, so it should be findable without being
     // the first thing pushed at someone who just arrived.
-    [m.referral, m.complaint],
+    [styled(m.referral, SUCCESS), styled(m.complaint, DANGER)],
   ])
     .resize()
     .persistent();

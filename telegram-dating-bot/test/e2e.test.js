@@ -20,6 +20,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 for (const f of fs.readdirSync(DATA_DIR)) if (f.endsWith(".json")) fs.unlinkSync(path.join(DATA_DIR, f));
 
 const h = require("./harness");
+const { mainMenuKeyboard } = require("../src/menu");
 
 const BASE = "http://127.0.0.1:45999";
 const TOKEN = "111:TEST";
@@ -523,6 +524,69 @@ test("logging out really ends the session", async () => {
   assert.match(said(out), /chiqdingiz/);
   const blocked = await h.send(A(), h.textUpdate("📊 Statistika", ADMIN));
   assert.match(said(blocked), /kodni qayta kiriting|Kodni kiriting/, "the panel must ask for the PIN again");
+});
+
+// --- coloured buttons (Bot API 9.4) ---------------------------------------------
+//
+// Two failure modes, both silent in production, which is why they are checked
+// here rather than trusted:
+//
+// A button is now an object rather than a bare string. Every menu handler in
+// this bot matches on the LABEL, so a button that lost its `text` would leave
+// a visible button that simply does nothing when tapped -- and no error
+// anywhere.
+//
+// And Telegram ignores a `style` it does not recognise. A typo like "green"
+// or "bg_primary" (the MTProto spelling, not the Bot API one) therefore fails
+// by quietly rendering a plain button, which looks exactly like "the client is
+// too old" and would be debugged as such.
+const VALID_STYLES = new Set(["primary", "success", "danger"]);
+
+function everyKeyboardButton() {
+  const out = [];
+  for (const call of h.calls) {
+    const rows = call.payload?.reply_markup?.keyboard;
+    if (!rows) continue;
+    for (const row of rows) for (const button of row) out.push(button);
+  }
+  return out;
+}
+
+test("every keyboard button still carries the label its handler matches on", () => {
+  const buttons = everyKeyboardButton();
+  assert.ok(buttons.length > 0, "this file must have exercised some keyboards by now");
+  for (const button of buttons) {
+    const text = typeof button === "string" ? button : button.text;
+    assert.ok(text && text.length > 0, `a button reached Telegram with no text: ${JSON.stringify(button)}`);
+  }
+});
+
+test("no button carries a style Telegram would silently ignore", () => {
+  for (const button of everyKeyboardButton()) {
+    if (typeof button === "string" || button.style === undefined) continue;
+    assert.ok(
+      VALID_STYLES.has(button.style),
+      `"${button.style}" is not a Bot API style -- Telegram would drop it without a word ` +
+        `(${JSON.stringify(button)})`
+    );
+  }
+});
+
+// Colour is only a signal while some buttons lack it. This is the property
+// that a well-meaning "let's brighten it up" change would quietly destroy.
+test("the main menu colours some buttons and deliberately leaves others plain", () => {
+  const rows = mainMenuKeyboard("uz").reply_markup.keyboard;
+  const buttons = rows.flat();
+  const coloured = buttons.filter((b) => b.style);
+  const plain = buttons.filter((b) => !b.style);
+
+  assert.ok(coloured.length > 0, "the paid and important routes must be marked");
+  assert.ok(plain.length > 0, "and the everyday ones must stay plain, or colour means nothing");
+
+  // The one destructive action is the only red thing on the screen.
+  const red = buttons.filter((b) => b.style === "danger");
+  assert.strictEqual(red.length, 1, "exactly one red button");
+  assert.match(red[0].text, /Shikoyat/, "and it is the complaint one");
 });
 
 // --- go ----------------------------------------------------------------------
