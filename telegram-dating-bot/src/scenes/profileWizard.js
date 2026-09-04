@@ -6,7 +6,7 @@ const { t, DEFAULT_LANG } = require("../i18n");
 const { getUsername, getPublicUrl } = require("../botInfo");
 const { isRegistered } = require("../profileState");
 const { resolveLocation } = require("../geo");
-const { isSubscribed, isEnabled, CHANNEL_URL } = require("../channelGate");
+const { isSubscribed, isEnabled, joinButtons } = require("../channelGate");
 
 const MIN_AGE = 18;
 const MAX_AGE = 90;
@@ -265,7 +265,9 @@ async function finish(ctx, lang, profile) {
       await ctx.reply(t(lang, "channelWelcomeInvite"), {
         parse_mode: "HTML",
         disable_web_page_preview: true,
-        ...Markup.inlineKeyboard([[Markup.button.url(t(lang, "channelJoinButton"), CHANNEL_URL)]]),
+        // Every configured channel, from the gate's own list -- a second copy
+        // of it here is how one of them ends up quietly missing a channel.
+        ...Markup.inlineKeyboard(joinButtons(lang)),
       });
     } catch (err) {
       console.error("channel invite after registration failed (ignored):", err.message);

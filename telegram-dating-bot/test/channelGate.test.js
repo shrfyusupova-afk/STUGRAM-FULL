@@ -328,11 +328,146 @@ test("the probe re-runs on a timer, so the status recovers without a restart", a
 
 test("the membership cache hands its memory back", async () => {
   const { cache, sweepCache } = gate.__test;
-  cache.set(111, { subscribed: true, expiresAt: Date.now() - 1000 });
-  cache.set(222, { subscribed: true, expiresAt: Date.now() + 60000 });
+  cache.set(111, { missing: [], expiresAt: Date.now() - 1000 });
+  cache.set(222, { missing: [], expiresAt: Date.now() + 60000 });
   sweepCache();
   assert.ok(!cache.has(111), "an expired entry is dropped");
   assert.ok(cache.has(222), "a live one is kept");
+});
+
+// --- several channels at once ---------------------------------------------------
+//
+// The gate can require more than one channel, and every one of them is
+// mandatory. The failure that matters here is the quiet one: a second channel
+// that is configured, shows a button, and is never actually checked -- so
+// people sail past it and the operator only finds out from the subscriber
+// count that never moves.
+
+test("the channel list is parsed however it is written", () => {
+  const { parseChannels } = gate.__test;
+  const names = (raw) => parseChannels(raw).map((c) => c.username);
+
+  assert.deepStrictEqual(names("foroneforever, forJahongir"), ["foroneforever", "forJahongir"]);
+  assert.deepStrictEqual(names("foroneforever forJahongir"), ["foroneforever", "forJahongir"], "spaces");
+  assert.deepStrictEqual(names("@foroneforever;@forJahongir"), ["foroneforever", "forJahongir"], "@ and ;");
+  assert.deepStrictEqual(
+    names("https://t.me/foroneforever, forJahongir"),
+    ["foroneforever", "forJahongir"],
+    "a full URL mixed with a bare name"
+  );
+  assert.deepStrictEqual(names("foroneforever"), ["foroneforever"], "a single channel still works");
+  assert.deepStrictEqual(names(""), [], "nothing configured means the gate does not exist");
+
+  // A duplicate would otherwise put two identical buttons on the gate, and a
+  // junk entry a button nobody can join.
+  assert.deepStrictEqual(names("foroneforever, @foroneforever, FOROneForever"), ["foroneforever"], "deduped");
+  assert.deepStrictEqual(names("foroneforever, a, forJahongir"), ["foroneforever", "forJahongir"], "junk dropped");
+});
+
+test("both channels are configured and required", () => {
+  const names = gate.CHANNELS.map((c) => c.username);
+  assert.ok(names.includes("foroneforever"), `foroneforever missing from ${names.join(", ")}`);
+  assert.ok(names.includes("forJahongir"), `forJahongir missing from ${names.join(", ")}`);
+});
+
+// The whole point of a second channel: joining only the first one is not
+// enough. Before multi-channel support this returned true, which is exactly
+// the silent failure described above.
+test("being in only ONE of the channels is not enough", async () => {
+  const joined = new Set([gate.CHANNELS[0].chatId]);
+  const telegram = {
+    getChatMember: async (chatId) => ({ status: joined.has(chatId) ? "member" : "left" }),
+  };
+
+  gate.forget(999020);
+  assert.strictEqual(await gate.isSubscribed(telegram, 999020), false, "one out of two must not pass");
+
+  // And once they join the rest, they are through.
+  for (const c of gate.CHANNELS) joined.add(c.chatId);
+  gate.forget(999020);
+  assert.strictEqual(await gate.isSubscribed(telegram, 999020), true, "all of them does");
+});
+
+test("the gate shows a button for every channel still missing -- and only those", async () => {
+  const u = user("HalfIn");
+  const target = user("Girl5");
+  await register(u, { gender: "male", name: "HalfIn" });
+  await register(target, { gender: "female", name: "Girl5" });
+
+  await browseTo(u, "Girl5");
+  h.notSubscribed.add(String(u.id));
+  gate.forget(u.id);
+  const liked = await h.send(M(), h.textUpdate("❤️", u));
+
+  // The harness treats a listed user as being in no channel at all, so every
+  // configured channel must be offered.
+  const urls = buttons(liked, u).map((b) => b.url).filter(Boolean);
+  for (const c of gate.CHANNELS) {
+    assert.ok(urls.includes(c.url), `no button for ${c.username} (got ${urls.join(", ") || "none"})`);
+  }
+  assert.strictEqual(urls.length, gate.CHANNELS.length, "one button per channel, no duplicates");
+
+  h.notSubscribed.delete(String(u.id));
+  gate.forget(u.id);
+});
+
+// Rule 1 has to survive per channel, not just overall: one unreadable channel
+// must not lock people out of the bot over the OTHER one they have joined.
+test("a channel that cannot be read is not enforced, and does not block anyone", async () => {
+  const [first, ...rest] = gate.CHANNELS;
+  const telegram = {
+    getChatMember: async (chatId) => {
+      if (chatId === first.chatId) throw new Error("Bad Request: chat not found");
+      return { status: "member" };
+    },
+  };
+
+  gate.forget(999021);
+  assert.strictEqual(
+    await gate.isSubscribed(telegram, 999021),
+    true,
+    "the unreadable channel counts as satisfied -- never lock somebody out over a config mistake"
+  );
+
+  // ...but the channels that CAN be read are still enforced.
+  if (rest.length > 0) {
+    const alsoLeft = {
+      getChatMember: async (chatId) => {
+        if (chatId === first.chatId) throw new Error("Bad Request: chat not found");
+        return { status: "left" };
+      },
+    };
+    gate.forget(999022);
+    assert.strictEqual(
+      await gate.isSubscribed(alsoLeft, 999022),
+      false,
+      "a readable channel they have not joined still holds them"
+    );
+  }
+});
+
+// The original single-channel gate never cached a failed check, so the first
+// check after the bot is made an admin picks up the repair. That property is
+// what lets the operator fix a channel in Telegram without redeploying, and it
+// has to survive one bad channel among several.
+test("an unanswerable check is never cached, so the fix takes effect at once", async () => {
+  const { cache } = gate.__test;
+  let broken = true;
+  const telegram = {
+    getChatMember: async () => {
+      if (broken) throw new Error("member list is inaccessible");
+      return { status: "left" };
+    },
+  };
+
+  gate.forget(999023);
+  assert.strictEqual(await gate.isSubscribed(telegram, 999023), true, "fails open while broken");
+  assert.ok(!cache.has(999023), "and that answer must not be remembered for an hour");
+
+  // The operator makes the bot an admin. Nothing here is restarted, and no
+  // forget() is called -- a cached "true" would keep the gate open regardless.
+  broken = false;
+  assert.strictEqual(await gate.isSubscribed(telegram, 999023), false, "the very next check sees the truth");
 });
 
 // --- go ----------------------------------------------------------------------

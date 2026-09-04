@@ -307,7 +307,20 @@ const STRINGS = {
       "💡 Tanishuvda ishlaydigan maslahatlar\n" +
       "🏆 Konkurslar va sovrinlar\n\n" +
       "Obuna bo'ling va pastdagi tugmani bosing 👇",
+    // Bir nechta kanal talab qilinganda. Har bir kanal alohida tugma bo'ladi,
+    // shuning uchun matn "hammasiga" deb aniq aytishi kerak -- aks holda odam
+    // bittasiga obuna bo'lib, nega o'tkazilmayotganini tushunmaydi.
+    channelGateTextMany:
+      "📣 <b>Davom etish uchun obuna bo'ling</b>\n\n" +
+      "Quyidagi kanallarning <b>barchasiga</b> obuna bo'ling 💛\n\n" +
+      "Kanallarda nima bor:\n" +
+      "🎁 Faqat obunachilar uchun sovg'alar va bepul imkoniyatlar\n" +
+      "✨ Yangi funksiyalar — birinchi bo'lib siz bilasiz\n" +
+      "💡 Tanishuvda ishlaydigan maslahatlar\n" +
+      "🏆 Konkurslar va sovrinlar\n\n" +
+      "Obuna bo'lgach, «✅ Obuna bo'ldim» tugmasini bosing 👇",
     channelJoinButton: "📣 Kanalga obuna bo'lish",
+    channelJoinButtonNamed: (name) => `📣 @${name}`,
     channelCheckButton: "✅ Obuna bo'ldim",
     channelJoinedToast: "✅ Rahmat! Davom etamiz 💛",
     channelNotJoinedToast: "❌ Obuna topilmadi.\n\nAvval kanalga kiring va \"Obuna bo'lish\" tugmasini bosing, keyin qaytadan tekshiring.",
@@ -885,7 +898,17 @@ const STRINGS = {
       "💡 Советы, которые реально работают в знакомствах\n" +
       "🏆 Конкурсы и призы\n\n" +
       "Подпишитесь и нажмите кнопку ниже 👇",
+    channelGateTextMany:
+      "📣 <b>Подпишитесь, чтобы продолжить</b>\n\n" +
+      "Подпишитесь на <b>все</b> каналы ниже 💛\n\n" +
+      "Что вас там ждёт:\n" +
+      "🎁 Подарки и бесплатные возможности только для подписчиков\n" +
+      "✨ Новые функции — вы узнаете первыми\n" +
+      "💡 Советы, которые реально работают в знакомствах\n" +
+      "🏆 Конкурсы и призы\n\n" +
+      "После подписки нажмите «✅ Я подписался» 👇",
     channelJoinButton: "📣 Подписаться на канал",
+    channelJoinButtonNamed: (name) => `📣 @${name}`,
     channelCheckButton: "✅ Я подписался",
     channelJoinedToast: "✅ Спасибо! Продолжаем 💛",
     channelNotJoinedToast: "❌ Подписка не найдена.\n\nСначала зайдите в канал и нажмите \"Подписаться\", затем проверьте снова.",
@@ -1444,7 +1467,17 @@ const STRINGS = {
       "💡 Dating advice that actually works\n" +
       "🏆 Contests and prizes\n\n" +
       "Join, then tap the button below 👇",
+    channelGateTextMany:
+      "📣 <b>Join to continue</b>\n\n" +
+      "Please join <b>all</b> of the channels below 💛\n\n" +
+      "What's waiting there:\n" +
+      "🎁 Gifts and free perks for subscribers only\n" +
+      "✨ New features — you'll hear first\n" +
+      "💡 Dating advice that actually works\n" +
+      "🏆 Contests and prizes\n\n" +
+      "Once you have joined, tap \"✅ I subscribed\" 👇",
     channelJoinButton: "📣 Join the channel",
+    channelJoinButtonNamed: (name) => `📣 @${name}`,
     channelCheckButton: "✅ I subscribed",
     channelJoinedToast: "✅ Thank you! Let's continue 💛",
     channelNotJoinedToast: "❌ Subscription not found.\n\nOpen the channel, tap \"Join\", then check again.",
